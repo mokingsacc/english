@@ -13,7 +13,8 @@
 <link rel="icon" href="icon.png">
 <title>انگلیسی</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Cormorant+Garamond:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Cormorant+Garamond:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap"></noscript>
 <style>
 /* Three looks share one component system: each theme maps its palette onto --p-* tokens. Default look: B (Rang). */
 :root{
@@ -25,7 +26,7 @@
 @media (prefers-color-scheme: dark){
   :root{
     --a-bg:#13161F; --a-surface:#1D2130; --a-ink:#ECEEF6; --a-muted:#9AA1B5; --a-line:#2B3043; --a-accent:#8C96F0; --a-accent-ink:#13161F; --a-soft:#262B45; --a-warm:#E5B85A; --a-good:#6DC39A; --a-good-soft:#1F3A30; --a-bad:#E07A72; --a-shadow:0 10px 30px rgba(0,0,0,.35);
-    --b-bg:#15132A; --b-surface:#201D3E; --b-ink:#F7F4FF; --b-muted:#B6B0D6; --b-line:#F7F4FF; --b-accent:#FF6F61; --b-accent-ink:#17142B; --b-soft:#5A4B1A; --b-warm:#FFD23F; --b-blue:#6F86FF; --b-lime:#BDF26B; --b-good:#59D28A; --b-good-soft:#2A4A2E; --b-bad:#FF7A6E; --b-shadow:5px 5px 0 var(--b-line);
+    --b-bg:#15132A; --b-surface:#201D3E; --b-ink:#F7F4FF; --b-muted:#B6B0D6; --b-line:#F7F4FF; --b-accent:#FF6F61; --b-accent-ink:#17142B; --b-soft:#5A4B1A; --b-warm:#FFD23F; --b-blue:#4058E6; --b-lime:#BDF26B; --b-good:#59D28A; --b-good-soft:#2A4A2E; --b-bad:#FF7A6E; --b-shadow:5px 5px 0 var(--b-line);
     --c-bg:#131A2B; --c-surface:#1B2338; --c-ink:#F4EEDF; --c-muted:#B2AB99; --c-line:#2F3A55; --c-accent:#3FC1B7; --c-accent-ink:#0F1A24; --c-soft:#1E3A3F; --c-warm:#EFB44C; --c-pom:#D7475B; --c-good:#3FC1B7; --c-good-soft:#1E3A3F; --c-bad:#D7475B; --c-shadow:0 6px 20px rgba(0,0,0,.35);
     --amber:#F0B429;
     color-scheme:dark;
@@ -36,7 +37,7 @@ html.theme-b{--p-bg:var(--b-bg);--p-surface:var(--b-surface);--p-ink:var(--b-ink
 html.theme-c{--p-bg:var(--c-bg);--p-surface:var(--c-surface);--p-ink:var(--c-ink);--p-muted:var(--c-muted);--p-line:var(--c-line);--p-accent:var(--c-accent);--p-accent-ink:var(--c-accent-ink);--p-soft:var(--c-soft);--p-warm:var(--c-warm);--p-good:var(--c-good);--p-good-soft:var(--c-good-soft);--p-bad:var(--c-bad);--p-shadow:var(--c-shadow);--p-border:1px solid var(--c-line);--p-r:16px;--p-rb:14px;--p-font-en:'Cormorant Garamond',Georgia,'Times New Roman',serif}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%}
+html,body{margin:0;height:100%;overscroll-behavior:none}
 body{background:var(--p-bg);color:var(--p-ink);font-family:'Vazirmatn',system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden;touch-action:manipulation;-webkit-text-size-adjust:100%}
 button,a.btnlike{font:inherit;color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}
 button:focus-visible,a:focus-visible{outline:3px solid var(--p-accent);outline-offset:2px}
@@ -44,7 +45,18 @@ svg.ic{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2;stroke-
 .en{font-family:var(--p-font-en);direction:ltr;unicode-bidi:isolate}
 [hidden]{display:none!important}
 
-#app{height:100vh;height:100dvh;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);max-width:560px;margin:0 auto;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+@media (min-width:600px){#app{border-inline:1px solid var(--p-line)}}
+.content.safe-bottom{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.path li{cursor:pointer}
+.n-talk{border:var(--p-border);background:var(--p-surface);border-radius:12px;width:44px;height:44px;display:grid;place-items:center;color:var(--p-accent);flex:none;box-shadow:var(--p-shadow);text-decoration:none}
+.n-talk svg.ic{font-size:20px}
+.pts{margin-inline-start:auto;text-align:center;font-weight:800;font-size:20px;line-height:1.1}
+.pts small{display:block;font-size:12px;font-weight:600;opacity:.8}
+.steps{margin:0;padding-inline-start:22px;display:grid;gap:6px;list-style-type:persian}
+.voice-ic{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--p-ink);color:var(--p-bg);vertical-align:middle;margin:0 2px}
+.voice-ic svg.ic{font-size:16px}
+.st.ask{background:var(--p-accent);color:var(--p-accent-ink)}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 18px 18px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .content>*{flex-shrink:0}
 .tabbar{display:flex;justify-content:space-around;align-items:center;padding:8px 10px calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--p-line);flex:none;background:var(--p-surface)}
@@ -236,7 +248,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
 .theme-b .cta,.theme-b .ai-btn,.theme-b .speaker,.theme-b .icon-btn{border:2px solid var(--p-line);box-shadow:var(--b-shadow)}
 .theme-b .cta:active,.theme-b .ai-btn:active,.theme-b .speaker:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--p-line)}
 .theme-b .today{background:var(--b-blue);color:#FFFFFF}
-.theme-b .today .eyebrow,.theme-b .today .en-sub,.theme-b .today .meta{color:#FFFFFF;opacity:.92}
+.theme-b .today .eyebrow,.theme-b .today .en-sub,.theme-b .today .meta{color:#FFFFFF}
 .theme-b .today h2{font-size:31px}
 .theme-b .today .en-sub{font-size:21px}
 .theme-b .streak{background:var(--b-warm);color:#17142B}
@@ -319,6 +331,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.2 6.1L12 16.8l-5.5 2.9 1.2-6.1L3.2 9.4l6.1-.8L12 3z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M7 10H5.5v10.5h13V10H17"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V5.5A1.5 1.5 0 0014.5 4h-9A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8"/></symbol>
+  <symbol id="i-voice" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6L12 3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
 </svg>
 
@@ -330,7 +343,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.0.0',
+  version: '1.1.0',
   storageKey: 'fa-en-app',
   defaultTheme: 'b',
   ai: {
@@ -351,7 +364,7 @@ var LESSONS = [
     {id:'l1p1', en:'Good morning', fa:'صبح بخیر', hint:'گود مورنینگ', emoji:'🌅', gap:1},
     {id:'l1p2', en:'Thank you very much', fa:'بسیار تشکر', hint:'تَنک یو وِری ماچ', emoji:'🙏', gap:2},
     {id:'l1p3', en:'Where is the bank?', fa:'بانک کجاست؟', hint:'وِر ایز دِ بَنک', emoji:'🏦', gap:1},
-    {id:'l1p4', en:'I need a taxi', fa:'یک تکسی کار دارم', hint:'آی نید اِ تَکسی', emoji:'🚕', gap:2},
+    {id:'l1p4', en:'I need a taxi', fa:'یک تکسی کار دارم', hint:'آی نید اِ تَکسی', emoji:'🚕', gap:2, gapAlt:['an','—']},
     {id:'l1p5', en:'The bus is here', fa:'بس اینجاست', hint:'دِ باس ایز هیر', emoji:'🚌', gap:2},
     {id:'l1p6', en:'Nice to meet you', fa:'از دیدن شما خوش شدم', hint:'نایس تو میت یو', emoji:'🤝', gap:2}
    ],
@@ -359,10 +372,10 @@ var LESSONS = [
      drill:{ q:'جای خالی را پر کنید:', en:'Sara is my sister. ___ is a teacher.', options:[{t:'She',ok:true},{t:'He'},{t:'It'}] } } },
  { id:'l2', icon:'i-gp', emoji:'🩺', title:{fa:'نزد داکتر', en:'At the GP'},
    phrases:[
-    {id:'l2p1', en:'I have an appointment', fa:'وقت ملاقات دارم', hint:'آی هَو اِن اِپوینتمِنت', emoji:'📅', gap:2},
-    {id:'l2p2', en:'I have a headache', fa:'سرم درد می‌کند', hint:'آی هَو اِ هِدِیک', emoji:'🤕', gap:2},
-    {id:'l2p3', en:'I feel sick', fa:'دلم بد می‌شود', hint:'آی فیل سیک', emoji:'🤢', gap:1},
-    {id:'l2p4', en:'It hurts here', fa:'اینجا درد می‌کند', hint:'ایت هِرتس هیر', emoji:'👉', gap:0},
+    {id:'l2p1', en:'I have an appointment', fa:'وقت ملاقات دارم', hint:'آی هَو اِن اِپوینتمِنت', emoji:'📅', gap:2, gapAlt:['a','—']},
+    {id:'l2p2', en:'I have a headache', fa:'سرم درد می‌کند', hint:'آی هَو اِ هِدِیک', emoji:'🤕', gap:2, gapAlt:['an','—']},
+    {id:'l2p3', en:'I feel sick', fa:'دلم بد می‌شود', hint:'آی فیل سیک', emoji:'🤢', gap:1, gapAlt:['feels','feeling']},
+    {id:'l2p4', en:'It hurts here', fa:'اینجا درد می‌کند', hint:'ایت هِرتس هیر', emoji:'👉', gap:0, gapAlt:['Is','Its']},
     {id:'l2p5', en:'My son has a fever', fa:'پسرم تب دارد', hint:'مای سان هَز اِ فیوِر', emoji:'🤒', gap:2},
     {id:'l2p6', en:'Can you say that again, please?', fa:'لطفاً یک بار دیگر بگویید؟', hint:'کَن یو سِی دَت اَگِین، پلیز', emoji:'🔁', gap:4}
    ],
@@ -371,10 +384,10 @@ var LESSONS = [
  { id:'l3', icon:'i-pill', emoji:'💊', title:{fa:'در دواخانه', en:'At the pharmacy'},
    phrases:[
     {id:'l3p1', en:'Can I have some paracetamol, please?', fa:'لطفاً کمی پاراسیتامول می‌خواهم', hint:'کَن آی هَو سام پَراسیتامول، پلیز', emoji:'💊', gap:2},
-    {id:'l3p2', en:'I have a prescription', fa:'نسخه دارم', hint:'آی هَو اِ پْرِسْکْریپْشِن', emoji:'📄', gap:2},
+    {id:'l3p2', en:'I have a prescription', fa:'نسخه دارم', hint:'آی هَو اِ پْرِسْکْریپْشِن', emoji:'📄', gap:2, gapAlt:['an','—']},
     {id:'l3p3', en:'How many times a day?', fa:'روزی چند بار؟', hint:'هاو مِنی تایمز اِ دِی', emoji:'🕐', gap:1},
     {id:'l3p4', en:'Is it safe for children?', fa:'برای اطفال بی‌خطر است؟', hint:'ایز ایت سِیف فور چیلدرِن', emoji:'👶', gap:0},
-    {id:'l3p5', en:'Before or after food?', fa:'پیش از غذا یا بعد از غذا؟', hint:'بیفور اور آفتِر فود', emoji:'🍽️', gap:1},
+    {id:'l3p5', en:'Before or after food?', fa:'پیش از غذا یا بعد از غذا؟', hint:'بیفور اور آفتِر فود', emoji:'🍽️', gap:1, gapAlt:['but','so']},
     {id:'l3p6', en:"Thank you, that's all", fa:'تشکر، همین کافی است', hint:'تَنک یو، دَتس آل', emoji:'✅', gap:3}
    ],
    trap:{ title:'please آخر جمله', text:'در دری معمولاً «لطفاً» اول جمله می‌آید. در انگلیسی بیشتر آخر جمله می‌آید و درخواست مؤدبانه با Can I… شروع می‌شود.', example:'Can I have some water, please?', brief:"Polite requests: start with 'Can I have...' and put 'please' at the end; avoid 'Give me'.",
@@ -384,8 +397,8 @@ var LESSONS = [
     {id:'l4p1', en:'Where is the milk?', fa:'شیر کجاست؟', hint:'وِر ایز دِ میلک', emoji:'🥛', gap:1},
     {id:'l4p2', en:'How much is this?', fa:'این چند قیمت است؟', hint:'هاو ماچ ایز دیس', emoji:'💷', gap:1},
     {id:'l4p3', en:'Do you have bags?', fa:'خلطه دارید؟', hint:'دو یو هَو بَگز', emoji:'🛍️', gap:0},
-    {id:'l4p4', en:'Can I pay by card?', fa:'می‌توانم با کارت پول بدهم؟', hint:'کَن آی پِی بای کارد', emoji:'💳', gap:3},
-    {id:'l4p5', en:"I'm just looking, thanks", fa:'فقط سیل می‌کنم، تشکر', hint:'آیم جاست لوکینگ، تَنکس', emoji:'👀', gap:1},
+    {id:'l4p4', en:'Can I pay by card?', fa:'می‌توانم با کارت پول بدهم؟', hint:'کَن آی پِی بای کارد', emoji:'💳', gap:3, gapAlt:['in','at']},
+    {id:'l4p5', en:"I'm just looking, thanks", fa:'فقط سیل می‌کنم، تشکر', hint:'آیم جاست لوکینگ، تَنکس', emoji:'👀', gap:1, gapAlt:['must','very']},
     {id:'l4p6', en:'Excuse me, where are the eggs?', fa:'ببخشید، تخم‌ها کجاست؟', hint:'اِکسْکیوز می، وِر آر دی اِگز', emoji:'🥚', gap:3}
    ],
    trap:{ title:'فعل آخر جمله نمی‌آید', text:'در دری فعل آخر جمله است. در انگلیسی فعل زود می‌آید: اول Where، بعد is، بعد بقیه.', example:'Where is the milk?', brief:"Persian puts the verb last; in English it comes early (Where is the milk?).",
@@ -417,9 +430,9 @@ var LESSONS = [
     {id:'l7p1', en:'Hi, I live next door', fa:'سلام، من همسایهٔ پهلوی شما هستم', hint:'های، آی لیو نِکست دور', emoji:'🏠', gap:2},
     {id:'l7p2', en:'How are you today?', fa:'امروز چطور هستید؟', hint:'هاو آر یو تودِی', emoji:'😊', gap:1},
     {id:'l7p3', en:"I'm fine, thanks. And you?", fa:'خوب هستم، تشکر. شما چطور؟', hint:'آیم فاین، تَنکس. اَند یو', emoji:'👍', gap:1},
-    {id:'l7p4', en:'Could you take in a parcel for me?', fa:'می‌توانید یک پارسل را به عوض من بگیرید؟', hint:'کود یو تِیک این اِ پارسِل فور می', emoji:'📦', gap:0},
+    {id:'l7p4', en:'Could you take in a parcel for me?', fa:'می‌توانید یک پارسل را به عوض من بگیرید؟', hint:'کود یو تِیک این اِ پارسِل فور می', emoji:'📦', gap:0, gapAlt:['Are','Is'], alt:['Could you take a parcel in for me']},
     {id:'l7p5', en:'The weather is lovely today', fa:'امروز هوا بسیار خوب است', hint:'دِ وِدِر ایز لاولی تودِی', emoji:'☀️', gap:2},
-    {id:'l7p6', en:'Would you like a cup of tea?', fa:'یک پیاله چای میل دارید؟', hint:'وود یو لایک اِ کاپ اِو تی', emoji:'☕', gap:0}
+    {id:'l7p6', en:'Would you like a cup of tea?', fa:'یک پیاله چای میل دارید؟', hint:'وود یو لایک اِ کاپ اِو تی', emoji:'☕', gap:0, gapAlt:['Will','Are']}
    ],
    trap:{ title:'همین حالا یا هر روز؟', text:'در دری «چای می‌خورم» هم یعنی همین حالا و هم یعنی هر روز. در انگلیسی برای همین حالا I am drinking و برای عادت هر روز I drink می‌گوییم.', example:'Right now I am drinking tea.', brief:"Persian 'mi-' covers both; English: 'I am drinking' (now) vs 'I drink' (usually).",
      drill:{ q:'جای خالی را پر کنید:', en:'Right now I ___ tea.', options:[{t:'am drinking',ok:true},{t:'drink'},{t:'drinks'}] } } },
@@ -428,9 +441,9 @@ var LESSONS = [
     {id:'l8p1', en:"I'd like to book an appointment", fa:'می‌خواهم یک وقت بگیرم', hint:'آید لایک تو بوک اِن اِپوینتمِنت', emoji:'📅', gap:3},
     {id:'l8p2', en:'Can you spell that, please?', fa:'لطفاً آن را حرف به حرف بگویید؟', hint:'کَن یو سْپِل دَت، پلیز', emoji:'🔤', gap:2},
     {id:'l8p3', en:'Is Monday OK?', fa:'دوشنبه خوب است؟', hint:'ایز مانْدِی اوکِی', emoji:'🗓️', gap:0},
-    {id:'l8p4', en:"Sorry, I didn't understand", fa:'ببخشید، نفهمیدم', hint:'ساری، آی دیدِنت آندِرسْتَند', emoji:'😕', gap:2},
+    {id:'l8p4', en:"Sorry, I didn't understand", fa:'ببخشید، نفهمیدم', hint:'ساری، آی دیدِنت آندِرسْتَند', emoji:'😕', gap:2, gapAlt:["doesn't",'not']},
     {id:'l8p5', en:'Can you speak more slowly, please?', fa:'لطفاً آهسته‌تر گپ بزنید؟', hint:'کَن یو سْپیک مور سْلولی، پلیز', emoji:'🐢', gap:3},
-    {id:'l8p6', en:'What time is the appointment?', fa:'وقت ملاقات چه ساعتی است؟', hint:'وات تایم ایز دی اِپوینتمِنت', emoji:'🕒', gap:3}
+    {id:'l8p6', en:'What time is the appointment?', fa:'وقت ملاقات چه ساعتی است؟', hint:'وات تایم ایز دی اِپوینتمِنت', emoji:'🕒', gap:3, gapAlt:['a','is']}
    ],
    trap:{ title:'صدای w با v فرق دارد', text:'در دری حرف «و» را گاهی مثل w و گاهی مثل v می‌گوییم و فرقی ندارد. در انگلیسی این دو صدا فرق دارند: برای w لب‌ها را گرد کنید، مثل «او» کوتاه. برای v دندان‌های بالا را روی لب پایین بگذارید.', example:'We visit our friends every week.', brief:"Dari uses one letter for w and v, so speakers often mix them: round the lips for w (would, week), teeth on lip for v (very, visit).",
      drill:{ q:'کدام کلمه با صدای w (لب گرد) شروع می‌شود؟', options:[{t:'Week',ok:true},{t:'Very'},{t:'Visit'}] } } },
@@ -438,21 +451,21 @@ var LESSONS = [
    phrases:[
     {id:'l9p1', en:'Can I have a coffee, please?', fa:'لطفاً یک قهوه می‌خواهم', hint:'کَن آی هَو اِ کافی، پلیز', emoji:'☕', gap:3},
     {id:'l9p2', en:'To take away, please', fa:'برای بردن، لطفاً', hint:'تو تِیک اَوِی، پلیز', emoji:'🥡', gap:1},
-    {id:'l9p3', en:'Eat in or take away?', fa:'اینجا می‌خورید یا می‌برید؟', hint:'ایت این اور تِیک اَوِی', emoji:'🍽️', gap:2},
-    {id:'l9p4', en:'Does it have meat in it?', fa:'گوشت دارد؟', hint:'داز ایت هَو میت این ایت', emoji:'🥩', gap:3},
-    {id:'l9p5', en:'No sugar, thank you', fa:'بوره نمی‌خواهم، تشکر', hint:'نو شوگِر، تَنک یو', emoji:'🚫', gap:1},
-    {id:'l9p6', en:'Can I have the bill, please?', fa:'لطفاً بل را بیاورید؟', hint:'کَن آی هَو دِ بیل، پلیز', emoji:'🧾', gap:3}
+    {id:'l9p3', en:'Eat in or take away?', fa:'اینجا می‌خورید یا می‌برید؟', hint:'ایت این اور تِیک اَوِی', emoji:'🍽️', gap:2, gapAlt:['but','so']},
+    {id:'l9p4', en:'Does it have meat in it?', fa:'گوشت دارد؟', hint:'داز ایت هَو میت این ایت', emoji:'🥩', gap:3, gapAlt:['meet','met']},
+    {id:'l9p5', en:'No sugar, thank you', fa:'بوره نمی‌خواهم، تشکر', hint:'نو شوگِر، تَنک یو', emoji:'🚫', gap:0, gapAlt:['Not','None']},
+    {id:'l9p6', en:'Can I have the bill, please?', fa:'لطفاً بل را بیاورید؟', hint:'کَن آی هَو دِ بیل، پلیز', emoji:'🧾', gap:3, gapAlt:['an','of']}
    ],
    trap:{ title:'بدون «اِ» در اول کلمه', text:'دری‌زبان‌ها اول کلمه‌هایی مثل spoon و street یک «اِ» اضافه می‌کنند: «اِسپون». درستش «سْپون» است، بدون «اِ».', example:'Can I have a spoon, please?', brief:"Don't add an 'e' before st-/sp-/sk- (say 'spoon', not 'espoon').",
      drill:{ q:'تلفظ درست spoon کدام است؟', fa:true, options:[{t:'سْپون',ok:true},{t:'اِسپون'},{t:'سِپون'}] } } },
  { id:'l10', icon:'i-map', emoji:'🗺️', title:{fa:'کمک خواستن و آدرس پرسیدن', en:'Asking for help and directions'},
    phrases:[
-    {id:'l10p1', en:'Excuse me, can you help me?', fa:'ببخشید، می‌توانید کمکم کنید؟', hint:'اِکسکیوز می، کَن یو هِلپ می', emoji:'🙋‍♀️', gap:4},
+    {id:'l10p1', en:'Excuse me, can you help me?', fa:'ببخشید، می‌توانید کمکم کنید؟', hint:'اِکسکیوز می، کَن یو هِلپ می', emoji:'🙋‍♀️', gap:4, gapAlt:['helps','helping']},
     {id:'l10p2', en:'Where is the station?', fa:'ستیشن ریل کجاست؟', hint:'وِر ایز دِ سْتِیشِن', emoji:'🚉', gap:2},
     {id:'l10p3', en:'Is it far?', fa:'دور است؟', hint:'ایز ایت فار', emoji:'📍', gap:2},
     {id:'l10p4', en:'Go straight on', fa:'مستقیم بروید', hint:'گو سْتْرِیت آن', emoji:'⬆️', gap:1},
     {id:'l10p5', en:'Turn left at the lights', fa:'سر چراغ ترافیک به چپ دور بخورید', hint:'تِرن لِفت اَت دِ لایتس', emoji:'🚦', gap:2},
-    {id:'l10p6', en:"I'm lost", fa:'راه را گم کرده‌ام', hint:'آیم لاست', emoji:'😟', gap:1}
+    {id:'l10p6', en:"I'm lost", fa:'راه را گم کرده‌ام', hint:'آیم لاست', emoji:'😟', gap:1, gapAlt:['lose','loses']}
    ],
    trap:{ title:'ship یا sheep؟', text:'انگلیسی «ای» کوتاه و کشیده دارد. sheep (گوسفند) کشیده است و ship (کشتی) کوتاه. این فرق معنی را عوض می‌کند.', example:'The sheep is on the ship.', brief:'Long vs short vowel changes meaning: sheep (long) vs ship (short).',
      drill:{ q:'گوش کنید: کدام کلمه را شنیدید؟', say:'sheep', options:[{t:'sheep',ok:true},{t:'ship'},{t:'shop'}] } } }
@@ -469,7 +482,8 @@ var S = {
   locked: 'اول درس‌های پیش را تمام کنید',
   allDone: 'همهٔ درس‌ها تمام شد! حالا تکرار کنید.',
   installTitle: 'برنامه را روی صفحهٔ اصلی بگذارید',
-  installText: 'در Safari دکمهٔ اشتراک {share} را بزنید، بعد «Add to Home Screen» و «Add».',
+  installText: 'در Safari دکمهٔ اشتراک {share} را بزنید (اگر نبود، اول «⋯» را بزنید). بعد «Add to Home Screen» را بزنید. اگر «Open as Web App» دیدید، روشن بماند. بعد «Add».',
+  installWarn: 'پیشرفتی که اینجا در Safari بکنید، در برنامهٔ نصب‌شده نمی‌آید. اول نصب کنید.',
   listen: 'گوش کنید', cont: 'ادامه', check: 'بررسی', gotIt: 'فهمیدم، ادامه',
   right: 'درست است! شاباش', wrongIs: 'نه، درستش این است:',
   qListen: 'گوش کنید و معنی را انتخاب کنید', qMeaning: 'به انگلیسی چه می‌شود؟', qGap: 'جای خالی را پر کنید:', qOrder: 'کلمه‌ها را به ترتیب درست بزنید:',
@@ -478,7 +492,13 @@ var S = {
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
   changeInSettings: 'تغییر از تنظیمات',
   talkCap: 'حالا همین درس را با صدای خود تمرین کنید. اشتباه کردن هیچ اشکالی ندارد!',
-  pasteNote: 'اگر متن درس خودکار نیامد: در چت انگشت را نگه دارید، «Paste» را بزنید و بفرستید. بعد دکمهٔ صدا 🎙️ را بزنید.',
+  pasteSteps: [
+    'اگر صفحهٔ ورود (Sign in) باز شد: «Done» را بزنید و برنامهٔ %1 را خودتان باز کنید.',
+    'اگر متن درس در جعبهٔ پیام نبود: انگشت را روی جعبه نگه دارید و «Paste» را بزنید. اگر آیفون پرسید، «Allow Paste» را بزنید.',
+    'اگر متن فرستاده نشده، دکمهٔ فرستادن ↑ را بزنید.',
+    'برای گپ زدن با صدا، دکمهٔ گرد موج صدا %2 را بزنید (نه میکروفون کوچک).'
+  ],
+  leaveConfirm: 'برای خروج از درس دوباره بزنید', talkAgain: 'گپ زدن دربارهٔ این درس', totalPoints: 'امتیاز',
   copy: 'کپی متن', copied: 'متن کپی شد', showBrief: 'متن درس برای هوش مصنوعی', notNow: 'فعلاً نه، برگشت به خانه',
   reviewEmpty: 'امروز چیزی برای تکرار نیست 🌿', reviewNext: function(d){ return 'تکرار بعدی: ' + d; },
   reviewCount: function(n){ return fa(n) + ' جمله برای تکرار'; }, reviewStart: 'شروع تکرار', reviewDone: 'تکرار تمام شد',
@@ -491,7 +511,7 @@ var S = {
   allGood: 'همه چیز خوب است', allGoodEn: 'Everything is fine',
   someBad: 'مشکلی پیدا شد. راه‌حل زیر هر مورد نوشته شده است.', someBadEn: 'A problem was found. The fix is under each item.',
   reset: 'پاک کردن پیشرفت', resetSure: 'مطمئن هستید؟ دوباره بزنید', resetDone: 'پیشرفت پاک شد',
-  heardQ: 'صدا را شنیدید؟', yes: 'بلی', no: 'نخیر', play: 'پخش صدا', testLink: 'امتحان لینک'
+  heardQ: 'صدا را شنیدید؟', aiQ: 'لینک را بزنید. آیا {ai} باز شد و «Hello» را دید؟', oneLeft: 'یک سؤال مانده: جواب «بلی» یا «نخیر» را بزنید.', oneLeftEn: 'Questions left: answer Yes or No below.', yes: 'بلی', no: 'نخیر', play: 'پخش صدا', testLink: 'امتحان لینک'
 };
 
 /* ============================================================
@@ -522,7 +542,20 @@ function loadState(){
     if (!raw) return freshState();
     var s = JSON.parse(raw), f = freshState();
     for (var k in f) if (!(k in s)) s[k] = f[k];
+    if (!s.settings || typeof s.settings !== 'object') s.settings = {};
     for (var k2 in f.settings) if (!(k2 in s.settings)) s.settings[k2] = f.settings[k2];
+    if (s.settings.hints === true) s.settings.hints = 'auto';
+    if (s.settings.hints === false) s.settings.hints = 'off';
+    if (['auto','on','off'].indexOf(s.settings.hints) < 0) s.settings.hints = 'auto';
+    if (['a','b','c'].indexOf(s.settings.theme) < 0) s.settings.theme = CONFIG.defaultTheme;
+    if (!CONFIG.ai[s.settings.ai]) s.settings.ai = 'claude';
+    if (!s.streak || typeof s.streak !== 'object') s.streak = { count:0, last:'' };
+    if (typeof s.streak.count !== 'number') s.streak.count = 0;
+    if (typeof s.streak.last !== 'string') s.streak.last = '';
+    if (!Array.isArray(s.days)) s.days = [];
+    if (!s.cards || typeof s.cards !== 'object') s.cards = {};
+    if (!s.done || typeof s.done !== 'object') s.done = {};
+    if (typeof s.points !== 'number') s.points = 0;
     return s;
   } catch (e) { storageOK = false; return freshState(); }
 }
@@ -606,9 +639,21 @@ function legacyCopy(t){
     document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length); var ok = document.execCommand('copy'); document.body.removeChild(ta); return ok;
   } catch (e) { return false; }
 }
-function copyText(t){
-  try { if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).catch(function(){ legacyCopy(t); }); return true; } } catch (e) {}
-  return legacyCopy(t);
+function copyText(t, done){
+  done = done || function(){};
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ done(true); }, function(){ done(legacyCopy(t)); });
+      return;
+    }
+  } catch (e) {}
+  done(legacyCopy(t));
+}
+function copyFailed(){
+  var d = app.querySelector('details.brief'); if (d) d.open = true;
+  var pre = d && d.querySelector('pre');
+  if (pre){ try { var r = document.createRange(); r.selectNodeContents(pre); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e) {} }
+  toast('کپی نشد. متن را نگه دارید و «Copy» را بزنید.');
 }
 
 /* ---------- AI brief ---------- */
@@ -653,7 +698,7 @@ function renderHome(){
   var h = '<div class="content tiled">';
   h += '<div class="greet"><div><div class="hi">' + esc(S.hi(st.name)) + '</div><div class="sub">' + esc(niceDate(t)) + '</div></div><div class="avatar">' + esc((st.name || 'ا').charAt(0)) + '</div></div>';
   if (!isStandalone()){
-    h += '<section class="card install" data-install><div class="ii">📲</div><div><b>' + S.installTitle + '</b>' + S.installText.replace('{share}', '<svg class="ic share" aria-label="Share"><use href="#i-share"/></svg>') + '</div></section>';
+    h += '<section class="card install" data-install><div class="ii">📲</div><div><b>' + S.installTitle + '</b>' + S.installText.replace('{share}', '<svg class="ic share" aria-label="Share"><use href="#i-share"/></svg>') + '<div style="margin-top:6px;font-weight:700">⚠️ ' + S.installWarn + '</div></div></section>';
   }
   if (open >= 0){
     var l = LESSONS[open];
@@ -666,12 +711,12 @@ function renderHome(){
   /* week row: Afghan week starts on Saturday */
   var now = new Date(), idx = (now.getDay() + 1) % 7, start = addDays(t, -idx), letters = ['ش','ی','د','س','چ','پ','ج'], row = '';
   for (var i = 0; i < 7; i++){ var d = addDays(start, i), on = st.days.indexOf(d) >= 0; row += '<i class="' + (on ? 'on' : (d === t ? 'cur' : '')) + '">' + letters[i] + '</i>'; }
-  h += '<section class="card streak"><div class="flame">' + ic('i-flame') + '</div><div><div class="s-num" data-streak>' + fa(shownStreak()) + '</div><div class="s-label">' + S.streakLabel + '</div></div><div class="days">' + row + '</div></section>';
+  h += '<section class="card streak"><div class="flame">' + ic('i-flame') + '</div><div><div class="s-num" data-streak>' + fa(shownStreak()) + '</div><div class="s-label">' + S.streakLabel + '</div></div><div class="pts" data-points>' + fa(st.points) + '<small>' + S.totalPoints + '</small></div><div class="days">' + row + '</div></section>';
   h += '<section class="path"><div class="sec-title">' + S.path + ' <small>' + S.lessonsOf(doneCount, LESSONS.length) + '</small></div><ol>';
   LESSONS.forEach(function(l, i){
     var cls = st.done[l.id] ? 'done' : (i === open ? 'now' : 'lock');
     var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : ic('i-lock'));
-    h += '<li class="' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="node">' + ic(l.icon) + '</span><div><div class="n-title">' + esc(l.title.fa) + '</div><div class="n-en en" lang="en">' + esc(l.title.en) + '</div></div><span class="n-state">' + state + '</span></li>';
+    h += '<li class="' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="node">' + ic(l.icon) + '</span><div><div class="n-title">' + esc(l.title.fa) + '</div><div class="n-en en" lang="en">' + esc(l.title.en) + '</div></div><span class="n-state">' + state + '</span>' + (cls === 'done' ? '<a class="n-talk" data-talk="' + i + '" href="' + esc(aiUrl(l)) + '" target="_blank" rel="noopener" aria-label="' + S.talkAgain + '">' + ic('i-mic') + '</a>' : '') + '</li>';
   });
   h += '</ol></section></div>' + tabbar('home');
   app.innerHTML = h;
@@ -705,7 +750,7 @@ function exMeaning(p, review){ return { t:'ex', kind:'meaning', p:p.id, review:r
 function exGap(p){
   var w = words(p.en); if (w.length < 2) return exMeaning(p);
   var g = Math.min(p.gap || 0, w.length - 1), target = bare(w[g]), key = target.toLowerCase();
-  var alts = (GAP_ALT[key] || []).slice();
+  var alts = (p.gapAlt || GAP_ALT[key] || []).slice();
   if (alts.length < 2){ LESSONS[p.lesson].phrases.forEach(function(q){ words(q.en).forEach(function(x){ x = bare(x); if (x.toLowerCase() !== key && x.length > 1) alts.push(x); }); }); alts = alts.slice(0, 2).concat(shuffle(alts.slice(2))); }
   if (g === 0) alts = alts.map(function(a){ return a.charAt(0).toUpperCase() + a.slice(1); });
   var shown = w.map(function(x, i){ return i === g ? x.replace(bare(x), '___') : x; }).join(' ');
@@ -714,9 +759,10 @@ function exGap(p){
 function exOrder(p){
   var w = words(p.en).map(bare);
   if (w.length < 3) return exMeaning(p);
-  var tiles = w.map(function(x, i){ return { w:x, i:i }; }), sh = shuffle(tiles), tries = 0;
+  var low = function(x, i){ return i === 0 && !/^I($|'|’)/.test(x) ? x.charAt(0).toLowerCase() + x.slice(1) : x; };
+  var tiles = w.map(function(x, i){ return { w:low(x, i), i:i }; }), sh = shuffle(tiles), tries = 0;
   while (sh.map(function(t){ return t.i; }).join() === tiles.map(function(t){ return t.i; }).join() && tries++ < 5) sh = shuffle(tiles);
-  return { t:'ex', kind:'order', p:p.id, tiles:sh, answer:w.join(' ') };
+  return { t:'ex', kind:'order', p:p.id, tiles:sh, answer:w.join(' '), alt:(p.alt || []) };
 }
 function buildSteps(li){
   var L = LESSONS[li], P = L.phrases, s = [{ t:'intro' }];
@@ -735,7 +781,7 @@ function buildReview(){
   return s;
 }
 function startLesson(li){ go('lesson', { li:li, steps:buildSteps(li), i:0, answered:false, isReview:false, correct:0 }); }
-function startReview(){ go('lesson', { li:-1, steps:buildReview(), i:0, answered:false, isReview:true, correct:0 }); }
+function startReview(){ go('lesson', { li:-1, steps:buildReview(), i:0, answered:false, isReview:true, correct:0, autoplay:true }); }
 
 function choicesHtml(o, row){
   return '<div class="choices' + (row ? ' row' : '') + '">' + o.map(function(c){
@@ -747,9 +793,9 @@ function renderLesson(){
   var v = view, step = v.steps[v.i], L = v.li >= 0 ? LESSONS[v.li] : null;
   var total = v.steps.length, h = '';
   if (step.t !== 'complete'){
-    h += '<div class="l-top"><button class="icon-btn" type="button" data-go="home" aria-label="بستن">' + ic('i-x') + '</button><div class="prog"><i style="width:' + Math.round(v.i / (total - 1) * 100) + '%"></i></div><span class="l-count">' + fa(v.i + 1) + ' از ' + fa(total - 1) + '</span></div>';
+    h += '<div class="l-top"><button class="icon-btn" type="button" data-leave aria-label="بستن">' + ic('i-x') + '</button><div class="prog"><i style="width:' + Math.round(v.i / (total - 1) * 100) + '%"></i></div><span class="l-count">' + fa(v.i + 1) + ' از ' + fa(total - 1) + '</span></div>';
   }
-  h += '<div class="content">';
+  h += '<div class="content' + (step.t === 'complete' ? ' safe-bottom' : '') + '">';
   var bottom = '', autoSay = null;
   if (step.t === 'intro'){
     h += '<div class="intro"><div class="big-emoji">' + L.emoji + '</div><h2>' + esc(L.title.fa) + '</h2><div class="en" lang="en">' + esc(L.title.en) + '</div><p>' + fa(L.phrases.length) + ' ' + S.newPhrases + ' · ' + fa(6) + ' ' + S.minutes + '</p></div>';
@@ -811,7 +857,7 @@ function renderComplete(){
   h += '<p class="d-sub">' + esc(S.lessonDone(L.title.fa)) + '</p><div class="stats"><div class="card"><b>+' + fa(10) + '</b><span>' + S.points + '</span></div><div class="card"><b data-streak>' + fa(shownStreak()) + '</b><span>' + S.streakLabel + '</span></div></div>' +
     '<a class="ai-btn" data-ai-link href="' + esc(aiUrl(L)) + '" target="_blank" rel="noopener"><span class="mic">' + ic('i-mic') + '</span><span><span class="ai-main">' + S.talk + '</span><span class="ai-sub">با <span class="en" lang="en">' + ai.name + '</span> · ' + S.changeInSettings + '</span></span></a>' +
     '<p class="d-cap">' + S.talkCap + '</p>' +
-    '<div class="paste-note" data-paste-note>' + S.pasteNote + '</div>' +
+    '<div class="paste-note" data-paste-note><ol class="steps">' + S.pasteSteps.map(function(x){ return '<li>' + x.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]/g, function(w){ return '<bdi>' + w + '</bdi>'; }).replace('%1', '<span class="en" lang="en">' + ai.name + '</span>').replace('%2', '<span class="voice-ic" aria-label="voice">' + ic('i-voice') + '</span>') + '</li>'; }).join('') + '</ol></div>' +
     '<div class="row2"><button class="small-btn" type="button" data-copy>' + ic('i-copy') + S.copy + '</button></div>' +
     '<details class="brief"><summary>' + S.showBrief + '</summary><pre>' + esc(brief) + '</pre></details>' +
     '<button class="ghost" type="button" data-go="home">' + S.notNow + '</button></div>';
@@ -859,13 +905,13 @@ function tapTile(btn){
     var c = document.createElement('button'); c.type = 'button'; c.className = 'tile'; c.textContent = btn.textContent; c.setAttribute('data-src', btn.getAttribute('data-tile'));
     line.appendChild(c);
   }
-  var chk = app.querySelector('[data-check-order]'); if (chk) chk.disabled = !line.children.length;
+  var chk = app.querySelector('[data-check-order]'); if (chk) chk.disabled = line.children.length < app.querySelectorAll('.tiles [data-tile]').length;
 }
 function checkOrder(){
   var v = view, step = v.steps[v.i], line = app.querySelector('[data-answer]');
   if (v.answered){ nextStep(); return; }
   var built = Array.prototype.map.call(line.children, function(b){ return b.textContent; }).join(' ');
-  var ok = norm(built) === norm(step.answer);
+  var ok = [step.answer].concat(step.alt || []).some(function(a){ return norm(built) === norm(a); });
   v.answered = true;
   showFeedback(ok, PHRASES[step.p].en, true);
   var chk = app.querySelector('[data-check-order]'); chk.textContent = ok ? S.cont : S.gotIt;
@@ -890,6 +936,7 @@ function seg(name, cur, items){
   return '<div class="seg" role="group">' + items.map(function(it){ return '<button type="button" data-set="' + name + '" data-val="' + it[0] + '" aria-pressed="' + (cur === it[0]) + '">' + it[1] + '</button>'; }).join('') + '</div>';
 }
 function renderSettings(){
+  resetArmed = false;
   var s = st.settings, h = '<div class="content"><h1 class="page-title">' + S.settings + '</h1>';
   h += '<section class="card set-group"><label for="nm">' + S.name + '</label><input id="nm" type="text" value="' + esc(st.name) + '" autocomplete="given-name" data-name><p class="set-help">' + S.nameHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.aiLabel + '</div>' + seg('ai', s.ai, [['claude', '<span class="en">Claude</span>'], ['chatgpt', '<span class="en">ChatGPT</span>']]) + '<p class="set-help">' + S.aiHelp + '</p></section>';
@@ -903,9 +950,9 @@ function renderSettings(){
   app.innerHTML = h;
 }
 
-var CHECKS = [];
+var CHECKS = {}, resetArmed = false, leaveArmed = 0;
 function row(id, status, faT, enT, fixFa, fixEn, extra){
-  return '<div class="check-row" data-row="' + id + '" data-status="' + status + '"><span class="st ' + status + '">' + (status === 'ok' ? '✓' : status === 'warn' ? '!' : status === 'bad' ? '✕' : '…') + '</span><div style="flex:1">' +
+  return '<div class="check-row" data-row="' + id + '" data-status="' + status + '"><span class="st ' + status + '">' + (status === 'ok' ? '✓' : status === 'warn' ? '!' : status === 'bad' ? '✕' : status === 'ask' ? '?' : '…') + '</span><div style="flex:1">' +
     '<div class="cr-fa">' + faT + '</div><div class="cr-en">' + enT + '</div>' +
     (fixFa ? '<div class="cr-fix">' + fixFa + '<span class="en-fix">' + fixEn + '</span></div>' : '') + (extra || '') + '</div></div>';
 }
@@ -920,8 +967,9 @@ function waitVoices(ms){
 function selfCheck(){
   var out = app.querySelector('[data-check-out]'), rows = {}, order = ['storage','home','engine','voice','sound','net','ai','clip','font'];
   function paint(){
-    var bad = order.some(function(k){ return rows[k] && rows[k].s === 'bad'; }), pending = order.some(function(k){ return !rows[k] || rows[k].s === 'wait'; });
-    var sum = pending ? '' : '<div class="card check-sum" data-summary="' + (bad ? 'bad' : 'ok') + '"><span class="st ' + (bad ? 'bad' : 'ok') + '">' + (bad ? '✕' : '✓') + '</span><div>' + (bad ? S.someBad : S.allGood) + '<div class="cr-en">' + (bad ? S.someBadEn : S.allGoodEn) + '</div></div></div>';
+    var bad = order.some(function(k){ return rows[k] && rows[k].s === 'bad'; }), pending = order.some(function(k){ return !rows[k] || rows[k].s === 'wait'; }),
+        asking = order.some(function(k){ return rows[k] && rows[k].s === 'ask'; });
+    var sum = pending ? '' : (asking && !bad) ? '<div class="card check-sum" data-summary="ask"><span class="st ask">?</span><div>' + S.oneLeft + '<div class="cr-en">' + S.oneLeftEn + '</div></div></div>' : '<div class="card check-sum" data-summary="' + (bad ? 'bad' : 'ok') + '"><span class="st ' + (bad ? 'bad' : 'ok') + '">' + (bad ? '✕' : '✓') + '</span><div>' + (bad ? S.someBad : S.allGood) + '<div class="cr-en">' + (bad ? S.someBadEn : S.allGoodEn) + '</div></div></div>';
     out.innerHTML = sum + '<section class="card set-group" data-check-list>' + order.map(function(k){ var r = rows[k]; return r ? row(k, r.s, r.fa, r.en, r.fixFa, r.fixEn, r.extra) : row(k, 'wait', '…', 'checking…'); }).join('') + '</section>';
   }
   function set(k, s, faT, enT, fixFa, fixEn, extra){ rows[k] = { s:s, fa:faT, en:enT, fixFa:fixFa, fixEn:fixEn, extra:extra }; paint(); }
@@ -932,8 +980,10 @@ function selfCheck(){
   okS ? set('storage', 'ok', 'حافظه کار می‌کند', 'Memory works')
       : set('storage', 'bad', 'حافظه کار نمی‌کند؛ پیشرفت ذخیره نمی‌شود', 'Memory is not working; progress will not be saved', 'برنامه را از آیکن صفحهٔ اصلی باز کنید، نه از تب خصوصی Safari.', 'Open the app from its Home Screen icon, not a private Safari tab.');
   /* 2 home screen */
+  var touch = window.matchMedia && matchMedia('(pointer:coarse)').matches;
   isStandalone() ? set('home', 'ok', 'روی صفحهٔ اصلی نصب است', 'Added to Home Screen')
-      : set('home', 'bad', 'هنوز روی صفحهٔ اصلی نصب نشده', 'Not added to Home Screen yet', 'در Safari: دکمهٔ اشتراک، بعد «Add to Home Screen». بعد برنامه را از آیکن باز کنید.', 'In Safari: Share, then "Add to Home Screen". Then open the app from the icon.');
+    : !touch ? set('home', 'warn', 'این کمپیوتر است؛ نصب فقط روی آیفون', 'This is a computer; install it on the iPhone', 'روی آیفون در Safari باز کنید و به صفحهٔ اصلی اضافه کنید.', 'Open it in Safari on the iPhone and add it to the Home Screen.')
+    : set('home', 'bad', 'هنوز روی صفحهٔ اصلی نصب نشده', 'Not added to Home Screen yet', 'در Safari: دکمهٔ اشتراک (یا «⋯» بعد Share)، بعد «Add to Home Screen»، «Open as Web App» روشن، بعد «Add». بعد برنامه را از آیکن باز کنید. اگر قبلاً اضافه کرده‌اید، آیکن را پاک کنید و دوباره اضافه کنید.', 'In Safari: Share (or ⋯ then Share), "Add to Home Screen", keep "Open as Web App" on, then "Add". Open the app from the icon. If you already added it, delete the icon and add it again.');
   /* 3 engine */
   var hasEngine = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
   hasEngine ? set('engine', 'ok', 'موتور صدا موجود است', 'Speech engine is available')
@@ -944,14 +994,14 @@ function selfCheck(){
     var en = voices.filter(function(v){ return /^en/i.test(v.lang || ''); }), gb = en.filter(function(v){ return /en[-_]GB/i.test(v.lang); });
     if (gb.length) set('voice', 'ok', 'صدای انگلیسی بریتانیایی پیدا شد', 'British English voice found (' + esc(gb[0].name || 'en-GB') + ')');
     else if (en.length) set('voice', 'ok', 'صدای انگلیسی پیدا شد', 'English voice found (' + esc(en[0].name || en[0].lang) + ')');
-    else set('voice', 'bad', 'صدای انگلیسی پیدا نشد', 'No English voice found', 'Settings ← Accessibility ← Spoken Content ← Voices ← English را باز کنید و یک صدا دانلود کنید.', 'Settings → Accessibility → Spoken Content → Voices → English, then download a voice.');
+    else set('voice', 'bad', 'صدای انگلیسی پیدا نشد', 'No English voice found', 'این را باز کنید و یک صدای انگلیسی دانلود کنید: <span dir="ltr" class="en">Settings → Accessibility → Spoken Content → Voices → English</span>', 'Settings → Accessibility → Spoken Content → Voices → English, then download a voice.');
   });
   /* 5 sound heard (asks the person) */
   var soundAsk = '<div class="cr-actions"><button class="small-btn" type="button" data-sound-play>' + ic('i-speaker') + S.play + '</button><button class="small-btn" type="button" data-sound="yes">' + S.yes + '</button><button class="small-btn" type="button" data-sound="no">' + S.no + '</button></div>';
-  set('sound', 'warn', '«پخش صدا» را بزنید، بعد بگویید: ' + S.heardQ, 'Did you hear it? Tap "play", then answer.', '', '', soundAsk);
+  set('sound', 'ask', '«پخش صدا» را بزنید، بعد بگویید: ' + S.heardQ, 'Did you hear it? Tap "play", then answer.', '', '', soundAsk);
   CHECKS.sound = function(ans){
     ans === 'yes' ? set('sound', 'ok', 'صدا شنیده می‌شود', 'Sound works')
-      : set('sound', 'bad', 'صدا بسته است', 'Sound is off', 'دکمهٔ بی‌صدا در کنار آیفون را ببینید و صدا را بلند کنید.', 'Check the silent switch on the side of the iPhone and turn the volume up.', soundAsk);
+      : set('sound', 'bad', 'صدا بسته است', 'Sound is off', 'حالت بی‌صدا را خاموش کنید (دکمهٔ کنار آیفون، یا زنگ در Control Centre) و صدا را بلند کنید.', 'Turn off silent mode (the switch or button on the side, or the bell in Control Centre) and turn the volume up.', soundAsk);
   };
   /* 6 internet */
   var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 5000);
@@ -962,8 +1012,12 @@ function selfCheck(){
     .catch(function(){ clearTimeout(to); netBad(); });
   /* 7 AI link */
   var ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.claude;
-  set('ai', 'ok', 'هوش مصنوعی انتخاب‌شده: ' + ai.name, 'Chosen AI: ' + ai.name, 'اگر لینک باز نشد، برنامهٔ ' + ai.name + ' را نصب کنید و وارد حساب شوید.', 'If the link does not open, install the ' + ai.name + ' app and sign in.',
-    '<div class="cr-actions"><a class="small-btn" style="text-decoration:none;color:inherit" href="' + ai.url + encodeURIComponent('Hello! Please reply in Dari.') + '" target="_blank" rel="noopener">' + S.testLink + '</a></div>');
+  var aiAsk = '<div class="cr-actions"><a class="small-btn" style="text-decoration:none;color:inherit" href="' + ai.url + encodeURIComponent('Hello! Please reply in Dari.') + '" target="_blank" rel="noopener">' + S.testLink + '</a><button class="small-btn" type="button" data-aicheck="yes">' + S.yes + '</button><button class="small-btn" type="button" data-aicheck="no">' + S.no + '</button></div>';
+  set('ai', 'ask', S.aiQ.replace('{ai}', ai.name), 'Tap the test link. Did ' + ai.name + ' open with "Hello"?', '', '', aiAsk);
+  CHECKS.ai = function(ans){
+    ans === 'yes' ? set('ai', 'ok', ai.name + ' باز می‌شود', ai.name + ' opens')
+      : set('ai', 'bad', ai.name + ' باز نشد', ai.name + ' did not open', 'برنامهٔ ' + ai.name + ' را از App Store نصب کنید و وارد حساب شوید. بعد دوباره امتحان کنید. یا در تنظیمات هوش مصنوعی دیگر را انتخاب کنید.', 'Install the ' + ai.name + ' app from the App Store and sign in, then try again. Or pick the other AI in settings.', aiAsk);
+  };
   /* 8 clipboard */
   (navigator.clipboard && navigator.clipboard.writeText) || document.queryCommandSupported && document.queryCommandSupported('copy')
     ? set('clip', 'ok', 'کپی خودکار کار می‌کند', 'Auto-copy is available')
@@ -975,9 +1029,9 @@ function selfCheck(){
 }
 
 /* ---------- events ---------- */
-var resetArmed = false;
 app.addEventListener('click', function(e){
   var t = e.target, el;
+  if ((el = t.closest('[data-talk]'))){ copyText(briefFor(LESSONS[+el.getAttribute('data-talk')])); return; /* the link itself opens the AI */ }
   if ((el = t.closest('[data-go]'))){ var g = el.getAttribute('data-go'); go(g); return; }
   if ((el = t.closest('[data-start]'))){ startLesson(+el.getAttribute('data-start')); view.autoplay = false; return; }
   if ((el = t.closest('[data-lesson]'))){
@@ -992,7 +1046,12 @@ app.addEventListener('click', function(e){
   if ((el = t.closest('[data-check-order]'))){ checkOrder(); return; }
   if ((el = t.closest('[data-next]'))){ nextStep(); return; }
   if ((el = t.closest('[data-ai-link]'))){ copyText(briefFor(LESSONS[view.li])); return; /* the link itself opens the AI */ }
-  if ((el = t.closest('[data-copy]'))){ copyText(briefFor(LESSONS[view.li])); toast(S.copied); return; }
+  if ((el = t.closest('[data-copy]'))){ copyText(briefFor(LESSONS[view.li]), function(ok){ ok ? toast(S.copied) : copyFailed(); }); return; }
+  if ((el = t.closest('[data-leave]'))){
+    if (view.i <= 1 || Date.now() - leaveArmed < 3000){ leaveArmed = 0; go('home'); } else { leaveArmed = Date.now(); toast(S.leaveConfirm); }
+    return;
+  }
+  if ((el = t.closest('[data-aicheck]'))){ CHECKS.ai(el.getAttribute('data-aicheck')); return; }
   if ((el = t.closest('[data-review-start]'))){ startReview(); return; }
   if ((el = t.closest('[data-set]'))){
     st.settings[el.getAttribute('data-set')] = el.getAttribute('data-val'); save(); applyTheme(); renderSettings(); return;
