@@ -32,6 +32,7 @@ def problems(l, existing_ids):
     ph = l.get('phrases') or []
     if len(ph) != 6: p.append('needs exactly 6 phrases')
     for i, x in enumerate(ph):
+        if not isinstance(x, dict): p.append(f'phrase {i+1} must be an object'); continue
         if x.get('id') != f"{l.get('id')}p{i+1}": p.append(f'phrase {i+1} id must be {l.get("id")}p{i+1}')
         for k in ('en', 'fa', 'emoji'):
             if not s(x.get(k)): p.append(f'phrase {i+1} missing {k}')
@@ -44,8 +45,9 @@ def problems(l, existing_ids):
     for k in ('title', 'text', 'example', 'brief'):
         if not s(tr.get(k)): p.append(f'trap missing {k}')
     d = tr.get('drill') or {}
-    if not s(d.get('q')) or not isinstance(d.get('options'), list) or sum(1 for o in d['options'] if o.get('ok')) != 1 or len(d['options']) != 3:
-        p.append('trap.drill needs q and 3 options with exactly one ok')
+    opts = d.get('options') if isinstance(d.get('options'), list) else []
+    if not s(d.get('q')) or len(opts) != 3 or not all(isinstance(o, dict) and s(o.get('t')) for o in opts) or sum(1 for o in opts if o.get('ok')) != 1:
+        p.append('trap.drill needs q and 3 options {t: text}, exactly one with ok: true')
     tk = l.get('talk') or {}
     if not (s(tk.get('fa')) and s(tk.get('role'))): p.append('talk needs fa (Dari topic) and role (English role-play for ChatGPT)')
     dg = l.get('dialog') or {}
@@ -53,7 +55,7 @@ def problems(l, existing_ids):
     if not (4 <= len(lines) <= 6): p.append('dialog needs 4-6 lines')
     for i, x in enumerate(lines):
         if not (isinstance(x, list) and len(x) == 3 and x[0] in ('f', 'm') and s(x[1]) and s(x[2]) and FA.search(x[2])): p.append(f'dialog line {i+1} must be ["f"|"m", English, Dari]')
-    if len(qs) != 2 or any(not (isinstance(q, list) and len(q) == 2 and s(q[0]) and isinstance(q[1], list) and len(q[1]) == 3) for q in qs):
+    if len(qs) != 2 or any(not (isinstance(q, list) and len(q) == 2 and s(q[0]) and isinstance(q[1], list) and len(q[1]) == 3 and all(s(o) for o in q[1])) for q in qs):
         p.append('dialog needs 2 questions: [Dari question, [right, wrong, wrong]]')
     return p
 

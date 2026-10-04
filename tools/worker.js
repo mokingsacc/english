@@ -62,6 +62,7 @@ export default {
 
     let data;
     try { data = await request.json(); } catch (e) { return reply(400, { ok: false, error: 'json' }, origin); }
+    if (!data || typeof data !== 'object') return reply(400, { ok: false, error: 'json' }, origin);
     const image = typeof data.image === 'string' ? data.image : '';
     if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 1000) return reply(400, { ok: false, error: 'image' }, origin);
     if (image.length > MAX_BYTES) return reply(413, { ok: false, error: 'too-big' }, origin);
@@ -73,11 +74,15 @@ export default {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const id = `${stamp}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const img = await putFile(env, `inbox/${id}.jpg`, image, `Photo from app ${id}`);
-    if (!img.ok) return reply(502, { ok: false, error: 'github', status: img.status }, origin);
-    const meta = JSON.stringify({ id, note, name, sentAt: new Date().toISOString() }, null, 1);
-    const js = await putFile(env, `inbox/${id}.json`, toBase64Utf8(meta), `Note from app ${id}`);
-    if (!js.ok) return reply(502, { ok: false, error: 'github-note', status: js.status }, origin);
+    try {
+      const img = await putFile(env, `inbox/${id}.jpg`, image, `Photo from app ${id}`);
+      if (!img.ok) return reply(502, { ok: false, error: 'github', status: img.status }, origin);
+      const meta = JSON.stringify({ id, note, name, sentAt: new Date().toISOString() }, null, 1);
+      const js = await putFile(env, `inbox/${id}.json`, toBase64Utf8(meta), `Note from app ${id}`);
+      if (!js.ok) return reply(502, { ok: false, error: 'github-note', status: js.status }, origin);
+    } catch (e) {
+      return reply(502, { ok: false, error: 'github-unreachable' }, origin);
+    }
 
     return reply(200, { ok: true, id }, origin);
   },
