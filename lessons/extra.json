@@ -1,1 +1,154 @@
-{ "version": 1, "audio": [], "lessons": [] }
+{
+ "version": 1,
+ "audio": [
+  "b139deeb",
+  "55c60614",
+  "eded83f3",
+  "4c76a768",
+  "c574b74e",
+  "2cf9b1a9",
+  "da520f82"
+ ],
+ "lessons": [
+  {
+   "id": "x1",
+   "from": [
+    "2026-10-04T19-10-56-134Z-e8ku29"
+   ],
+   "emoji": "📝",
+   "title": {
+    "fa": "چیزهایی که داریم",
+    "en": "Have got / has got"
+   },
+   "phrases": [
+    {
+     "id": "x1p1",
+     "en": "I've got a new phone",
+     "fa": "من یک موبایل نو دارم",
+     "hint": "آیو گات اِ نیو فون",
+     "emoji": "📱",
+     "gap": 1
+    },
+    {
+     "id": "x1p2",
+     "en": "She has got two brothers",
+     "fa": "او دو برادر دارد",
+     "hint": "شی هَز گات تو بْرادِرز",
+     "emoji": "👦",
+     "gap": 1
+    },
+    {
+     "id": "x1p3",
+     "en": "Have you got a pen?",
+     "fa": "آیا شما قلم دارید؟",
+     "hint": "هَو یو گات اِ پِن؟",
+     "emoji": "🖊️",
+     "gap": 0
+    },
+    {
+     "id": "x1p4",
+     "en": "I haven't got a car",
+     "fa": "من موتر ندارم",
+     "hint": "آی هَوِنت گات اِ کار",
+     "emoji": "🚗",
+     "gap": 1
+    },
+    {
+     "id": "x1p5",
+     "en": "He has got blue eyes",
+     "fa": "او چشمان آبی دارد",
+     "hint": "هی هَز گات بلو آیز",
+     "emoji": "👀",
+     "gap": 2
+    },
+    {
+     "id": "x1p6",
+     "en": "Has she got any children?",
+     "fa": "آیا او اولاد دارد؟",
+     "hint": "هَز شی گات اِنی چیلدرِن؟",
+     "emoji": "👶",
+     "gap": 0
+    }
+   ],
+   "trap": {
+    "title": "have یا has؟",
+    "text": "با I، you، we و they کلمهٔ have می‌آید. با he، she و it کلمهٔ has می‌آید. در گپ زدن کوتاه می‌گوییم: I've got، she's got، I haven't got.",
+    "example": "She has got a sister.",
+    "exampleFa": "او یک خواهر دارد.",
+    "brief": "Have got / has got: 'has' with he, she, it; 'have' with I, you, we, they. Short forms: I've got, she's got, I haven't got, he hasn't got.",
+    "drill": {
+     "q": "جای خالی را پر کنید:",
+     "en": "He ___ got a sister.",
+     "options": [
+      {
+       "t": "has",
+       "ok": true
+      },
+      {
+       "t": "have"
+      },
+      {
+       "t": "is"
+      }
+     ]
+    }
+   },
+   "talk": {
+    "fa": "دربارهٔ فامیل خود و چیزهایی که دارید گپ بزنید.",
+    "role": "You are a friendly classmate at my English school. Ask me simple questions with 'Have you got...?' about my family, my phone and my home. Use 'have got' and 'has got' in your answers too."
+   },
+   "dialog": {
+    "lines": [
+     [
+      "m",
+      "Have you got any brothers or sisters?",
+      "آیا شما برادر یا خواهر دارید؟"
+     ],
+     [
+      "f",
+      "Yes, I've got one brother.",
+      "بلی، من یک برادر دارم."
+     ],
+     [
+      "m",
+      "Has he got any children?",
+      "آیا او اولاد دارد؟"
+     ],
+     [
+      "f",
+      "Yes, he has got two sons.",
+      "بلی، او دو پسر دارد."
+     ],
+     [
+      "m",
+      "Have you got a photo of him?",
+      "آیا عکس او را دارید؟"
+     ],
+     [
+      "f",
+      "Yes, here it is.",
+      "بلی، این است."
+     ]
+    ],
+    "qs": [
+     [
+      "برادر خانم چند پسر دارد؟",
+      [
+       "دو",
+       "یک",
+       "سه"
+      ]
+     ],
+     [
+      "خانم چند برادر دارد؟",
+      [
+       "یک",
+       "دو",
+       "هیچ"
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}

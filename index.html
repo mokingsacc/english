@@ -223,8 +223,8 @@ li.now .n-state{color:var(--p-accent)}
 .remind-row{display:flex;gap:10px;align-items:center;margin-top:8px}
 .remind-row select{flex:none;min-height:46px;border-radius:12px;border:var(--p-border);background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:17px;padding:0 12px}
 .remind-row a{flex:1;text-decoration:none}
-.photo-card{padding:14px 16px;display:flex;gap:12px;align-items:center;margin-top:14px}
-.photo-card .ii{font-size:30px}
+.photo-card,.photo-ready{padding:14px 16px;display:flex;gap:12px;align-items:center;margin-top:14px}
+.photo-card .ii,.photo-ready .ii{font-size:30px}
 .photo-pick{display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
 .photo-prev{display:block;width:100%;max-height:320px;object-fit:contain;border-radius:var(--p-r);border:var(--p-border);margin:12px 0;background:var(--p-surface)}
 .photo-done{text-align:center;display:grid;justify-items:center;gap:6px}
@@ -384,7 +384,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.5.2',
+  version: '1.5.3',
   /* photo lessons: the Cloudflare Worker that saves photos for the evening check ('' hides the feature) */
   uploadUrl: 'https://english-upload.mobinkingsacc.workers.dev/',
   extraLessons: 'lessons/extra.json',
@@ -537,7 +537,7 @@ var S = {
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
   changeInSettings: 'تغییر از تنظیمات',
   topic: 'موضوع گپ:',
-  isNew: 'نو', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ فردا از آن یک درس نو ساخته می‌شود.',
+  isNew: 'نو', photoReady: '✨ درس نو از عکس شما', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ فردا از آن یک درس نو ساخته می‌شود.',
   photoPending: function(n){ return fa(n) + ' عکس در انتظار است؛ درس نو تا فردا آماده می‌شود.'; },
   photoIntro: 'از صفحهٔ کتاب، خط مکتب، لوحه یا هر چیزی که می‌خواهید یاد بگیرید عکس بگیرید. هر شام از عکس‌های شما درس نو ساخته می‌شود و فردا به مسیر شما اضافه می‌شود.',
   photoPick: 'عکس بگیرید یا از گالری انتخاب کنید', photoChange: 'عکس دیگر', photoNote: 'چه چیزی می‌خواهید یاد بگیرید؟ (اختیاری)', photoNoteHint: 'مثلاً: کلمه‌های این صفحه',
@@ -1055,6 +1055,12 @@ function renderHome(){
       '<button class="cta" type="button" data-start="' + open + '">' + S.start + ' ' + ic('i-arrow') + '</button></section>';
   } else {
     h += '<section class="card today"><div class="eyebrow">' + ic('i-star') + S.todayLesson + '</div><h2>' + S.allDone + '</h2><button class="cta" type="button" data-go="review">' + S.reviewStart + ' ' + ic('i-arrow') + '</button></section>';
+  }
+  /* newest photo lesson she hasn't finished gets its own card, so she doesn't have to scroll to the end of the path */
+  var px = -1; LESSONS.forEach(function(l, i){ if (l.extra && !st.done[l.id] && i !== open) px = i; });
+  if (px >= 0){
+    var pl = LESSONS[px];
+    h += '<section class="card photo-ready"><div class="ii">' + esc(pl.emoji) + '</div><div style="flex:1"><b>' + S.photoReady + '</b><div class="set-help">' + esc(pl.title.fa) + ' · <span class="en" lang="en">' + esc(pl.title.en) + '</span></div></div><button class="small-btn" type="button" data-start="' + px + '">' + S.start + '</button></section>';
   }
   if (CONFIG.uploadUrl){
     var pend = pendingPhotos();
