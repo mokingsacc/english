@@ -222,6 +222,12 @@ li.now .n-state{color:var(--p-accent)}
 .remind-row{display:flex;gap:10px;align-items:center;margin-top:8px}
 .remind-row select{flex:none;min-height:46px;border-radius:12px;border:var(--p-border);background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:17px;padding:0 12px}
 .remind-row a{flex:1;text-decoration:none}
+.photo-card{padding:14px 16px;display:flex;gap:12px;align-items:center;margin-top:14px}
+.photo-card .ii{font-size:30px}
+.photo-pick{display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.photo-prev{display:block;width:100%;max-height:320px;object-fit:contain;border-radius:var(--p-r);border:var(--p-border);margin:12px 0;background:var(--p-surface)}
+.photo-done{text-align:center;display:grid;justify-items:center;gap:6px}
+textarea[data-photo-note]{width:100%;border-radius:12px;border:var(--p-border);background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:17px;padding:10px 12px;resize:vertical;margin-top:6px}
 .row2{display:flex;gap:10px;width:100%}
 .row2>*{flex:1}
 .small-btn{border:var(--p-border);border-radius:12px;background:var(--p-surface);min-height:46px;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;box-shadow:var(--p-shadow)}
@@ -374,7 +380,10 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.4.0',
+  version: '1.5.0',
+  /* photo lessons: the Cloudflare Worker that saves photos for the evening check ('' hides the feature) */
+  uploadUrl: '',
+  extraLessons: 'lessons/extra.json',
   audioBase: 'audio/',
   storageKey: 'fa-en-app',
   defaultTheme: 'b',
@@ -524,6 +533,13 @@ var S = {
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
   changeInSettings: 'تغییر از تنظیمات',
   topic: 'موضوع گپ:',
+  isNew: 'نو', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ فردا درس نو می‌شود.',
+  photoPending: function(n){ return fa(n) + ' عکس در انتظار است؛ درس نو تا فردا آماده می‌شود.'; },
+  photoIntro: 'از صفحهٔ کتاب، کاغذ مکتب، تابلو یا هر چیزی که می‌خواهید یاد بگیرید عکس بگیرید. هر شام از عکس‌های شما درس نو ساخته می‌شود و فردا در مسیر شما است.',
+  photoPick: 'عکس گرفتن یا انتخاب عکس', photoChange: 'عکس دیگر', photoNote: 'چه چیزی می‌خواهید یاد بگیرید؟ (اختیاری)', photoNoteHint: 'مثلاً: کلمه‌های این صفحه',
+  photoSend: 'فرستادن', photoSending: 'در حال فرستادن…', photoSent: 'عکس فرستاده شد!', photoWhen: 'درس نو تا فردا در مسیر شما آماده می‌شود.', photoAnother: 'یک عکس دیگر',
+  photoOffline: 'انترنت وصل نیست. وصل شوید و دوباره «فرستادن» را بزنید.', photoTooBig: 'عکس خیلی بزرگ است. یک عکس دیگر انتخاب کنید.',
+  photoFailed: 'فرستاده نشد. کمی بعد دوباره کوشش کنید. اگر باز هم نشد، به Mo بگویید.', photoNotImage: 'این فایل عکس نیست. یک عکس انتخاب کنید.',
   slow: 'آهسته', sayIt: 'خودتان بگویید', recStop: 'بس', mine: 'صدای شما', original: 'صدای اصلی',
   cmpHint: 'اول صدای خود را می‌شنوید، بعد صدای اصلی را. مقایسه کنید.',
   micDenied: 'اجازهٔ میکروفون داده نشد. دوباره بزنید و در پیام آیفون «Allow» را بزنید.',
@@ -583,7 +599,7 @@ function niceDate(s){
 /* ---------- storage ---------- */
 var storageOK = true;
 function freshState(){
-  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'auto', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[] };
+  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'auto', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[], sent:[], seen:{} };
 }
 function loadState(){
   try {
@@ -607,6 +623,8 @@ function loadState(){
     if (!Array.isArray(s.days)) s.days = [];
     if (!s.cards || typeof s.cards !== 'object') s.cards = {};
     if (!s.done || typeof s.done !== 'object') s.done = {};
+    if (!Array.isArray(s.sent)) s.sent = [];
+    if (!s.seen || typeof s.seen !== 'object') s.seen = {};
     if (typeof s.points !== 'number') s.points = 0;
     return s;
   } catch (e) { storageOK = false; return freshState(); }
@@ -620,10 +638,47 @@ save();
 
 /* ---------- lookups ---------- */
 var PHRASES = {};
-LESSONS.forEach(function(l, li){
+function indexLesson(l, li){
   l.phrases.forEach(function(p){ p.lesson = li; PHRASES[p.id] = p; });
   PHRASES[l.id + 't'] = { id:l.id + 't', en:l.trap.example, fa:l.trap.title, hint:'', emoji:'💡', lesson:li, trap:true };
-});
+}
+LESSONS.forEach(indexLesson);
+var BUILTIN = LESSONS.length;
+/* new lessons made from Freshta's photos arrive in lessons/extra.json; anything malformed is skipped */
+function validLesson(l){
+  function str(x){ return typeof x === 'string' && x.trim().length > 0; }
+  try {
+    if (!l || !/^x\d+$/.test(l.id) || lessonIndex(l.id) >= 0 || !l.title || !str(l.title.fa) || !str(l.title.en) || !str(l.emoji)) return false;
+    if (!Array.isArray(l.phrases) || l.phrases.length !== 6) return false;
+    var ids = {};
+    for (var i = 0; i < 6; i++){ var p = l.phrases[i];
+      if (!p || !str(p.id) || p.id.indexOf(l.id + 'p') !== 0 || ids[p.id] || PHRASES[p.id] || !str(p.en) || !str(p.fa) || !str(p.emoji) || typeof p.hint !== 'string') return false;
+      if (!(p.gap >= 0 && p.gap < p.en.split(' ').length)) return false; ids[p.id] = 1; }
+    var tr = l.trap; if (!tr || !str(tr.title) || !str(tr.text) || !str(tr.example) || !str(tr.brief) || !tr.drill || !str(tr.drill.q) || !Array.isArray(tr.drill.options) || tr.drill.options.filter(function(o){ return o && o.ok; }).length !== 1) return false;
+    if (l.talk && (!str(l.talk.fa) || !str(l.talk.role))) return false;
+    if (l.dialog && (!Array.isArray(l.dialog.lines) || !Array.isArray(l.dialog.qs) || l.dialog.qs.length !== 2 || l.dialog.lines.some(function(x){ return !Array.isArray(x) || (x[0] !== 'f' && x[0] !== 'm') || !str(x[1]) || !str(x[2]); }) || l.dialog.qs.some(function(q){ return !str(q[0]) || !Array.isArray(q[1]) || q[1].length !== 3; }))) return false;
+    return true;
+  } catch (e) { return false; }
+}
+var extraState = 'none';
+function addExtra(data){
+  var added = 0;
+  if (!data || !Array.isArray(data.lessons)) return 0;
+  (data.audio || []).forEach(function(x){ if (/^[0-9a-f]{8}$/.test(x)) AUDIO_SET[x] = 1; });
+  data.lessons.forEach(function(l){
+    if (!validLesson(l)) return;
+    l.icon = 'i-star'; l.extra = true;
+    LESSONS.push(l); indexLesson(l, LESSONS.length - 1); added++;
+  });
+  return added;
+}
+function loadExtra(){
+  if (!CONFIG.extraLessons || !window.fetch) return;
+  fetch(CONFIG.extraLessons, { cache:'no-cache' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    var n = addExtra(d); extraState = d ? 'ok' : 'none';
+    if (n){ syncOwn(); if (view.name === 'home') render(); }
+  }).catch(function(){ extraState = 'fail'; });
+}
 function syncOwn(){
   for (var id in PHRASES) if (PHRASES[id].own) delete PHRASES[id];
   (st.own || []).forEach(function(o){ PHRASES[o.id] = { id:o.id, en:o.en, fa:o.fa || '', hint:'', emoji:'✍️', lesson:-2, own:true }; });
@@ -939,6 +994,7 @@ function render(){
   if (view.name === 'lesson') return renderLesson();
   if (view.name === 'settings') return renderSettings();
   if (view.name === 'review') return renderReview();
+  if (view.name === 'photo') return renderPhoto();
   return renderHome();
 }
 function tabbar(cur){
@@ -966,6 +1022,10 @@ function renderHome(){
   } else {
     h += '<section class="card today"><div class="eyebrow">' + ic('i-star') + S.todayLesson + '</div><h2>' + S.allDone + '</h2><button class="cta" type="button" data-go="review">' + S.reviewStart + ' ' + ic('i-arrow') + '</button></section>';
   }
+  if (CONFIG.uploadUrl){
+    var pend = pendingPhotos();
+    h += '<section class="card photo-card"><div class="ii">📷</div><div style="flex:1"><b>' + S.photoTitle + '</b><div class="set-help">' + (pend ? S.photoPending(pend) : S.photoShort) + '</div></div><button class="small-btn" type="button" data-go="photo">' + S.photoOpen + '</button></section>';
+  }
   /* week row: Afghan week starts on Saturday */
   var now = new Date(), idx = (now.getDay() + 1) % 7, start = addDays(t, -idx), letters = ['ش','ی','د','س','چ','پ','ج'], row = '';
   for (var i = 0; i < 7; i++){ var d = addDays(start, i), on = st.days.indexOf(d) >= 0; row += '<i class="' + (on ? 'on' : (d === t ? 'cur' : '')) + '">' + letters[i] + '</i>'; }
@@ -973,7 +1033,7 @@ function renderHome(){
   h += '<section class="path"><div class="sec-title">' + S.path + ' <small>' + S.lessonsOf(doneCount, LESSONS.length) + '</small></div><ol>';
   LESSONS.forEach(function(l, i){
     var cls = st.done[l.id] ? 'done' : (i === open ? 'now' : 'open');
-    var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : S.open);
+    var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : (l.extra && !st.seen[l.id] ? '✨ ' + S.isNew : S.open));
     h += '<li class="' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="node">' + ic(l.icon) + '</span><div><div class="n-title">' + esc(l.title.fa) + '</div><div class="n-en en" lang="en">' + esc(l.title.en) + '</div></div><span class="n-state">' + state + '</span>' + (cls === 'done' ? '<button class="n-talk" type="button" data-talk="' + i + '" aria-label="' + S.talkAgain + '">' + ic('i-mic') + '<small>گپ</small></button>' : '') + '</li>';
   });
   h += '</ol></section></div>' + tabbar('home');
@@ -1040,7 +1100,7 @@ function buildReview(){
   return s;
 }
 function stepTexts(steps){ var o = []; steps.forEach(function(s){ if (s.p && PHRASES[s.p]) o.push(PHRASES[s.p].en); if (s.say) o.push(s.say); }); return o; }
-function startLesson(li){ var steps = buildSteps(li), L = LESSONS[li]; recReset(); preloadClips(stepTexts(steps).concat([L.trap.example], L.trap.drill.say ? [L.trap.drill.say] : []), L.dialog ? L.dialog.lines.map(function(x){ return lineUrl(x[1]); }) : []); go('lesson', { li:li, steps:steps, i:0, answered:false, isReview:false, correct:0 }); }
+function startLesson(li){ var steps = buildSteps(li), L = LESSONS[li]; if (L.extra && !st.seen[L.id]){ st.seen[L.id] = 1; save(); } recReset(); preloadClips(stepTexts(steps).concat([L.trap.example], L.trap.drill.say ? [L.trap.drill.say] : []), L.dialog ? L.dialog.lines.map(function(x){ return lineUrl(x[1]); }) : []); go('lesson', { li:li, steps:steps, i:0, answered:false, isReview:false, correct:0 }); }
 function startReview(){ var steps = buildReview(); recReset(); preloadClips(stepTexts(steps)); go('lesson', { li:-1, steps:steps, i:0, answered:false, isReview:true, correct:0, autoplay:true }); }
 
 function choicesHtml(o, row){
@@ -1129,6 +1189,64 @@ function renderLesson(){
   if (step.t === 'dialog' && v.autoplay && !v.dialogPlayed){ v.dialogPlayed = true; playDialog(L, 0); }
   var c = app.querySelector('.content'); if (c) c.scrollTop = 0;
 }
+/* ---------- photo lessons ---------- */
+function pendingPhotos(){
+  var built = {}; LESSONS.forEach(function(l){ (l.from || []).forEach(function(id){ built[id] = 1; }); });
+  return st.sent.filter(function(s){ return !built[s.id] && s.at >= addDays(today(), -7); }).length;
+}
+var photoData = null;
+function renderPhoto(){
+  var v = view, h = '<div class="content"><h1 class="page-title">📷 ' + S.photoTitle + '</h1>';
+  h += '<section class="card set-group"><p style="margin:0;line-height:1.8">' + S.photoIntro + '</p></section>';
+  if (v.sentOk){
+    h += '<section class="card set-group photo-done"><div class="big-emoji">✅</div><b>' + S.photoSent + '</b><p class="set-help">' + S.photoWhen + '</p></section>' +
+      '<button class="cta" type="button" data-photo-again>' + S.photoAnother + '</button><button class="ghost" type="button" data-go="home">' + S.home + '</button>';
+  } else {
+    h += '<label class="cta photo-pick">' + (photoData ? S.photoChange : '📷 ' + S.photoPick) + '<input type="file" accept="image/*" data-photo-input hidden></label>';
+    if (photoData) h += '<img class="photo-prev" alt="" src="data:image/jpeg;base64,' + photoData + '">';
+    h += '<section class="card set-group"><label for="pn">' + S.photoNote + '</label><textarea id="pn" rows="2" maxlength="300" data-photo-note placeholder="' + S.photoNoteHint + '">' + esc(v.note || '') + '</textarea></section>';
+    h += '<button class="cta" type="button" data-photo-send' + (photoData && !v.sending ? '' : ' disabled') + '>' + (v.sending ? S.photoSending : S.photoSend) + '</button>';
+    if (v.err) h += '<div class="feedback no" data-photo-err>' + v.err + '</div>';
+  }
+  var pend = pendingPhotos();
+  if (pend) h += '<p class="set-help" style="text-align:center">' + S.photoPending(pend) + '</p>';
+  h += '</div>' + tabbar('home');
+  app.innerHTML = h;
+}
+function readPhoto(file){
+  if (!file) return;
+  if (!/^image\//.test(file.type || 'image/')){ view.err = S.photoNotImage; renderPhoto(); return; }
+  var url = URL.createObjectURL(file), img = new Image();
+  img.onload = function(){
+    try {
+      var max = 1600, w = img.naturalWidth, hh = img.naturalHeight, sc = Math.min(1, max / Math.max(w, hh));
+      var c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(hh * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      var q = 0.8, d = c.toDataURL('image/jpeg', q);
+      while (d.length > 3500000 && q > 0.4){ q -= 0.15; d = c.toDataURL('image/jpeg', q); }
+      photoData = d.split(',')[1]; view.err = '';
+    } catch (e) { photoData = null; view.err = S.photoNotImage; }
+    URL.revokeObjectURL(url); renderPhoto();
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); photoData = null; view.err = S.photoNotImage; renderPhoto(); };
+  img.src = url;
+}
+function sendPhoto(){
+  if (!photoData || view.sending) return;
+  if (navigator.onLine === false){ view.err = S.photoOffline; renderPhoto(); return; }
+  view.sending = true; view.err = ''; renderPhoto();
+  var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 45000);
+  fetch(CONFIG.uploadUrl, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ image:photoData, note:(view.note || '').slice(0, 300), name:st.name || '' }), signal: ctrl ? ctrl.signal : undefined })
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status:r.status, j:j }; }); })
+    .then(function(res){
+      clearTimeout(to); view.sending = false;
+      if (res.status === 200 && res.j && res.j.ok){ st.sent.push({ id:res.j.id, at:today() }); st.sent = st.sent.slice(-50); save(); photoData = null; view.note = ''; view.sentOk = true; }
+      else view.err = res.status === 413 ? S.photoTooBig : S.photoFailed + ' (' + res.status + (res.j && res.j.error ? ' ' + esc(res.j.error) : '') + ')';
+      if (view.name === 'photo') renderPhoto();
+    })
+    .catch(function(){ clearTimeout(to); view.sending = false; view.err = S.photoOffline; if (view.name === 'photo') renderPhoto(); });
+}
+
 function renderComplete(){
   var v = view, h = '', cols = ['var(--p-accent)', 'var(--p-warm)', 'var(--p-good)', 'var(--b-blue)'];
   if (v.talkOnly){
@@ -1274,7 +1392,7 @@ function waitVoices(ms){
   });
 }
 function selfCheck(){
-  var out = app.querySelector('[data-check-out]'), rows = {}, order = ['storage','home','audio','engine','voice','sound','net','ai','clip','font'];
+  var out = app.querySelector('[data-check-out]'), rows = {}, order = ['storage','home','audio','engine','voice','sound','net','ai','clip','font'].concat(CONFIG.uploadUrl ? ['photo'] : []);
   function paint(){
     var bad = order.some(function(k){ return rows[k] && rows[k].s === 'bad'; }), pending = order.some(function(k){ return !rows[k] || rows[k].s === 'wait'; }),
         asking = order.some(function(k){ return rows[k] && rows[k].s === 'ask'; });
@@ -1341,6 +1459,11 @@ function selfCheck(){
   (navigator.clipboard && navigator.clipboard.writeText) || document.queryCommandSupported && document.queryCommandSupported('copy')
     ? set('clip', 'ok', 'کپی خودکار کار می‌کند', 'Auto-copy is available')
     : set('clip', 'warn', 'کپی خودکار شاید کار نکند؛ متن را دستی کپی کنید', 'Auto-copy may not work; copy the text by hand', '', '');
+  /* 10 photo lessons */
+  if (CONFIG.uploadUrl) fetch(CONFIG.uploadUrl, { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+    j && j.ok && j.token ? set('photo', 'ok', 'فرستادن عکس آماده است', 'Photo upload is ready')
+      : set('photo', 'bad', 'سرور عکس کلید GitHub ندارد', 'Photo server has no GitHub key', 'به Mo بگویید.', 'Tell Mo: add the GITHUB_TOKEN secret to the Cloudflare Worker.');
+  }).catch(function(){ set('photo', 'warn', 'سرور عکس جواب نداد', 'Photo server did not answer', 'انترنت را بررسی کنید. اگر درست نشد، به Mo بگویید.', 'Check the internet. If it stays like this, tell Mo.'); });
   /* 9 font */
   var fontOK = false; try { document.fonts.forEach(function(f){ if (/Vazirmatn/.test(f.family) && f.status === 'loaded') fontOK = true; }); } catch (e) {}
   fontOK ? set('font', 'ok', 'قلم برنامه آماده است', 'App font loaded')
@@ -1404,6 +1527,8 @@ app.addEventListener('click', function(e){
     return;
   }
   if ((el = t.closest('[data-selfcheck]'))){ selfCheck(); return; }
+  if ((el = t.closest('[data-photo-send]'))){ sendPhoto(); return; }
+  if ((el = t.closest('[data-photo-again]'))){ view.sentOk = false; renderPhoto(); return; }
   if ((el = t.closest('[data-sound-play]'))){ unlockSpeech(); speak('Hello, how are you?', el, false, function(){ setTimeout(function(){ speakDevice('Thank you very much', el); }, 300); }); return; }
   if ((el = t.closest('[data-sound]'))){ CHECKS.sound(el.getAttribute('data-sound')); return; }
   if ((el = t.closest('[data-reset]'))){
@@ -1411,8 +1536,9 @@ app.addEventListener('click', function(e){
     resetArmed = false; var keep = st.settings, nm = st.name; st = freshState(); st.settings = keep; st.name = nm; syncOwn(); save(); toast(S.resetDone); renderSettings(); return;
   }
 });
-app.addEventListener('input', function(e){ if (e.target.matches('[data-name]')){ st.name = e.target.value.trim().slice(0, 30); save(); } });
+app.addEventListener('input', function(e){ if (e.target.matches('[data-name]')){ st.name = e.target.value.trim().slice(0, 30); save(); } if (e.target.matches('[data-photo-note]')) view.note = e.target.value; });
 app.addEventListener('change', function(e){
+  if (e.target.matches('[data-photo-input]')){ readPhoto(e.target.files && e.target.files[0]); return; }
   if (e.target.matches('[data-remind]')){
     var hr = +e.target.value; st.settings.remind = hr; save();
     var a = app.querySelector('[data-remind-link]'); if (a) a.setAttribute('href', 'reminders/' + (hr < 10 ? '0' : '') + hr + '.ics');
@@ -1422,8 +1548,9 @@ app.addEventListener('keydown', function(e){ if ((e.key === 'Enter' || e.key ===
 
 /* expose for tests */
 syncOwn();
-window.APP = { lineUrl:lineUrl, rec:function(){ return rec; }, CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, briefFor:briefFor, aiUrl:aiUrl, go:go, clipUrl:clipUrl, clipText:clipText, hashText:hashText, audioIds:function(){ return Object.keys(AUDIO_SET); } };
+window.APP = { addExtra:addExtra, validLesson:validLesson, pendingPhotos:pendingPhotos, lineUrl:lineUrl, rec:function(){ return rec; }, CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, briefFor:briefFor, aiUrl:aiUrl, go:go, clipUrl:clipUrl, clipText:clipText, hashText:hashText, audioIds:function(){ return Object.keys(AUDIO_SET); } };
 render();
+loadExtra();
 </script>
 </body>
 </html>
