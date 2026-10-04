@@ -274,6 +274,70 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
 .toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--p-ink);color:var(--p-bg);padding:10px 18px;border-radius:14px;font-weight:700;font-size:15px;z-index:20;max-width:88vw;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 
+
+/* ---------- Signpost: Home hub, lessons road, topic list, settings (big type, few words) ---------- */
+.tabbar button{font-size:20px;min-width:96px;padding:6px 14px}
+.tabbar button svg.ic{font-size:30px}
+.sp{gap:16px}
+.sp-greet b{display:block;font-size:30px;font-weight:900;line-height:1.25}
+.sp-greet span{display:block;font-size:21px;color:var(--p-muted);margin-top:2px}
+.sp-title{margin:6px 0 0;font-size:32px;font-weight:900;line-height:1.2}
+.sp-blk{font:inherit;width:100%;border:3px solid var(--p-line);border-radius:22px;box-shadow:7px 7px 0 var(--p-line);padding:14px 18px;display:flex;align-items:center;gap:16px;min-height:124px;text-align:start;cursor:pointer;transition:transform .1s ease,box-shadow .1s ease}
+.sp-blk:active,.sp-row:active,.sp-topic:active,.sp-btn:active{transform:translate(4px,4px);box-shadow:2px 2px 0 var(--p-line)}
+.sp-blk svg.ic{font-size:72px;stroke-width:1.8}
+.sp-blk b{display:block;font-size:30px;font-weight:900;line-height:1.2}
+.sp-blk span{display:block;font-size:20px;margin-top:4px}
+.sp-cam{background:var(--b-warm);color:#17142B}
+.sp-talk{background:var(--b-blue);color:#FFFFFF}
+.sp-row{font:inherit;color:inherit;width:100%;background:var(--p-surface);border:3px solid var(--p-line);box-shadow:5px 5px 0 var(--p-line);border-radius:18px;padding:12px 16px;display:flex;align-items:center;gap:12px;text-align:start;cursor:pointer}
+.sp-row b{flex:1;min-width:0;font-size:22px;font-weight:800;line-height:1.3}
+.sp-row svg.ic{font-size:30px}
+.sp-pill{flex:none;border:2px solid var(--p-line);border-radius:999px;padding:2px 12px;font-size:20px;font-weight:900;color:#17142B;background:var(--b-warm)}
+.sp-pill.done{background:var(--b-lime)}
+.sp-pill.new{background:var(--b-accent);color:var(--b-accent-ink)}
+.sp-road{list-style:none;margin:0;padding:0;position:relative;display:flex;flex-direction:column;gap:6px}
+.sp-road::before{content:"";position:absolute;inset-inline-start:24px;top:24px;bottom:24px;width:8px;background:var(--p-line);border-radius:4px}
+.sp-stop{display:flex;align-items:center;gap:14px;min-height:72px;padding:6px 4px;position:relative;cursor:pointer;border-radius:18px}
+.sp-sign{width:56px;height:56px;flex:none;display:grid;place-items:center;border:3px solid var(--p-line);border-radius:14px;background:var(--p-surface);color:var(--p-ink);font-size:24px;font-weight:900;position:relative;z-index:1}
+.sp-sign svg.ic{font-size:30px;stroke-width:2.6}
+.sp-tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.sp-tx b{font-size:22px;font-weight:800;line-height:1.3}
+.sp-tx .en{font-size:18px;color:var(--p-muted);text-align:right;line-height:1.3}
+.sp-stop.done .sp-sign{background:var(--b-lime);color:#17142B}
+.sp-stop.now{background:var(--p-surface);border:3px solid var(--p-line);box-shadow:6px 6px 0 var(--p-line);padding:10px 6px}
+.sp-stop.now .sp-sign{background:var(--b-warm);color:#17142B;box-shadow:4px 4px 0 var(--p-line)}
+.sp-stop.now .sp-tx b{font-size:24px}
+.sp-stop.new .sp-sign{background:var(--b-accent);color:var(--b-accent-ink)}
+.sp-back{font:inherit;align-self:flex-start;border:0;background:transparent;color:var(--p-ink);display:inline-flex;align-items:center;gap:6px;font-size:22px;font-weight:800;padding:8px 2px;cursor:pointer}
+.sp-back svg.ic{font-size:28px}
+.sp-topics{display:flex;flex-direction:column;gap:12px}
+.sp-topic{display:flex;align-items:center;gap:12px;background:var(--p-surface);color:var(--p-ink);border:3px solid var(--p-line);box-shadow:4px 4px 0 var(--p-line);border-radius:16px;padding:10px 12px;text-decoration:none}
+.sp-topic .sp-sign{width:50px;height:50px}
+.sp-topic .go{flex:none;color:var(--b-blue);font-size:30px;display:grid}
+.sp-set{background:var(--p-surface);border:3px solid var(--p-line);box-shadow:6px 6px 0 var(--p-line);border-radius:22px;padding:14px 16px;display:grid;gap:12px}
+.sp-lab{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:900}
+.sp-lab svg.ic{font-size:30px}
+.sp-line{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sp-set .seg button{font-size:24px;font-weight:900;min-height:58px}
+.sp-btn{font:inherit;border:3px solid var(--p-line);box-shadow:4px 4px 0 var(--p-line);border-radius:16px;background:var(--b-warm);color:#17142B;font-size:22px;font-weight:900;min-height:56px;padding:8px 18px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;cursor:pointer}
+.sp-btn svg.ic{font-size:26px}
+.sp-btn.blue{background:var(--b-blue);color:#FFFFFF}
+.sp-btn.danger{background:var(--p-surface);color:var(--b-bad);border-color:var(--b-bad);box-shadow:none;width:100%}
+.sp-sel{position:relative;display:inline-flex}
+.sp-sel::after{content:"▾";position:absolute;inset-inline-end:14px;top:50%;transform:translateY(-50%);font-size:22px;pointer-events:none;color:var(--p-ink)}
+.sp-set select{-webkit-appearance:none;appearance:none;padding-inline-end:44px!important;font:inherit;font-size:24px;font-weight:900;min-height:56px;padding:6px 14px;border-radius:16px;border:3px solid var(--p-line);background:var(--p-bg);color:var(--p-ink)}
+.sp-note{font-size:20px;color:var(--p-muted);margin:0;line-height:1.6}
+.sp-switch{width:88px;height:50px;flex:none;border-radius:30px;border:3px solid var(--p-line);background:var(--p-bg);position:relative;cursor:pointer;padding:0}
+.sp-switch::after{content:"";position:absolute;top:4px;inset-inline-start:4px;width:36px;height:36px;border-radius:50%;background:var(--p-line);transition:inset-inline-start .15s ease}
+.sp-switch[aria-pressed="true"]{background:var(--b-blue)}
+.sp-switch[aria-pressed="true"]::after{inset-inline-start:42px;background:#FFFFFF}
+.sp-set .check-row .cr-fa{font-size:20px}
+.photo-big .page-title{font-size:32px;font-weight:900}
+.photo-big .set-group p,.photo-big .set-group label{font-size:20px}
+.photo-big .cta{font-size:24px;min-height:64px;padding:8px 16px;line-height:1.3;text-align:center}
+.photo-big .set-help{font-size:20px}
+@media (prefers-reduced-motion: reduce){.sp-blk,.sp-switch::after{transition:none}}
+
 /* ---------- Theme A · Nasim ---------- */
 .theme-a .en{font-weight:500}
 .theme-a .today .en-sub{font-style:italic;font-size:21px}
@@ -365,6 +429,13 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
   <symbol id="i-map" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18.5h5M10.5 21.5h3"/><path d="M12 2.5a6.5 6.5 0 014.2 11.4c-.8.7-1.2 1.6-1.2 2.6H9c0-1-.4-1.9-1.2-2.6A6.5 6.5 0 0112 2.5z"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M4.5 12h15M13.5 6l6 6-6 6"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2v-9a2 2 0 012-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-talk" viewBox="0 0 24 24"><path d="M3 6a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2H9l-4 3v-3a2 2 0 01-2-2z"/><path d="M19.5 7.5c1.6 1.8 1.6 4.2 0 6"/></symbol>
+  <symbol id="i-road" viewBox="0 0 24 24"><path d="M8 21L10 3M16 21L14 3M12 5v2M12 11v2M12 17v2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M19.5 12h-15M10.5 6l-6 6 6 6"/></symbol>
   <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="3"/><path d="M8 3.5h10.5a2.5 2.5 0 012.5 2.5V16"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
@@ -384,7 +455,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.5.3',
+  version: '1.6.0',
   /* photo lessons: the Cloudflare Worker that saves photos for the evening check ('' hides the feature) */
   uploadUrl: 'https://english-upload.mobinkingsacc.workers.dev/',
   extraLessons: 'lessons/extra.json',
@@ -524,7 +595,11 @@ var S = {
   hi: function(n){ return n ? 'سلام، ' + n + ' جان' : 'سلام!'; },
   todayLesson: 'درس امروز', start: 'شروع درس', minutes: 'دقیقه', newPhrases: 'جملهٔ نو',
   streakLabel: 'روز پشت سر هم', path: 'مسیر شما', lessonsOf: function(d,t){ return fa(d) + ' از ' + fa(t) + ' درس'; },
-  done: 'تمام شد', now: 'امروز', open: 'باز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات',
+  done: 'تمام شد', now: 'امروز', open: 'باز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات', lessonsTab: 'درس‌ها',
+  welcome: 'هر روز یک درس کوتاه.', camBig: 'عکس بگیرید', camSub: 'درس نو فردا', camWait: function(n){ return fa(n) + ' عکس در راه است'; },
+  talkBig: 'با ChatGPT گپ بزنید', talkSub: 'تمرین گپ زدن', newPill: 'درس نو', allDoneRow: 'همهٔ درس‌ها تمام شد',
+  pickTitle: 'دربارهٔ چی گپ بزنیم؟', back: 'برگشت', setVoice: 'آواز', setRemind: 'یادآوری هر روز', remindAdd: 'به تقویم',
+  remindShort: 'بعد «Add to Calendar» یا «Add All» را بزنید.', setHints: 'کمک تلفظ', setCheck: 'آزمایش برنامه', checkGo: 'شروع', setReset: 'پاک کردن پیشرفت',
   allDone: 'همهٔ درس‌ها تمام شد! حالا تکرار کنید.',
   installTitle: 'برنامه را روی صفحهٔ اصلی بگذارید',
   installText: 'در Safari دکمهٔ Share {share} را بزنید (اگر نبود، اول «⋯» را بزنید). بعد «Add to Home Screen» را بزنید. اگر «Open as Web App» دیدید، روشن بماند. بعد «Add».',
@@ -535,13 +610,13 @@ var S = {
   reviewTitle: 'تکرار جمله‌های قبلی', trap: 'دقت کنید',
   bravo: 'شاباش!', lessonDone: function(t){ return 'درس «' + t + '» تمام شد'; },
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
-  changeInSettings: 'تغییر از تنظیمات',
+  changeInSettings: '',
   topic: 'موضوع گپ:',
   isNew: 'نو', photoReady: '✨ درس نو از عکس شما', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ فردا از آن یک درس نو ساخته می‌شود.',
   photoPending: function(n){ return fa(n) + ' عکس در انتظار است؛ درس نو تا فردا آماده می‌شود.'; },
-  photoIntro: 'از صفحهٔ کتاب، خط مکتب، لوحه یا هر چیزی که می‌خواهید یاد بگیرید عکس بگیرید. هر شام از عکس‌های شما درس نو ساخته می‌شود و فردا به مسیر شما اضافه می‌شود.',
-  photoPick: 'عکس بگیرید یا از گالری انتخاب کنید', photoChange: 'عکس دیگر', photoNote: 'چه چیزی می‌خواهید یاد بگیرید؟ (اختیاری)', photoNoteHint: 'مثلاً: کلمه‌های این صفحه',
-  photoSend: 'فرستادن', photoSending: 'در حال فرستادن…', photoSent: 'عکس فرستاده شد!', photoWhen: 'درس نو تا فردا در مسیر شما آماده می‌شود.', photoAnother: 'یک عکس دیگر',
+  photoIntro: 'از کتاب یا ورق صنف عکس بگیرید. فردا درس نو آماده می‌شود.',
+  photoPick: 'عکس بگیرید', photoChange: 'عکس دیگر', photoNote: 'چه چیزی می‌خواهید یاد بگیرید؟ (اختیاری)', photoNoteHint: 'مثلاً: کلمه‌های این صفحه',
+  photoSend: 'فرستادن', photoSending: 'در حال فرستادن…', photoSent: 'عکس فرستاده شد!', photoWhen: 'درس نو فردا آماده می‌شود.', photoAnother: 'یک عکس دیگر',
   photoOffline: 'انترنت وصل نیست. وصل شوید و دوباره «فرستادن» را بزنید.', photoTooBig: 'عکس بسیار کلان است. یک عکس دیگر انتخاب کنید.',
   photoFailed: 'فرستاده نشد. کمی بعد دوباره کوشش کنید. اگر باز هم نشد، به Mo بگویید.', photoNotImage: 'این فایل عکس نیست. یک عکس انتخاب کنید.',
   slow: 'آهسته', sayIt: 'خودتان بگویید', recStop: 'بس', mine: 'صدای شما', original: 'صدای اصلی',
@@ -581,7 +656,7 @@ var S = {
   checkBtn: 'بررسی برنامه', checkSub: 'Check the app',
   allGood: 'همه چیز خوب است', allGoodEn: 'Everything is fine',
   someBad: 'مشکلی پیدا شد. راه‌حل زیر هر مورد نوشته شده است.', someBadEn: 'A problem was found. The fix is under each item.',
-  reset: 'پاک کردن پیشرفت (کارت‌های خودتان می‌مانند)', resetSure: 'مطمئن هستید؟ دوباره بزنید', resetDone: 'پیشرفت پاک شد',
+  reset: 'از سر شروع', resetSure: 'مطمئن هستید؟ دوباره بزنید', resetDone: 'پیشرفت پاک شد',
   heardQ: 'صدا را شنیدید؟', aiQ: 'لینک را بزنید. آیا {ai} باز شد و «Hello» را دیدید؟', oneLeft: 'هنوز سؤال مانده: پایین «بلی» یا «نخیر» را بزنید.', oneLeftEn: 'Questions left: answer Yes or No below.', yes: 'بلی', no: 'نخیر', play: 'پخش صدا', testLink: 'امتحان لینک'
 };
 
@@ -605,7 +680,7 @@ function niceDate(s){
 /* ---------- storage ---------- */
 var storageOK = true;
 function freshState(){
-  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'auto', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[], sent:[], seen:{} };
+  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'on', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[], sent:[], seen:{} };
 }
 function loadState(){
   try {
@@ -615,9 +690,9 @@ function loadState(){
     for (var k in f) if (!(k in s)) s[k] = f[k];
     if (!s.settings || typeof s.settings !== 'object') s.settings = {};
     for (var k2 in f.settings) if (!(k2 in s.settings)) s.settings[k2] = f.settings[k2];
-    if (s.settings.hints === true) s.settings.hints = 'auto';
+    if (s.settings.hints === true || s.settings.hints === 'auto') s.settings.hints = 'on';
     if (s.settings.hints === false) s.settings.hints = 'off';
-    if (['auto','on','off'].indexOf(s.settings.hints) < 0) s.settings.hints = 'auto';
+    if (['on','off'].indexOf(s.settings.hints) < 0) s.settings.hints = 'on';
     if (['f','m'].indexOf(s.settings.voice) < 0) s.settings.voice = 'f';
     if (!(s.settings.remind >= 7 && s.settings.remind <= 22)) s.settings.remind = 18;
     if (['a','b','c'].indexOf(s.settings.theme) < 0) s.settings.theme = CONFIG.defaultTheme;
@@ -641,6 +716,7 @@ function save(){
   return storageOK;
 }
 var st = loadState();
+st.settings.ai = 'chatgpt'; /* the settings no longer offer a choice */
 if (!Array.isArray(st.own)) st.own = [];
 save();
 
@@ -695,7 +771,7 @@ function syncOwn(){
 function lessonIndex(id){ for (var i = 0; i < LESSONS.length; i++) if (LESSONS[i].id === id) return i; return -1; }
 function firstOpen(){ for (var i = 0; i < LESSONS.length; i++) if (!st.done[LESSONS[i].id]) return i; return -1; }
 function isStandalone(){ return window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
-function hintsOn(li){ var h = st.settings.hints; return h === 'on' || (h === 'auto' && ((li >= 0 && li < 5) || Object.keys(st.done).length < 5)); }
+function hintsOn(li){ return st.settings.hints !== 'off'; }
 
 /* ---------- streak + spaced review ---------- */
 function shownStreak(){ var t = today(); return (st.streak.last === t || st.streak.last === addDays(t, -1)) ? st.streak.count : 0; }
@@ -971,7 +1047,7 @@ document.addEventListener('visibilitychange', function(){
   if (document.hidden){ if (recording() || rec.pending){ recReset(); refreshTools(); } return; }
   try { if (window.speechSynthesis) speechSynthesis.resume(); } catch (e) {}
   /* back after midnight: refresh date, streak and due counts (not in the middle of a lesson) */
-  if (shownDay && shownDay !== today() && (view.name === 'home' || view.name === 'review' || view.name === 'settings')) render();
+  if (shownDay && shownDay !== today() && (view.name === 'home' || view.name === 'lessons' || view.name === 'settings')) render();
 });
 window.addEventListener('pagehide', function(){ if (recording() || rec.pending) recReset(); });
 
@@ -1020,63 +1096,66 @@ function toast(msg){ var t = document.getElementById('toast'); t.textContent = m
 /* ---------- router ---------- */
 var app = document.getElementById('app');
 var view = { name:'home' };
-function applyTheme(){ document.documentElement.className = 'theme-' + (st.settings.theme || CONFIG.defaultTheme); }
+function applyTheme(){ document.documentElement.className = 'theme-b'; }
 function go(name, data){ stopAll(); recReset(); var tt = document.getElementById('toast'); if (tt) tt.classList.remove('show'); view = data || {}; view.name = name; render(); }
 var shownDay = '';
 function render(){
   applyTheme(); shownDay = today();
   if (view.name === 'lesson') return renderLesson();
   if (view.name === 'settings') return renderSettings();
-  if (view.name === 'review') return renderReview();
+  if (view.name === 'lessons' || view.name === 'review') return renderLessons();
+  if (view.name === 'talk') return renderTalk();
   if (view.name === 'photo') return renderPhoto();
   return renderHome();
 }
 function tabbar(cur){
-  var n = dueIds(-1).length;
   return '<nav class="tabbar">' +
     '<button type="button" data-go="home"' + (cur === 'home' ? ' aria-current="page"' : '') + '>' + ic('i-home') + S.home + '</button>' +
-    '<button type="button" data-go="review"' + (cur === 'review' ? ' aria-current="page"' : '') + '>' + ic('i-cards') + S.review + (n ? '<span class="badge">' + fa(n) + '</span>' : '') + '</button>' +
+    '<button type="button" data-go="lessons"' + (cur === 'lessons' ? ' aria-current="page"' : '') + '>' + ic('i-road') + S.lessonsTab + '</button>' +
     '<button type="button" data-go="settings"' + (cur === 'settings' ? ' aria-current="page"' : '') + '>' + ic('i-gear') + S.settings + '</button>' +
     '</nav>';
 }
 
-/* ---------- home ---------- */
+/* ---------- home: two big actions, then today's lesson ---------- */
+function newPhotoLesson(){ var px = -1; LESSONS.forEach(function(l, i){ if (l.extra && !st.done[l.id]) px = i; }); return px; }
 function renderHome(){
-  var t = today(), open = firstOpen(), doneCount = LESSONS.filter(function(l){ return st.done[l.id]; }).length;
-  var h = '<div class="content tiled">';
-  h += '<div class="greet"><div><div class="hi">' + esc(S.hi(st.name)) + '</div><div class="sub">' + esc(niceDate(t)) + '</div></div><div class="avatar">' + esc((st.name || 'ا').charAt(0)) + '</div></div>';
+  var open = firstOpen(), px = newPhotoLesson();
+  var h = '<div class="content sp">';
+  h += '<div class="sp-greet"><b>' + esc(S.hi(st.name)) + '</b><span>' + S.welcome + '</span></div>';
   if (!isStandalone()){
     h += '<section class="card install" data-install><div class="ii">📲</div><div><b>' + S.installTitle + '</b>' + S.installText.replace('{share}', '<svg class="ic share" aria-label="Share"><use href="#i-share"/></svg>') + '<div style="margin-top:6px;font-weight:700">⚠️ ' + S.installWarn + '</div></div></section>';
   }
-  if (open >= 0){
-    var l = LESSONS[open];
-    h += '<section class="card today"><div class="eyebrow">' + ic('i-star') + S.todayLesson + '</div><h2>' + esc(l.title.fa) + '</h2><div class="en-sub en" lang="en">' + esc(l.title.en) + '</div>' +
-      '<div class="meta"><span>' + fa(6) + ' ' + S.minutes + '</span><span>·</span><span>' + fa(l.phrases.length) + ' ' + S.newPhrases + '</span></div>' +
-      '<button class="cta" type="button" data-start="' + open + '">' + S.start + ' ' + ic('i-arrow') + '</button></section>';
-  } else {
-    h += '<section class="card today"><div class="eyebrow">' + ic('i-star') + S.todayLesson + '</div><h2>' + S.allDone + '</h2><button class="cta" type="button" data-go="review">' + S.reviewStart + ' ' + ic('i-arrow') + '</button></section>';
-  }
-  /* newest photo lesson she hasn't finished gets its own card, so she doesn't have to scroll to the end of the path */
-  var px = -1; LESSONS.forEach(function(l, i){ if (l.extra && !st.done[l.id] && i !== open) px = i; });
-  if (px >= 0){
-    var pl = LESSONS[px];
-    h += '<section class="card photo-ready"><div class="ii">' + esc(pl.emoji) + '</div><div style="flex:1"><b>' + S.photoReady + '</b><div class="set-help">' + esc(pl.title.fa) + ' · <span class="en" lang="en">' + esc(pl.title.en) + '</span></div></div><button class="small-btn" type="button" data-start="' + px + '">' + S.start + '</button></section>';
-  }
   if (CONFIG.uploadUrl){
     var pend = pendingPhotos();
-    h += '<section class="card photo-card"><div class="ii">📷</div><div style="flex:1"><b>' + S.photoTitle + '</b><div class="set-help">' + (pend ? S.photoPending(pend) : S.photoShort) + '</div></div><button class="small-btn" type="button" data-go="photo">' + S.photoOpen + '</button></section>';
+    h += '<button class="sp-blk sp-cam" type="button" data-go="photo">' + ic('i-camera') + '<div><b>' + S.camBig + '</b><span>' + (pend ? S.camWait(pend) : S.camSub) + '</span></div></button>';
   }
-  /* week row: Afghan week starts on Saturday */
-  var now = new Date(), idx = (now.getDay() + 1) % 7, start = addDays(t, -idx), letters = ['ش','ی','د','س','چ','پ','ج'], row = '';
-  for (var i = 0; i < 7; i++){ var d = addDays(start, i), on = st.days.indexOf(d) >= 0; row += '<i class="' + (on ? 'on' : (d === t ? 'cur' : '')) + '">' + letters[i] + '</i>'; }
-  h += '<section class="card streak"><div class="flame">' + ic('i-flame') + '</div><div><div class="s-num" data-streak>' + fa(shownStreak()) + '</div><div class="s-label">' + S.streakLabel + '</div></div><div class="pts" data-points>' + fa(st.points) + '<small>' + S.totalPoints + '</small></div><div class="days">' + row + '</div></section>';
-  h += '<section class="path"><div class="sec-title">' + S.path + ' <small>' + S.lessonsOf(doneCount, LESSONS.length) + '</small></div><ol>';
+  h += '<button class="sp-blk sp-talk" type="button" data-go="talk">' + ic('i-talk') + '<div><b>' + S.talkBig + '</b><span>' + S.talkSub + '</span></div></button>';
+  if (open >= 0) h += '<button class="sp-row" type="button" data-start="' + open + '">' + (open === px ? '<span class="sp-pill new">' + S.newPill : '<span class="sp-pill">' + S.now) + '</span><b>' + esc(LESSONS[open].title.fa) + '</b>' + ic('i-play') + '</button>';
+  else h += '<button class="sp-row" type="button" data-go="lessons"><span class="sp-pill done">' + S.done + '</span><b>' + S.allDoneRow + '</b>' + ic('i-arrow') + '</button>';
+  if (px >= 0 && px !== open) h += '<button class="sp-row" type="button" data-start="' + px + '"><span class="sp-pill new">' + S.newPill + '</span><b>' + esc(LESSONS[px].title.fa) + '</b>' + ic('i-play') + '</button>';
+  h += '</div>' + tabbar('home');
+  app.innerHTML = h;
+}
+/* ---------- lessons: one straight road ---------- */
+function renderLessons(){
+  var open = firstOpen();
+  var h = '<div class="content sp"><h1 class="sp-title">' + S.lessonsTab + '</h1><ol class="sp-road">';
   LESSONS.forEach(function(l, i){
-    var cls = st.done[l.id] ? 'done' : (i === open ? 'now' : 'open');
-    var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : (l.extra && !st.seen[l.id] ? '✨ ' + S.isNew : S.open));
-    h += '<li class="' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="node">' + ic(l.icon) + '</span><div><div class="n-title">' + esc(l.title.fa) + '</div><div class="n-en en" lang="en">' + esc(l.title.en) + '</div></div><span class="n-state">' + state + '</span>' + (cls === 'done' ? '<button class="n-talk" type="button" data-talk="' + i + '" aria-label="' + S.talkAgain + '">' + ic('i-mic') + '<small>گپ</small></button>' : '') + '</li>';
+    var cls = st.done[l.id] ? 'done' : (l.extra && !st.seen[l.id] ? 'new' : (i === open ? 'now' : 'open'));
+    var sign = cls === 'done' ? ic('i-check') : (cls === 'new' ? ic('i-camera') : fa(i + 1));
+    var pill = cls === 'now' ? '<span class="sp-pill">' + S.now + '</span>' : cls === 'new' ? '<span class="sp-pill new">' + S.newPill + '</span>' : '';
+    h += '<li class="sp-stop ' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="sp-sign">' + sign + '</span><span class="sp-tx"><b>' + esc(l.title.fa) + '</b><span class="en" lang="en">' + esc(l.title.en) + '</span></span>' + pill + '</li>';
   });
-  h += '</ol></section></div>' + tabbar('home');
+  h += '</ol></div>' + tabbar('lessons');
+  app.innerHTML = h;
+}
+/* ---------- talk: pick a lesson, one tap opens ChatGPT on it ---------- */
+function renderTalk(){
+  var h = '<div class="content sp"><button class="sp-back" type="button" data-go="home">' + ic('i-back') + S.back + '</button><h1 class="sp-title">' + S.pickTitle + '</h1><div class="sp-topics">';
+  LESSONS.forEach(function(l, i){
+    h += '<a class="sp-topic" data-ai-link data-li="' + i + '" href="' + esc(aiUrl(l)) + '" target="_blank" rel="noopener"><span class="sp-sign">' + fa(i + 1) + '</span><span class="sp-tx"><b>' + esc(l.title.fa) + '</b><span class="en" lang="en">' + esc(l.title.en) + '</span></span><span class="go">' + ic('i-arrow') + '</span></a>';
+  });
+  h += '</div></div>' + tabbar('home');
   app.innerHTML = h;
 }
 
@@ -1164,7 +1243,7 @@ function renderLesson(){
     var p = PHRASES[step.p]; seeCard(p.id);
     h += '<section class="card phrase" data-say-card><div class="emo">' + p.emoji + '</div><div class="en-big en" lang="en">' + esc(p.en) + '</div><div class="fa-mean">' + esc(p.fa) + '</div>' +
       (hintsOn(p.lesson) ? '<div class="hint">' + esc(p.hint) + ' <small>(تقریبی)</small></div>' + (p.note ? '<div class="hint-note">' + esc(p.note) + '</div>' : '') : '') +
-      '<button class="speaker" type="button" data-say="' + esc(p.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button><div class="sp-label">' + S.listen + '</div>' + toolsHtml(p.en) + '<div class="in-cards">' + ic('i-cards') + S.inCards + '</div></section>';
+      '<button class="speaker" type="button" data-say="' + esc(p.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button><div class="sp-label">' + S.listen + '</div>' + toolsHtml(p.en) + '</section>';
     bottom = '<button class="cta" type="button" data-next>' + S.cont + '</button>';
     autoSay = p.en;
   } else if (step.t === 'flash'){
@@ -1184,7 +1263,7 @@ function renderLesson(){
     var tr = L.trap;
     h += '<section class="card trap"><div class="t-ic">' + ic('i-bulb') + '</div><div><div class="t-title">' + S.trap + ': ' + esc(tr.title) + '</div><p>' + esc(tr.text) + '</p>' +
       '<div class="ex"><span class="en" lang="en">' + esc(tr.example) + '</span><button class="speaker small" type="button" data-say="' + esc(tr.example) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button></div>' +
-      (st.cards[L.id + 't'] ? '<div class="in-cards">' + ic('i-cards') + S.inCards + '</div>' : '<button class="small-btn" type="button" data-add-card="' + L.id + 't" style="margin-top:10px">➕ ' + S.addCard + '</button>') + '</div></section>';
+      '</div></section>';
     bottom = '<button class="cta" type="button" data-next>' + S.cont + '</button>';
   } else if (step.t === 'dialog'){
     var dg = L.dialog;
@@ -1236,7 +1315,7 @@ function pendingPhotos(){
 }
 var photoData = null, photoSending = false;
 function renderPhoto(){
-  var v = view, h = '<div class="content"><h1 class="page-title">📷 ' + S.photoTitle + '</h1>';
+  var v = view, h = '<div class="content photo-big"><button class="sp-back" type="button" data-go="home">' + ic('i-back') + S.back + '</button><h1 class="page-title">📷 ' + S.photoTitle + '</h1>';
   h += '<section class="card set-group"><p style="margin:0;line-height:1.8">' + S.photoIntro + '</p></section>';
   if (v.sentOk){
     h += '<section class="card set-group photo-done"><div class="big-emoji">✅</div><b>' + S.photoSent + '</b><p class="set-help">' + S.photoWhen + '</p></section>' +
@@ -1309,7 +1388,7 @@ function renderComplete(){
 }
 function talkBlock(L){
   var brief = briefFor(L), ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt;
-  return '<a class="ai-btn" data-ai-link href="' + esc(aiUrl(L)) + '" target="_blank" rel="noopener"><span class="mic">' + ic('i-mic') + '</span><span><span class="ai-main">' + S.talk + '</span><span class="ai-sub">با <span class="en" lang="en">' + ai.name + '</span> · ' + S.changeInSettings + '</span></span></a>' +
+  return '<a class="ai-btn" data-ai-link href="' + esc(aiUrl(L)) + '" target="_blank" rel="noopener"><span class="mic">' + ic('i-mic') + '</span><span><span class="ai-main">' + S.talk + '</span><span class="ai-sub">با <span class="en" lang="en">' + ai.name + '</span></span></span></a>' +
     (L.talk ? '<div class="topic"><b>' + S.topic + '</b> ' + esc(L.talk.fa) + '</div>' : '') +
     '<p class="d-cap">' + S.talkCap + '</p>' +
     '<div class="paste-note" data-paste-note><ol class="steps">' + S.pasteSteps.map(function(x){ return '<li>' + x.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]/g, function(w){ return '<bdi>' + w + '</bdi>'; }).replace('%1', '<span class="en" lang="en">' + ai.name + '</span>').replace('%2', '<span class="voice-ic" aria-label="voice">' + ic('i-voice') + '</span>') + '</li>'; }).join('') + '</ol></div>' +
@@ -1401,18 +1480,17 @@ function seg(name, cur, items){
 }
 function renderSettings(){
   resetArmed = false;
-  var s = st.settings, h = '<div class="content"><h1 class="page-title">' + S.settings + '</h1>';
-  h += '<section class="card set-group"><label for="nm">' + S.name + '</label><input id="nm" type="text" value="' + esc(st.name) + '" autocomplete="given-name" data-name><p class="set-help">' + S.nameHelp + '</p></section>';
-  h += '<section class="card set-group"><div class="set-label">' + S.aiLabel + '</div>' + seg('ai', s.ai, [['chatgpt', '<span class="en">ChatGPT</span>'], ['claude', '<span class="en">Claude</span>']]) + '<p class="set-help">' + S.aiHelp + '</p></section>';
-  h += '<section class="card set-group"><div class="set-label">' + S.voiceLabel + '</div>' + seg('voice', s.voice, [['f', S.voiceF], ['m', S.voiceM]]) + '<p class="set-help">' + S.voiceHelp + '</p></section>';
+  var s = st.settings, hintsOnNow = hintsOn(-1);
+  var h = '<div class="content sp"><h1 class="sp-title">' + S.settings + '</h1>';
+  h += '<section class="sp-set"><div class="sp-lab">' + ic('i-speaker') + S.setVoice + '</div>' + seg('voice', s.voice, [['f', S.voiceF], ['m', S.voiceM]]) +
+    '<button class="sp-btn" type="button" data-say="Hello, how are you?">' + ic('i-play') + S.listen + '</button></section>';
   var rh = s.remind || 18, opts = '';
   for (var hr = 7; hr <= 22; hr++) opts += '<option value="' + hr + '"' + (hr === rh ? ' selected' : '') + '>' + fa(hr) + ':۰۰</option>';
-  h += '<section class="card set-group"><div class="set-label">⏰ ' + S.remindLabel + '</div><div class="remind-row"><select data-remind aria-label="' + S.remindLabel + '">' + opts + '</select><a class="small-btn" data-remind-link href="reminders/' + (rh < 10 ? '0' : '') + rh + '.ics" target="_blank" rel="noopener">📅 ' + S.remindBtn + '</a></div><p class="set-help">' + S.remindHelp + '</p></section>';
-  h += '<section class="card set-group"><div class="set-label">' + S.hintsLabel + '</div>' + seg('hints', s.hints, [['auto', S.hintsAuto], ['on', S.hintsOn], ['off', S.hintsOff]]) + '<p class="set-help">' + S.hintsHelp + '</p></section>';
-  h += '<section class="card set-group"><div class="set-label">' + S.themeLabel + '</div>' + seg('theme', s.theme, [['b', 'رنگ'], ['a', 'نسیم'], ['c', 'کاشی']]) + '</section>';
-  h += '<button class="cta" type="button" data-selfcheck>' + ic('i-shield') + S.checkBtn + ' <span class="en" lang="en" style="font-size:14px;opacity:.85">· ' + S.checkSub + '</span></button>';
-  h += '<div data-check-out></div>';
-  h += '<button class="ghost danger" type="button" data-reset>' + S.reset + '</button>';
+  h += '<section class="sp-set"><div class="sp-lab">' + ic('i-clock') + S.setRemind + '</div><div class="sp-line"><span class="sp-sel"><select data-remind aria-label="' + S.setRemind + '">' + opts + '</select></span>' +
+    '<a class="sp-btn blue" data-remind-link href="reminders/' + (rh < 10 ? '0' : '') + rh + '.ics" target="_blank" rel="noopener">📅 ' + S.remindAdd + '</a></div><p class="sp-note">' + S.remindShort + '</p></section>';
+  h += '<section class="sp-set"><div class="sp-line"><div class="sp-lab">' + ic('i-bulb') + S.setHints + '</div><button class="sp-switch" type="button" data-set="hints" data-val="' + (hintsOnNow ? 'off' : 'on') + '" aria-pressed="' + hintsOnNow + '" aria-label="' + S.setHints + '"></button></div></section>';
+  h += '<section class="sp-set"><div class="sp-line"><div class="sp-lab">' + ic('i-shield') + S.setCheck + '</div><button class="sp-btn" type="button" data-selfcheck>' + S.checkGo + '</button></div><div data-check-out></div></section>';
+  h += '<section class="sp-set"><div class="sp-lab">' + ic('i-reset') + S.setReset + '</div><button class="sp-btn danger" type="button" data-reset>' + S.reset + '</button></section>';
   h += '<div class="meta-line"><span class="en" lang="en">v' + CONFIG.version + ' · ' + LESSONS.length + ' lessons</span></div>';
   h += '</div>' + tabbar('settings');
   app.innerHTML = h;
@@ -1535,7 +1613,7 @@ app.addEventListener('click', function(e){
   if ((el = t.closest('.tile'))){ tapTile(el); return; }
   if ((el = t.closest('[data-check-order]'))){ checkOrder(); return; }
   if ((el = t.closest('[data-next]'))){ nextStep(); return; }
-  if ((el = t.closest('[data-ai-link]'))){ copyText(briefFor(LESSONS[view.li]), function(ok){ if (!ok) copyFailed(); }); return; /* the link itself opens the AI */ }
+  if ((el = t.closest('[data-ai-link]'))){ var fromList = el.hasAttribute('data-li'); copyText(briefFor(LESSONS[fromList ? +el.getAttribute('data-li') : view.li]), function(ok){ if (!ok && !fromList) copyFailed(); }); return; /* the link itself opens the AI */ }
   if ((el = t.closest('[data-copy]'))){ copyText(briefFor(LESSONS[view.li]), function(ok){ ok ? toast(S.copied) : copyFailed(); }); return; }
   if ((el = t.closest('[data-leave]'))){
     if (view.i <= 1 || Date.now() - leaveArmed < 3000){ leaveArmed = 0; go('home'); } else { leaveArmed = Date.now(); toast(S.leaveConfirm); }
