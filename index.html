@@ -352,7 +352,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.2.0',
+  version: '1.2.1',
   storageKey: 'fa-en-app',
   defaultTheme: 'b',
   ai: {
@@ -519,7 +519,7 @@ var S = {
   reviewEmpty: 'امروز چیزی برای تکرار نیست 🌿', reviewNext: function(d){ return 'تکرار بعدی: ' + d; },
   reviewCount: function(n){ return fa(n) + ' کارت برای تکرار'; }, reviewStart: 'شروع تکرار', reviewDone: 'تکرار تمام شد',
   name: 'نام شما', nameHelp: 'در صفحهٔ اول با این نام به شما سلام می‌گوییم.',
-  aiLabel: 'هوش مصنوعی برای گپ زدن', aiHelp: 'اگر Claude به دری خوب گپ نزد، ChatGPT را انتخاب کنید.',
+  aiLabel: 'هوش مصنوعی برای گپ زدن', aiHelp: 'ChatGPT برای گپ زدن به دری بهتر است. اگر خواستید، Claude را انتخاب کنید.',
   hintsLabel: 'راهنمای تلفظ با حروف دری', hintsAuto: 'خودکار', hintsOn: 'همیشه', hintsOff: 'هیچ وقت',
   hintsHelp: 'خودکار: در پنج درس اول نشان داده می‌شود.',
   themeLabel: 'ظاهر برنامه',
@@ -550,13 +550,13 @@ function niceDate(s){
 /* ---------- storage ---------- */
 var storageOK = true;
 function freshState(){
-  return { v:1, name:'فرشته', points:0, settings:{ ai:'claude', hints:'auto', theme:CONFIG.defaultTheme }, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[] };
+  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', hints:'auto', theme:CONFIG.defaultTheme }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[] };
 }
 function loadState(){
   try {
     var raw = localStorage.getItem(CONFIG.storageKey);
     if (!raw) return freshState();
-    var s = JSON.parse(raw), f = freshState();
+    var s = JSON.parse(raw), f = freshState(), needAi = !s.aiV2;
     for (var k in f) if (!(k in s)) s[k] = f[k];
     if (!s.settings || typeof s.settings !== 'object') s.settings = {};
     for (var k2 in f.settings) if (!(k2 in s.settings)) s.settings[k2] = f.settings[k2];
@@ -564,7 +564,8 @@ function loadState(){
     if (s.settings.hints === false) s.settings.hints = 'off';
     if (['auto','on','off'].indexOf(s.settings.hints) < 0) s.settings.hints = 'auto';
     if (['a','b','c'].indexOf(s.settings.theme) < 0) s.settings.theme = CONFIG.defaultTheme;
-    if (!CONFIG.ai[s.settings.ai]) s.settings.ai = 'claude';
+    if (needAi || !CONFIG.ai[s.settings.ai]) s.settings.ai = 'chatgpt';
+    s.aiV2 = true;
     if (!s.streak || typeof s.streak !== 'object') s.streak = { count:0, last:'' };
     if (typeof s.streak.count !== 'number') s.streak.count = 0;
     if (typeof s.streak.last !== 'string') s.streak.last = '';
@@ -580,6 +581,7 @@ function save(){
 }
 var st = loadState();
 if (!Array.isArray(st.own)) st.own = [];
+save();
 
 /* ---------- lookups ---------- */
 var PHRASES = {};
@@ -709,7 +711,7 @@ function briefFor(l){
     "Today's trap for Dari speakers: " + l.trap.brief + '\n' +
     'Please: 1) Explain each phrase briefly in Dari. 2) Role-play the situation with me in very simple British English, one short line at a time, and wait for my reply. 3) Correct me gently in Dari, especially the trap. 4) Speak slowly and praise small wins. Start now: greet me in Dari and ask me to say the first phrase.';
 }
-function aiUrl(l){ var a = CONFIG.ai[st.settings.ai] || CONFIG.ai.claude; return a.url + encodeURIComponent(briefFor(l)); }
+function aiUrl(l){ var a = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt; return a.url + encodeURIComponent(briefFor(l)); }
 
 /* ---------- toast ---------- */
 var toastT = null;
@@ -921,7 +923,7 @@ function renderComplete(){
   return h;
 }
 function talkBlock(L){
-  var brief = briefFor(L), ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.claude;
+  var brief = briefFor(L), ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt;
   return '<a class="ai-btn" data-ai-link href="' + esc(aiUrl(L)) + '" target="_blank" rel="noopener"><span class="mic">' + ic('i-mic') + '</span><span><span class="ai-main">' + S.talk + '</span><span class="ai-sub">با <span class="en" lang="en">' + ai.name + '</span> · ' + S.changeInSettings + '</span></span></a>' +
     '<p class="d-cap">' + S.talkCap + '</p>' +
     '<div class="paste-note" data-paste-note><ol class="steps">' + S.pasteSteps.map(function(x){ return '<li>' + x.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]/g, function(w){ return '<bdi>' + w + '</bdi>'; }).replace('%1', '<span class="en" lang="en">' + ai.name + '</span>').replace('%2', '<span class="voice-ic" aria-label="voice">' + ic('i-voice') + '</span>') + '</li>'; }).join('') + '</ol></div>' +
@@ -1015,7 +1017,7 @@ function renderSettings(){
   resetArmed = false;
   var s = st.settings, h = '<div class="content"><h1 class="page-title">' + S.settings + '</h1>';
   h += '<section class="card set-group"><label for="nm">' + S.name + '</label><input id="nm" type="text" value="' + esc(st.name) + '" autocomplete="given-name" data-name><p class="set-help">' + S.nameHelp + '</p></section>';
-  h += '<section class="card set-group"><div class="set-label">' + S.aiLabel + '</div>' + seg('ai', s.ai, [['claude', '<span class="en">Claude</span>'], ['chatgpt', '<span class="en">ChatGPT</span>']]) + '<p class="set-help">' + S.aiHelp + '</p></section>';
+  h += '<section class="card set-group"><div class="set-label">' + S.aiLabel + '</div>' + seg('ai', s.ai, [['chatgpt', '<span class="en">ChatGPT</span>'], ['claude', '<span class="en">Claude</span>']]) + '<p class="set-help">' + S.aiHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.hintsLabel + '</div>' + seg('hints', s.hints, [['auto', S.hintsAuto], ['on', S.hintsOn], ['off', S.hintsOff]]) + '<p class="set-help">' + S.hintsHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.themeLabel + '</div>' + seg('theme', s.theme, [['b', 'رنگ'], ['a', 'نسیم'], ['c', 'کاشی']]) + '</section>';
   h += '<button class="cta" type="button" data-selfcheck>' + ic('i-shield') + S.checkBtn + ' <span class="en" lang="en" style="font-size:14px;opacity:.85">· ' + S.checkSub + '</span></button>';
@@ -1088,7 +1090,7 @@ function selfCheck(){
     .then(function(r){ clearTimeout(to); r.ok || r.type === 'opaque' ? set('net', 'ok', 'انترنت وصل است', 'Internet is connected') : netBad(); })
     .catch(function(){ clearTimeout(to); netBad(); });
   /* 7 AI link */
-  var ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.claude;
+  var ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt;
   var aiAsk = '<div class="cr-actions"><a class="small-btn" style="text-decoration:none;color:inherit" href="' + ai.url + encodeURIComponent('Hello! Please reply in Dari.') + '" target="_blank" rel="noopener">' + S.testLink + '</a><button class="small-btn" type="button" data-aicheck="yes">' + S.yes + '</button><button class="small-btn" type="button" data-aicheck="no">' + S.no + '</button></div>';
   set('ai', 'ask', S.aiQ.replace('{ai}', ai.name), 'Tap the test link. Did ' + ai.name + ' open with "Hello"?', '', '', aiAsk);
   CHECKS.ai = function(ans){
