@@ -39,7 +39,7 @@ html.theme-c{--p-bg:var(--c-bg);--p-surface:var(--c-surface);--p-ink:var(--c-ink
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overscroll-behavior:none}
 body{background:var(--p-bg);color:var(--p-ink);font-family:'Vazirmatn',system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden;touch-action:manipulation;-webkit-text-size-adjust:100%}
-button,a.btnlike{font:inherit;color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}
+button,a.btnlike,a.small-btn{font:inherit;color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}
 button:focus-visible,a:focus-visible{outline:3px solid var(--p-accent);outline-offset:2px}
 svg.ic{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .en{font-family:var(--p-font-en);direction:ltr;unicode-bidi:isolate}
@@ -116,7 +116,7 @@ svg.ic{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2;stroke-
 li.done .node{background:var(--p-good);border-color:var(--p-good);color:var(--p-good-soft)}
 li.now .node{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-accent-ink);box-shadow:0 0 0 5px var(--p-soft)}
 .n-title{font-weight:800;font-size:16px;line-height:1.35}
-li.lock .n-title{color:var(--p-muted);font-weight:600}
+li.open .n-title{font-weight:700}
 .n-en{font-size:14px;color:var(--p-muted);line-height:1.3}
 .n-state{margin-inline-start:auto;font-size:13px;font-weight:700;color:var(--p-muted);display:flex;align-items:center;gap:4px;white-space:nowrap}
 li.done .n-state{color:var(--p-good)}
@@ -196,14 +196,37 @@ li.now .n-state{color:var(--p-accent)}
 .ai-btn .mic{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.25);display:grid;place-items:center;flex:none}
 .ai-btn .mic svg.ic{font-size:25px}
 .ai-main{display:block;font-size:20px;font-weight:800;line-height:1.25}
+.topic{margin:12px 0 0;padding:12px 14px;border-radius:14px;background:var(--p-soft);font-size:16px;line-height:1.6}
+.topic b{color:var(--p-accent);margin-inline-end:4px}
 .ai-sub{display:block;font-size:13px;opacity:.9;margin-top:2px}
 .ai-sub .en{font-weight:700}
 .d-cap{margin:0;font-size:15px;color:var(--p-muted);line-height:1.7;padding:0 6px}
 .paste-note{font-size:14px;line-height:1.7;background:var(--p-soft);border-radius:12px;padding:10px 12px;text-align:start;width:100%}
+.tools{display:flex;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.tools .small-btn{min-width:120px}
+.small-btn.rec{background:var(--p-bad);color:#fff;border-color:var(--p-bad)}
+.small-btn.rec::before{content:'';width:10px;height:10px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.compare{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.compare .small-btn{min-height:40px;font-size:14px}
+.cmp-hint{font-size:13px;color:var(--p-muted);text-align:center;margin-top:6px}
+.dialog{display:grid;gap:10px;margin:6px 0 10px;direction:ltr}
+.bubble{border:var(--p-border);border-radius:18px;padding:10px 14px;max-width:86%;text-align:left;background:var(--p-surface);color:var(--p-ink);font:inherit;display:grid;gap:4px;box-shadow:var(--p-shadow)}
+.bubble .en{font-size:18px;font-weight:700;line-height:1.35}
+.dialog:not(.fa) .b-fa{display:none}
+.bubble .b-fa{direction:rtl;text-align:right;font-size:15px;color:var(--p-muted);line-height:1.6}
+.bubble .who{font-size:18px}
+.b-m{justify-self:start;border-end-start-radius:6px}
+.b-f{justify-self:end;background:var(--p-soft);border-end-end-radius:6px}
+.bubble.on{outline:3px solid var(--p-accent);outline-offset:2px}
+.remind-row{display:flex;gap:10px;align-items:center;margin-top:8px}
+.remind-row select{flex:none;min-height:46px;border-radius:12px;border:var(--p-border);background:var(--p-surface);color:var(--p-ink);font:inherit;font-size:17px;padding:0 12px}
+.remind-row a{flex:1;text-decoration:none}
 .row2{display:flex;gap:10px;width:100%}
 .row2>*{flex:1}
 .small-btn{border:var(--p-border);border-radius:12px;background:var(--p-surface);min-height:46px;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;box-shadow:var(--p-shadow)}
 .small-btn svg.ic{font-size:18px}
+.small-btn.playing{outline:3px solid var(--p-accent);outline-offset:2px}
 details.brief{width:100%;text-align:start;font-size:13px;color:var(--p-muted)}
 details.brief summary{cursor:pointer;font-weight:700;padding:6px 0}
 details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family:inherit;background:var(--p-surface);border:1px solid var(--p-line);border-radius:10px;padding:10px;margin:4px 0 0;max-height:220px;overflow:auto;color:var(--p-ink)}
@@ -269,7 +292,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
 .theme-b .node{width:52px;height:52px;border:2px solid var(--p-line);border-radius:16px;color:var(--b-ink)}
 .theme-b li.done .node{background:var(--b-lime);color:#17142B}
 .theme-b li.now .node{background:var(--b-accent);color:#17142B;box-shadow:3px 3px 0 var(--p-line)}
-.theme-b li.lock .node{background:var(--b-surface);color:var(--b-muted)}
+.theme-b li.open .node{background:var(--b-surface);color:var(--b-muted)}
 .theme-b .path li+li::before{inset-inline-start:29px;background:var(--p-line);opacity:.25}
 .theme-b .path li.done+li::before{background:var(--b-good);opacity:1}
 .theme-b .n-title{font-size:17px}
@@ -318,7 +341,6 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
   <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2c.6 3.3 2.4 5.1 4.3 7 1.9 1.9 2.7 3.9 2.7 6a7 7 0 01-14 0c0-2.6 1.1-4.4 2.8-6.2.3 1.5 1 2.6 2.2 3.2C10 8.7 10.6 5 12 2zm0 20a3.2 3.2 0 003.2-3.2c0-1.6-1.3-2.6-3.2-4.8-1.9 2.2-3.2 3.2-3.2 4.8A3.2 3.2 0 0012 22z"/></symbol>
   <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L13 19V5L7.5 9.5H4z"/><path d="M16.5 9a4.5 4.5 0 010 6"/><path d="M19 6.5a8 8 0 010 11"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21M9 21h6"/></symbol>
@@ -352,15 +374,17 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.2.1',
+  version: '1.4.0',
+  audioBase: 'audio/',
   storageKey: 'fa-en-app',
   defaultTheme: 'b',
   ai: {
     claude:  { name: 'Claude',  url: 'https://claude.ai/new?q=' },
     chatgpt: { name: 'ChatGPT', url: 'https://chatgpt.com/?q=' }
-  },
-  briefMaxUrl: 3500
+  }
 };
+/* ids of recorded clips in audio/f and audio/m (filled by the audio build) */
+var AUDIO_IDS = '0300326d 04e70bc7 0766a7dc 07cc25f4 0da8b8be 19a29498 1c9cca0c 268f33df 26e369c1 302d525d 30f6b98f 351f775c 3661654a 3b2e8100 3bfb8d10 3d69e45f 462adc9a 4c828939 502d642d 50dadc86 52f5f3f4 5650fff9 594037ad 5cffe8dc 5e47f810 5eda7294 65e07215 6dde8d93 6f1c02d1 71839464 72f2ea57 758888fd 768049b3 7d604d46 7dfe0646 831a7437 892cfe02 8987d37e 8cbdd5a5 8dfb0bfb 91b36144 93bd5aa4 95e33c36 98527516 9a409a1e 9ff2611e a085a3cf a1053e23 a3d3d05a a6c16f7a acc1f6d8 ae42b980 af8da064 bd47be44 bdd750ff bf797970 c252d3c2 c875b255 c8892f92 cae437d4 cc6802b7 cc9e2498 ce8a9cae d60f761f daf32b7b e9461a30 eb4adb13 eb57c542 f0583247 f1991f31 fc3b61dd';
 
 /* ============================================================
    LESSONS — content (edit or add lessons here; no code changes needed)
@@ -487,8 +511,7 @@ var S = {
   hi: function(n){ return n ? 'سلام، ' + n + ' جان' : 'سلام!'; },
   todayLesson: 'درس امروز', start: 'شروع درس', minutes: 'دقیقه', newPhrases: 'جملهٔ نو',
   streakLabel: 'روز پشت سر هم', path: 'مسیر شما', lessonsOf: function(d,t){ return fa(d) + ' از ' + fa(t) + ' درس'; },
-  done: 'تمام شد', now: 'امروز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات',
-  locked: 'اول درس‌های پیش را تمام کنید',
+  done: 'تمام شد', now: 'امروز', open: 'باز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات',
   allDone: 'همهٔ درس‌ها تمام شد! حالا تکرار کنید.',
   installTitle: 'برنامه را روی صفحهٔ اصلی بگذارید',
   installText: 'در Safari دکمهٔ Share {share} را بزنید (اگر نبود، اول «⋯» را بزنید). بعد «Add to Home Screen» را بزنید. اگر «Open as Web App» دیدید، روشن بماند. بعد «Add».',
@@ -500,6 +523,15 @@ var S = {
   bravo: 'شاباش!', lessonDone: function(t){ return 'درس «' + t + '» تمام شد'; },
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
   changeInSettings: 'تغییر از تنظیمات',
+  topic: 'موضوع گپ:',
+  slow: 'آهسته', sayIt: 'خودتان بگویید', recStop: 'بس', mine: 'صدای شما', original: 'صدای اصلی',
+  cmpHint: 'اول صدای خود را می‌شنوید، بعد صدای اصلی را. مقایسه کنید.',
+  micDenied: 'اجازهٔ میکروفون داده نشد. دوباره بزنید و در پیام آیفون «Allow» را بزنید.',
+  micNone: 'ضبط صدا در این موبایل کار نمی‌کند.',
+  dialogTitle: 'گوش دادن: یک گفتگو', playAll: 'پخش گفتگو', showFa: 'نمایش معنی', hideFa: 'پنهان کردن معنی',
+  dialogHint: 'روی هر جمله بزنید تا دوباره بشنوید.', dq: 'سؤال دربارهٔ گفتگو', replay: 'دوباره بشنوید',
+  remindLabel: 'یادآوری روزانه', remindBtn: 'افزودن به تقویم',
+  remindHelp: 'وقت را انتخاب کنید و «افزودن به تقویم» را بزنید. در صفحهٔ بعد «Add to Calendar» یا «Add All» را بزنید. آیفون هر روز در همین وقت به شما یادآوری می‌کند. اگر وقت را عوض کردید، یادآوری قبلی را در تقویم پاک کنید.',
   talkCap: 'حالا همین درس را با صدای خود تمرین کنید. اشتباه کردن هیچ اشکالی ندارد!',
   pasteSteps: [
     'اگر صفحهٔ ورود (Sign in) باز شد: «Done» را بزنید و برنامهٔ %1 را خودتان باز کنید.',
@@ -520,6 +552,7 @@ var S = {
   reviewCount: function(n){ return fa(n) + ' کارت برای تکرار'; }, reviewStart: 'شروع تکرار', reviewDone: 'تکرار تمام شد',
   name: 'نام شما', nameHelp: 'در صفحهٔ اول با این نام به شما سلام می‌گوییم.',
   aiLabel: 'هوش مصنوعی برای گپ زدن', aiHelp: 'ChatGPT برای گپ زدن به دری بهتر است. اگر خواستید، Claude را انتخاب کنید.',
+  voiceLabel: 'صدای انگلیسی', voiceF: 'زن', voiceM: 'مرد', voiceHelp: 'برای شنیدن نمونه، یکی را بزنید.',
   hintsLabel: 'راهنمای تلفظ با حروف دری', hintsAuto: 'خودکار', hintsOn: 'همیشه', hintsOff: 'هیچ وقت',
   hintsHelp: 'خودکار: در پنج درس اول نشان داده می‌شود.',
   themeLabel: 'ظاهر برنامه',
@@ -550,7 +583,7 @@ function niceDate(s){
 /* ---------- storage ---------- */
 var storageOK = true;
 function freshState(){
-  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', hints:'auto', theme:CONFIG.defaultTheme }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[] };
+  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'auto', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[] };
 }
 function loadState(){
   try {
@@ -563,6 +596,8 @@ function loadState(){
     if (s.settings.hints === true) s.settings.hints = 'auto';
     if (s.settings.hints === false) s.settings.hints = 'off';
     if (['auto','on','off'].indexOf(s.settings.hints) < 0) s.settings.hints = 'auto';
+    if (['f','m'].indexOf(s.settings.voice) < 0) s.settings.voice = 'f';
+    if (!(s.settings.remind >= 7 && s.settings.remind <= 22)) s.settings.remind = 18;
     if (['a','b','c'].indexOf(s.settings.theme) < 0) s.settings.theme = CONFIG.defaultTheme;
     if (needAi || !CONFIG.ai[s.settings.ai]) s.settings.ai = 'chatgpt';
     s.aiV2 = true;
@@ -596,7 +631,7 @@ function syncOwn(){
 function lessonIndex(id){ for (var i = 0; i < LESSONS.length; i++) if (LESSONS[i].id === id) return i; return -1; }
 function firstOpen(){ for (var i = 0; i < LESSONS.length; i++) if (!st.done[LESSONS[i].id]) return i; return -1; }
 function isStandalone(){ return window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
-function hintsOn(li){ var h = st.settings.hints; return h === 'on' || (h === 'auto' && li < 5); }
+function hintsOn(li){ var h = st.settings.hints; return h === 'on' || (h === 'auto' && Object.keys(st.done).length < 5); }
 
 /* ---------- streak + spaced review ---------- */
 function shownStreak(){ var t = today(); return (st.streak.last === t || st.streak.last === addDays(t, -1)) ? st.streak.count : 0; }
@@ -645,6 +680,34 @@ function dueIds(exceptLesson){
 function nextDue(){ var m = ''; for (var id in st.cards){ if (!PHRASES[id]) continue; var d = st.cards[id].due; if (!m || d < m) m = d; } return m; }
 function cardCount(){ var n = 0; for (var id in st.cards) if (PHRASES[id]) n++; return n; }
 
+/* conversation topic for the AI voice chat, per lesson */
+var TALK = {
+  l1: { fa:'در ایستگاه بس با یک نفر سلام‌وعلیک می‌کنید و می‌پرسید بانک کجاست.', role:'You are a friendly person at the bus stop. Say good morning, ask my name and where I am from. I ask where the bank is and about a taxi or the bus.' },
+  l2: { fa:'شما نزد داکتر هستید و می‌گویید که چه مشکلی دارید.', role:'You are the GP and I am the patient. Ask what the problem is, where it hurts and for how long.' },
+  l3: { fa:'در دواخانه دوا می‌خرید و می‌پرسید روزانه چند بار بخورید.', role:'You are the pharmacist. I want medicine for a headache and for my child. Ask simple questions and explain how to take it.' },
+  l4: { fa:'در سوپرمارکیت چیزها را پیدا می‌کنید و پول می‌دهید.', role:'You are a shop assistant, then the cashier. Help me find things, tell me the price and ask how I want to pay.' },
+  l5: { fa:'به مکتب می‌روید تا طفل خود را بیاورید و با معلم گپ می‌زنید.', role:"You are my child's teacher at the school gate. Tell me about my child's day. I ask about times and whether my child is OK." },
+  l6: { fa:'سوار بس می‌شوید، تکت می‌خرید و می‌پرسید چه وقت پایین شوید.', role:'You are the bus driver, then another passenger. I buy a ticket and ask where to get off.' },
+  l7: { fa:'با همسایهٔ خود دربارهٔ هوا و یک پارسل گپ می‌زنید.', role:'You are my neighbour. Chat about the weather, offer me tea, and I ask you to take in a parcel for me.' },
+  l8: { fa:'به داکتر تیلفون می‌کنید تا وقت بگیرید.', role:'You are the GP surgery receptionist on the phone. I am booking an appointment. Ask my name and a good day, and ask me to spell my name.' },
+  l9: { fa:'در کافه چای یا قهوه و نان فرمایش می‌دهید.', role:'You work in a café. Take my order, ask "Eat in or take away?" and tell me the price.' },
+  l10: { fa:'راه را گم کرده‌اید و از کسی آدرس می‌پرسید.', role:'You are a kind stranger in the street. I am lost and ask the way to a place. Give short, simple directions.' }
+};
+/* listening dialogue per lesson: lines [speaker f|m, English, Dari]; questions [Dari question, [right, wrong, wrong]] */
+var DIALOGS = {
+  l1: {"lines": [["m", "Hello! I'm Tom. What's your name?", "سلام! من تام هستم. نام شما چیست؟"], ["f", "Hello, I'm Sara. Nice to meet you.", "سلام، من سارا هستم. از دیدن شما خوش شدم."], ["m", "Nice to meet you too. Where are you from?", "من هم خوش شدم. شما از کجا هستید؟"], ["f", "I'm from Afghanistan. I live here now.", "من از افغانستان هستم. حالا اینجا زندگی می‌کنم."]], "qs": [["نام زن چیست؟", ["سارا", "تام", "مریم"]], ["سارا از کجاست؟", ["افغانستان", "انگلستان", "پاکستان"]]]},
+  l2: {"lines": [["m", "Hello. How can I help you?", "سلام. چطور کمک‌تان کنم؟"], ["f", "I have a headache and I feel sick.", "سرم درد می‌کند و دلم بد است."], ["m", "When did it start?", "از کی شروع شد؟"], ["f", "Two days ago.", "دو روز پیش."], ["m", "OK. Take paracetamol and drink lots of water.", "خوب. پاراسیتامول بخورید و زیاد آب بنوشید."]], "qs": [["زن چه مشکلی دارد؟", ["سردردی و دلبدی", "درد پا", "تب طفل"]], ["از کی مریض است؟", ["دو روز پیش", "امروز", "یک هفته پیش"]]]},
+  l3: {"lines": [["m", "Hello, can I help you?", "سلام، کمک کنم؟"], ["f", "Can I have some paracetamol, please? It's for my son.", "لطفاً کمی پاراسیتامول می‌دهید؟ برای پسرم است."], ["m", "How old is he?", "چند ساله است؟"], ["f", "He is six. Is it safe for children?", "شش ساله است. برای اطفال بی‌خطر است؟"], ["m", "Yes, this one is for children. Give it after food.", "بلی، این یکی برای اطفال است. بعد از نان بدهید."]], "qs": [["دوا برای کیست؟", ["برای پسرش", "برای خودش", "برای شوهرش"]], ["دوا را چه وقت بدهد؟", ["بعد از نان", "پیش از نان", "فقط شب"]]]},
+  l4: {"lines": [["f", "Excuse me, where is the milk?", "ببخشید، شیر کجاست؟"], ["m", "It's at the back, next to the eggs.", "در عقب دکان است، پهلوی تخم‌ها."], ["f", "Thank you. How much is this bread?", "تشکر. این نان چند است؟"], ["m", "One pound twenty.", "یک پوند و بیست پنس."], ["f", "Can I pay by card?", "می‌توانم با کارت پول بدهم؟"], ["m", "Yes, of course.", "بلی، حتماً."]], "qs": [["شیر کجاست؟", ["در عقب دکان، پهلوی تخم‌ها", "نزدیک دروازه", "پهلوی نان"]], ["نان چند است؟", ["یک پوند و بیست پنس", "دو پوند", "بیست پنس"]]]},
+  l5: {"lines": [["f", "Hello, I'm here to pick up my son, Omar.", "سلام، آمده‌ام پسرم عمر را ببرم."], ["m", "Hello! Omar is in Year 3. He's getting his bag.", "سلام! عمر در صنف سه است. بکس خود را می‌گیرد."], ["f", "Is he OK today?", "امروز خوب است؟"], ["m", "Yes, he had a good day. Tomorrow school finishes at 2 o'clock.", "بلی، روز خوبی داشت. فردا مکتب ساعت دو رخصت می‌شود."], ["f", "2 o'clock. Thank you!", "ساعت دو. تشکر!"]], "qs": [["عمر در کدام صنف است؟", ["صنف سه", "صنف یک", "صنف پنج"]], ["فردا مکتب چه وقت رخصت می‌شود؟", ["ساعت دو", "ساعت سه", "ساعت چهار"]]]},
+  l6: {"lines": [["f", "Does this bus go to the hospital?", "این بس به شفاخانه می‌رود؟"], ["m", "Yes, it does.", "بلی، می‌رود."], ["f", "A single, please.", "یک تکت یک‌طرفه، لطفاً."], ["m", "That's two pounds.", "دو پوند می‌شود."], ["f", "Can you tell me when to get off?", "می‌شود بگویید چه وقت پایین شوم؟"], ["m", "Yes, no problem.", "بلی، هیچ مشکلی نیست."]], "qs": [["زن کجا می‌رود؟", ["شفاخانه", "مکتب", "بازار"]], ["تکت چند است؟", ["دو پوند", "یک پوند", "سه پوند"]]]},
+  l7: {"lines": [["m", "Hi! The weather is lovely today.", "سلام! امروز هوا بسیار خوب است."], ["f", "Yes, it is. Would you like a cup of tea?", "بلی، خوب است. یک پیاله چای می‌خورید؟"], ["m", "Oh, yes please! Thank you.", "اوه، بلی، لطفاً! تشکر."], ["f", "Could you take in a parcel for me tomorrow?", "می‌شود فردا یک پارسل را به جای من بگیرید؟"], ["m", "Of course.", "حتماً."]], "qs": [["هوا چطور است؟", ["خوب است", "سرد است", "باران می‌بارد"]], ["زن از همسایه چه می‌خواهد؟", ["یک پارسل را بگیرد", "پول بدهد", "او را به مکتب ببرد"]]]},
+  l8: {"lines": [["m", "Good morning, Park Surgery.", "صبح بخیر، کلینیک پارک."], ["f", "Hello. I'd like to book an appointment, please.", "سلام. می‌خواهم یک وقت بگیرم، لطفاً."], ["m", "What's your name?", "نام شما چیست؟"], ["f", "Sara Ahmadi.", "سارا احمدی."], ["m", "Is Monday at ten OK?", "دوشنبه ساعت ده خوب است؟"], ["f", "Yes, Monday is OK. Thank you.", "بلی، دوشنبه خوب است. تشکر."]], "qs": [["وقت برای کدام روز است؟", ["دوشنبه", "جمعه", "سه‌شنبه"]], ["ساعت چند؟", ["ساعت ده", "ساعت دو", "ساعت هشت"]]]},
+  l9: {"lines": [["m", "Hi, what can I get you?", "سلام، چه برایتان بیاورم؟"], ["f", "A tea and a sandwich, please.", "یک چای و یک ساندویچ، لطفاً."], ["m", "Eat in or take away?", "همین‌جا می‌خورید یا با خود می‌برید؟"], ["f", "Take away, please.", "با خود می‌برم، لطفاً."], ["m", "That's five pounds fifty.", "پنج پوند و پنجاه پنس می‌شود."]], "qs": [["زن چه می‌خرد؟", ["چای و ساندویچ", "قهوه و کیک", "آب و نان"]], ["چند پول می‌دهد؟", ["پنج پوند و پنجاه پنس", "پانزده پوند", "پنجاه پنس"]]]},
+  l10: {"lines": [["f", "Excuse me, I'm lost. Where is the library?", "ببخشید، راه را گم کرده‌ام. کتابخانه کجاست؟"], ["m", "Go straight on and turn left at the lights.", "مستقیم بروید و پیش چراغ‌های ترافیک دست چپ دور بخورید."], ["f", "Is it far?", "دور است؟"], ["m", "No, it's five minutes.", "نه، پنج دقیقه راه است."], ["f", "Thank you very much!", "بسیار تشکر!"]], "qs": [["زن کجا می‌رود؟", ["کتابخانه", "شفاخانه", "بانک"]], ["چقدر راه است؟", ["پنج دقیقه", "پانزده دقیقه", "یک ساعت"]]]}
+};
+LESSONS.forEach(function(l){ if (!l.talk && TALK[l.id]) l.talk = TALK[l.id]; if (!l.dialog && DIALOGS[l.id]) l.dialog = DIALOGS[l.id]; });
+
 /* ---------- speech ---------- */
 var voices = [];
 function loadVoices(){ try { voices = window.speechSynthesis ? speechSynthesis.getVoices() || [] : []; } catch (e) { voices = []; } }
@@ -652,22 +715,47 @@ if (window.speechSynthesis){
   loadVoices();
   try { speechSynthesis.addEventListener('voiceschanged', loadVoices); } catch (e) { speechSynthesis.onvoiceschanged = loadVoices; }
 }
-function pickVoice(){
-  var en = voices.filter(function(v){ return /^en/i.test(v.lang || ''); });
-  var gb = en.filter(function(v){ return /en[-_]GB/i.test(v.lang); });
-  var pref = gb.filter(function(v){ return /Daniel|Kate|Serena|Martha|Arthur/i.test(v.name || ''); });
-  return pref[0] || gb[0] || en[0] || null;
+/* phone voices: prefer downloaded Premium/Enhanced voices, skip novelty voices */
+var NOVELTY = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley|Fred|Junior|Kathy|Ralph/i;
+function voiceScore(v){
+  var n = v.name || '', u = v.voiceURI || '', sc = 0;
+  if (!/^en/i.test(v.lang || '') || NOVELTY.test(n)) return -1;
+  if (/en[-_]GB/i.test(v.lang)) sc += 30; else if (/en[-_](IE|AU|NZ)/i.test(v.lang)) sc += 12; else if (/en[-_]US/i.test(v.lang)) sc += 8;
+  if (/premium/i.test(n + u)) sc += 50; else if (/enhanced|neural|natural/i.test(n + u)) sc += 40;
+  if (/Serena|Jamie|Kate|Stephanie|Arthur|Martha|Daniel|Oliver|Ava|Zoe|Evan|Samantha/i.test(n)) sc += 6;
+  if (/compact|eloquence/i.test(u)) sc -= 20;
+  return sc;
 }
-var playTimer = null;
-function speak(text, btn){
+function pickVoice(){
+  var best = null, bs = -1;
+  voices.forEach(function(v){ var s = voiceScore(v); if (s > bs){ bs = s; best = v; } });
+  return best;
+}
+/* natural recorded voice (made with a neural voice); phone voice is the backup */
+function hashText(t){ var h = 0x811c9dc5; for (var i = 0; i < t.length; i++){ h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return ('0000000' + h.toString(16)).slice(-8); }
+var AUDIO_SET = {}; AUDIO_IDS.split(' ').forEach(function(x){ if (x) AUDIO_SET[x] = 1; });
+function clipUrl(text, slow){ var h = hashText(text); return AUDIO_SET[h] ? CONFIG.audioBase + (st.settings.voice === 'm' ? 'm' : 'f') + (slow ? 's' : '') + '/' + h + '.mp3' : ''; }
+function lineUrl(text){ return CONFIG.audioBase + 'd/' + hashText(text) + '.mp3'; }
+var player = null, playTimer = null, playBtn = null, BLOBS = {};
+function markPlaying(btn){
+  if (playBtn && playBtn !== btn) playBtn.classList.remove('playing');
+  playBtn = btn || null; clearTimeout(playTimer);
+  if (btn){ btn.classList.add('playing'); playTimer = setTimeout(function(){ btn.classList.remove('playing'); }, 6000); }
+}
+function donePlaying(btn){ if (btn) btn.classList.remove('playing'); }
+function stopAll(){
+  try { if (player){ player.pause(); } } catch (e) {}
+  try { if (window.speechSynthesis && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel(); } catch (e) {}
+}
+function speakDevice(text, btn, slow, onDone){
   var s = window.speechSynthesis;
-  if (!s || !window.SpeechSynthesisUtterance){ toast('موتور صدا پیدا نشد. «بررسی برنامه» را در تنظیمات ببینید.'); return false; }
+  if (!s || !window.SpeechSynthesisUtterance){ toast('موتور صدا پیدا نشد. «بررسی برنامه» را در تنظیمات ببینید.'); donePlaying(btn); if (onDone) onDone(); return false; }
   function go(){
     try {
       var u = new SpeechSynthesisUtterance(text);
-      u.lang = 'en-GB'; u.rate = 0.9;
-      var v = pickVoice(); if (v) u.voice = v;
-      if (btn){ btn.classList.add('playing'); clearTimeout(playTimer); playTimer = setTimeout(function(){ btn.classList.remove('playing'); }, 4000); u.onend = u.onerror = function(){ btn.classList.remove('playing'); }; }
+      u.lang = 'en-GB'; u.rate = slow ? 0.6 : 0.88; u.pitch = 1;
+      var v = pickVoice(); if (v){ u.voice = v; u.lang = v.lang; }
+      u.onend = u.onerror = function(){ donePlaying(btn); if (onDone) onDone(); };
       s.speak(u);
     } catch (e) {}
   }
@@ -675,6 +763,127 @@ function speak(text, btn){
     if (s.speaking || s.pending){ s.cancel(); setTimeout(go, 60); } else { go(); }
   } catch (e) { go(); }
   return true;
+}
+function getPlayer(){ if (!player){ player = new Audio(); player.preload = 'auto'; player.setAttribute('playsinline', ''); } return player; }
+/* play a url; text is spoken by the phone voice if the file fails. Each call gets a number so late events from an older call are ignored. */
+var playSeq = 0, readyTimer = null;
+function playUrl(url, text, btn, slow, onDone){
+  markPlaying(btn);
+  stopAll(); clearTimeout(readyTimer);
+  var seq = ++playSeq;
+  if (!url) return speakDevice(text, btn, slow, onDone);
+  var p = getPlayer(), finished = false;
+  function mine(){ return p.__seq === seq; }
+  function end(){ if (finished || !mine()) return; finished = true; clearTimeout(readyTimer); donePlaying(btn); if (onDone) onDone(); }
+  function fallback(){ if (finished || !mine()) return; finished = true; clearTimeout(readyTimer); try { p.pause(); } catch (e) {} if (text) speakDevice(text, btn, slow, onDone); else { donePlaying(btn); if (onDone) onDone(); } }
+  p.onended = end;
+  p.onerror = fallback;
+  p.onplaying = function(){ if (mine()) clearTimeout(readyTimer); };
+  p.__seq = seq; p.__url = url; p.muted = false; p.src = BLOBS[url] || url;
+  /* slow network: if nothing is playing after 2.5 s, use the phone voice instead of a late clip */
+  readyTimer = setTimeout(function(){ if (mine() && !finished && (p.paused || p.readyState < 3)) fallback(); }, 2500);
+  try { var pr = p.play(); if (pr && pr.catch) pr.catch(function(err){ if (!err || err.name !== 'AbortError') fallback(); }); } catch (e) { fallback(); }
+  return true;
+}
+/* iOS ignores speechSynthesis until one speak() has come from a tap; do a silent one on the first touch */
+var speechUnlocked = false;
+function unlockSpeech(){
+  if (speechUnlocked || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return; speechUnlocked = true;
+  try { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) {}
+}
+document.addEventListener('touchend', unlockSpeech, { capture:true, passive:true });
+document.addEventListener('click', unlockSpeech, true);
+function speak(text, btn, slow, onDone){ return playUrl(clipUrl(text, slow), text, btn, slow, onDone); }
+/* iOS only lets a page start audio from a tap; calling play() muted inside a tap keeps the player usable later */
+function unlockPlayer(){ try { var p = getPlayer(); if (!p.src) return; p.muted = true; var pr = p.play(); if (pr && pr.then) pr.then(function(){ p.pause(); p.muted = false; }, function(){ p.muted = false; }); else { p.pause(); p.muted = false; } } catch (e) {} }
+/* record and compare */
+var rec = { mr:null, stream:null, url:'', text:'', timer:null, pending:false };
+function recSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
+function recStopTracks(){ try { if (rec.stream) rec.stream.getTracks().forEach(function(tr){ tr.stop(); }); } catch (e) {} rec.stream = null; }
+function recording(){ return !!(rec.mr && rec.mr.state === 'recording'); }
+function recToggle(btn, text){
+  if (recording()){ try { rec.mr.stop(); } catch (e) {} return; }
+  if (rec.pending) return;
+  if (!recSupported()){ toast(S.micNone); return; }
+  stopAll(); unlockPlayer();
+  rec.pending = true;
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(function(stream){
+    rec.pending = false;
+    var chunks = [], mr;
+    if (!onCard(text)){ stream.getTracks().forEach(function(tr){ tr.stop(); }); return; }
+    try { mr = new MediaRecorder(stream); } catch (e) { stream.getTracks().forEach(function(tr){ tr.stop(); }); toast(S.micNone); return; }
+    rec.mr = mr; rec.stream = stream; rec.text = text;
+    mr.ondataavailable = function(e){ if (e.data && e.data.size) chunks.push(e.data); };
+    mr.onstop = function(){
+      if (mr !== rec.mr) return;
+      clearTimeout(rec.timer); recStopTracks(); rec.mr = null;
+      if (!chunks.length){ refreshTools(); return; }
+      if (rec.url) try { URL.revokeObjectURL(rec.url); } catch (e) {}
+      rec.url = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/mp4' }));
+      refreshTools();
+      /* give iOS a moment to switch the speaker back on after the microphone */
+      setTimeout(playCompare, 400);
+    };
+    mr.start();
+    refreshTools();
+    rec.timer = setTimeout(function(){ if (mr === rec.mr && mr.state === 'recording') try { mr.stop(); } catch (e) {} }, 6000);
+  }).catch(function(err){ rec.pending = false; toast(err && (err.name === 'NotAllowedError' || err.name === 'SecurityError') ? S.micDenied : S.micNone); });
+}
+function playMine(onDone){ if (rec.url) playUrl(rec.url, '', app.querySelector('[data-play-mine]'), false, onDone); }
+function onCard(text){ var b = app.querySelector('[data-rec]'); return view.name === 'lesson' && !!b && b.getAttribute('data-rec') === text; }
+function playCompare(){ var text = rec.text; if (!rec.url || !onCard(text)) return; playMine(function(){ setTimeout(function(){ if (rec.text === text && onCard(text)) speak(text, app.querySelector('[data-say-card] .speaker')); }, 350); }); }
+function toolsHtml(text){
+  var isRec = recording() && rec.text === text;
+  var h = '<div class="tools" data-tools><button class="small-btn" type="button" data-slow="' + esc(text) + '">🐢 ' + S.slow + '</button>' +
+    (recSupported() ? '<button class="small-btn' + (isRec ? ' rec' : '') + '" type="button" data-rec="' + esc(text) + '">' + (isRec ? S.recStop : '🎙️ ' + S.sayIt) + '</button>' : '') + '</div>';
+  if (rec.url && rec.text === text && !isRec) h += '<div class="compare"><button class="small-btn" type="button" data-play-mine>▶ ' + S.mine + '</button><button class="small-btn" type="button" data-say="' + esc(text) + '">▶ ' + S.original + '</button></div><div class="cmp-hint">' + S.cmpHint + '</div>';
+  return h;
+}
+function refreshTools(){
+  var box = app.querySelector('[data-tools]'); if (!box) return;
+  var text = box.querySelector('[data-slow]').getAttribute('data-slow'), wrap = document.createElement('div');
+  wrap.innerHTML = toolsHtml(text);
+  var next = box.nextElementSibling; while (next && (next.classList.contains('compare') || next.classList.contains('cmp-hint'))){ var n2 = next.nextElementSibling; next.remove(); next = n2; }
+  box.replaceWith.apply(box, Array.prototype.slice.call(wrap.childNodes));
+}
+function recReset(){ var m = rec.mr; rec.mr = null; if (m && m.state === 'recording') try { m.onstop = null; m.stop(); } catch (e) {} clearTimeout(rec.timer); recStopTracks(); if (rec.url) try { URL.revokeObjectURL(rec.url); } catch (e) {} rec.url = ''; rec.text = ''; }
+
+/* dialogue player */
+var dlgToken = 0;
+function playDialog(L, from){
+  var token = ++dlgToken, lines = L.dialog.lines;
+  function step(k){
+    if (token !== dlgToken || view.name !== 'lesson') return;
+    app.querySelectorAll('.bubble.on').forEach(function(b){ b.classList.remove('on'); });
+    if (k >= lines.length) return;
+    var b = app.querySelector('[data-line="' + k + '"]'); if (b) b.classList.add('on');
+    playUrl(lineUrl(lines[k][1]), lines[k][1], null, false, function(){ setTimeout(function(){ step(k + 1); }, 450); });
+  }
+  step(from || 0);
+}
+function playLine(L, k){
+  dlgToken++;
+  app.querySelectorAll('.bubble.on').forEach(function(b){ b.classList.remove('on'); });
+  var b = app.querySelector('[data-line="' + k + '"]'); if (b) b.classList.add('on');
+  var ln = L.dialog.lines[k]; playUrl(lineUrl(ln[1]), ln[1], null, false, function(){ if (b) b.classList.remove('on'); });
+}
+
+/* warm the cache so taps play at once */
+function clipText(src){
+  var m = /([0-9a-f]{8})\.mp3/.exec(src || ''); if (!m) return '';
+  var all = ['Hello, how are you?'];
+  LESSONS.forEach(function(l){ l.phrases.forEach(function(p){ all.push(p.en); }); all.push(l.trap.example); if (l.trap.drill.say) all.push(l.trap.drill.say); if (l.dialog) l.dialog.lines.forEach(function(x){ all.push(x[1]); }); });
+  for (var i = 0; i < all.length; i++) if (hashText(all[i]) === m[1]) return all[i];
+  return '';
+}
+/* downloaded clips are kept as in-memory blobs, which start at once */
+function preloadClips(texts, urls){
+  var list = [];
+  texts.forEach(function(x){ var u = clipUrl(x), us = clipUrl(x, true); if (u) list.push(u); if (us) list.push(us); });
+  list.concat(urls || []).forEach(function(u){
+    if (BLOBS[u] || !window.fetch || !window.URL || !URL.createObjectURL) return;
+    try { fetch(u).then(function(r){ return r.ok ? r.blob() : null; }).then(function(b){ if (b && b.size) BLOBS[u] = URL.createObjectURL(b); }).catch(function(){}); } catch (e) {}
+  });
 }
 document.addEventListener('visibilitychange', function(){ try { if (!document.hidden && window.speechSynthesis) speechSynthesis.resume(); } catch (e) {} });
 
@@ -704,12 +913,15 @@ function copyFailed(){
 
 /* ---------- AI brief ---------- */
 function briefFor(l){
+  var topic = l.talk ? l.talk.role : 'A simple everyday conversation about: ' + l.title.en + '.';
   return 'لطفاً این درس انگلیسی را با من به شکل صوتی تمرین کن.\n' +
-    'You are my patient English teacher. My name is ' + (st.name || 'Freshta') + '. I speak Dari (Afghan Persian), level A1, and I live in the UK. We are talking by voice.\n' +
-    'Lesson: ' + l.title.en + ' (' + l.title.fa + ').\n' +
-    'Phrases: ' + l.phrases.map(function(p){ return p.en; }).join('; ') + '.\n' +
+    'You are my patient English teacher in a live voice conversation. My name is ' + (st.name || 'Freshta') + '. I speak Dari (Afghan Persian). My English is beginner level (A1): simple words and short phrases. I live in the UK.\n' +
+    'Lesson: ' + l.title.en + '.\n' +
+    'Phrases I just learned: ' + l.phrases.map(function(p){ return p.en; }).join('; ') + '.\n' +
+    'Topic for our talk: ' + topic + '\n' +
     "Today's trap for Dari speakers: " + l.trap.brief + '\n' +
-    'Please: 1) Explain each phrase briefly in Dari. 2) Role-play the situation with me in very simple British English, one short line at a time, and wait for my reply. 3) Correct me gently in Dari, especially the trap. 4) Speak slowly and praise small wins. Start now: greet me in Dari and ask me to say the first phrase.';
+    'Expect from me: very short answers, mistakes, long pauses, and sometimes Dari words. Voice transcription may mishear me, so kindly guess what I meant.\n' +
+    'How to talk: 1) Greet me in Dari and explain the topic in one or two short Dari sentences. 2) Role-play the topic in very simple British English, one short sentence at a time, then wait for me. Use the phrases above. 3) If I am stuck, say the answer in English and ask me to repeat it. 4) Correct one mistake at a time, gently, in Dari, especially the trap. 5) Speak slowly and praise small wins. 6) After about 10 turns, or when I say stop, give a short recap in Dari: what I did well and 2 phrases to practise. Start now.';
 }
 function aiUrl(l){ var a = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt; return a.url + encodeURIComponent(briefFor(l)); }
 
@@ -721,7 +933,7 @@ function toast(msg){ var t = document.getElementById('toast'); t.textContent = m
 var app = document.getElementById('app');
 var view = { name:'home' };
 function applyTheme(){ document.documentElement.className = 'theme-' + (st.settings.theme || CONFIG.defaultTheme); }
-function go(name, data){ view = data || {}; view.name = name; render(); }
+function go(name, data){ stopAll(); recReset(); var tt = document.getElementById('toast'); if (tt) tt.classList.remove('show'); view = data || {}; view.name = name; render(); }
 function render(){
   applyTheme();
   if (view.name === 'lesson') return renderLesson();
@@ -760,8 +972,8 @@ function renderHome(){
   h += '<section class="card streak"><div class="flame">' + ic('i-flame') + '</div><div><div class="s-num" data-streak>' + fa(shownStreak()) + '</div><div class="s-label">' + S.streakLabel + '</div></div><div class="pts" data-points>' + fa(st.points) + '<small>' + S.totalPoints + '</small></div><div class="days">' + row + '</div></section>';
   h += '<section class="path"><div class="sec-title">' + S.path + ' <small>' + S.lessonsOf(doneCount, LESSONS.length) + '</small></div><ol>';
   LESSONS.forEach(function(l, i){
-    var cls = st.done[l.id] ? 'done' : (i === open ? 'now' : 'lock');
-    var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : ic('i-lock'));
+    var cls = st.done[l.id] ? 'done' : (i === open ? 'now' : 'open');
+    var state = cls === 'done' ? ic('i-check') + S.done : (cls === 'now' ? S.now : S.open);
     h += '<li class="' + cls + '" data-lesson="' + i + '" role="button" tabindex="0"><span class="node">' + ic(l.icon) + '</span><div><div class="n-title">' + esc(l.title.fa) + '</div><div class="n-en en" lang="en">' + esc(l.title.en) + '</div></div><span class="n-state">' + state + '</span>' + (cls === 'done' ? '<button class="n-talk" type="button" data-talk="' + i + '" aria-label="' + S.talkAgain + '">' + ic('i-mic') + '<small>گپ</small></button>' : '') + '</li>';
   });
   h += '</ol></section></div>' + tabbar('home');
@@ -816,6 +1028,7 @@ function buildSteps(li){
   s.push({ t:'phrase', p:P[2].id }, { t:'phrase', p:P[3].id }, exGap(P[2]), exOrder(P[3]));
   s.push({ t:'phrase', p:P[4].id }, { t:'phrase', p:P[5].id }, exListen(P[4]), exGap(P[5]));
   s.push({ t:'trap' }, { t:'ex', kind:'drill' });
+  if (L.dialog) s.push({ t:'dialog' }, { t:'ex', kind:'dq', qi:0 }, { t:'ex', kind:'dq', qi:1 });
   dueIds(li).filter(function(id){ var q = PHRASES[id]; return q.lesson >= 0 && !q.trap && !q.own; }).slice(0, 3).forEach(function(id, k){ var p = PHRASES[id]; s.push(k % 2 ? exMeaning(p, true) : exListen(p, true)); });
   s.push({ t:'complete' });
   return s;
@@ -826,8 +1039,9 @@ function buildReview(){
   s.push({ t:'complete' });
   return s;
 }
-function startLesson(li){ go('lesson', { li:li, steps:buildSteps(li), i:0, answered:false, isReview:false, correct:0 }); }
-function startReview(){ go('lesson', { li:-1, steps:buildReview(), i:0, answered:false, isReview:true, correct:0, autoplay:true }); }
+function stepTexts(steps){ var o = []; steps.forEach(function(s){ if (s.p && PHRASES[s.p]) o.push(PHRASES[s.p].en); if (s.say) o.push(s.say); }); return o; }
+function startLesson(li){ var steps = buildSteps(li), L = LESSONS[li]; recReset(); preloadClips(stepTexts(steps).concat([L.trap.example], L.trap.drill.say ? [L.trap.drill.say] : []), L.dialog ? L.dialog.lines.map(function(x){ return lineUrl(x[1]); }) : []); go('lesson', { li:li, steps:steps, i:0, answered:false, isReview:false, correct:0 }); }
+function startReview(){ var steps = buildReview(); recReset(); preloadClips(stepTexts(steps)); go('lesson', { li:-1, steps:steps, i:0, answered:false, isReview:true, correct:0, autoplay:true }); }
 
 function choicesHtml(o, row){
   return '<div class="choices' + (row ? ' row' : '') + '">' + o.map(function(c){
@@ -850,13 +1064,13 @@ function renderLesson(){
     var p = PHRASES[step.p]; seeCard(p.id);
     h += '<section class="card phrase" data-say-card><div class="emo">' + p.emoji + '</div><div class="en-big en" lang="en">' + esc(p.en) + '</div><div class="fa-mean">' + esc(p.fa) + '</div>' +
       (hintsOn(p.lesson) ? '<div class="hint">' + esc(p.hint) + ' <small>(تلفظ)</small></div>' : '') +
-      '<button class="speaker" type="button" data-say="' + esc(p.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button><div class="sp-label">' + S.listen + '</div><div class="in-cards">' + ic('i-cards') + S.inCards + '</div></section>';
+      '<button class="speaker" type="button" data-say="' + esc(p.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button><div class="sp-label">' + S.listen + '</div>' + toolsHtml(p.en) + '<div class="in-cards">' + ic('i-cards') + S.inCards + '</div></section>';
     bottom = '<button class="cta" type="button" data-next>' + S.cont + '</button>';
     autoSay = p.en;
   } else if (step.t === 'flash'){
     var fp = PHRASES[step.p], c0 = card(step.p) || { iv:0, ease:2.5, reps:0 };
     h += '<section class="card phrase flash" data-say-card><div class="emo">' + fp.emoji + '</div><div class="en-big en" lang="en">' + esc(fp.en) + '</div>' +
-      '<button class="speaker" type="button" data-say="' + esc(fp.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button>' +
+      '<button class="speaker" type="button" data-say="' + esc(fp.en) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button>' + toolsHtml(fp.en) +
       (v.flipped ? '<div class="flip-back"><div class="fa-mean">' + esc(fp.fa || '—') + '</div>' + (fp.hint && hintsOn(fp.lesson) ? '<div class="hint">' + esc(fp.hint) + '</div>' : '') + '</div>' : '') + '</section>';
     if (v.flipped){
       h += '<div class="q" style="text-align:center">' + S.howWell + '</div>';
@@ -872,6 +1086,12 @@ function renderLesson(){
       '<div class="ex"><span class="en" lang="en">' + esc(tr.example) + '</span><button class="speaker small" type="button" data-say="' + esc(tr.example) + '" aria-label="' + S.listen + '">' + ic('i-speaker') + '</button></div>' +
       (st.cards[L.id + 't'] ? '<div class="in-cards">' + ic('i-cards') + S.inCards + '</div>' : '<button class="small-btn" type="button" data-add-card="' + L.id + 't" style="margin-top:10px">➕ ' + S.addCard + '</button>') + '</div></section>';
     bottom = '<button class="cta" type="button" data-next>' + S.cont + '</button>';
+  } else if (step.t === 'dialog'){
+    var dg = L.dialog;
+    h += '<div class="sec-title">🎧 ' + S.dialogTitle + '</div><section class="dialog' + (v.showFa ? ' fa' : '') + '">' + dg.lines.map(function(ln, k){
+      return '<button class="bubble b-' + ln[0] + '" type="button" data-line="' + k + '"><span class="en" lang="en"><span class="who" aria-hidden="true">' + (ln[0] === 'f' ? '👩 ' : '👨 ') + '</span>' + esc(ln[1]) + '</span><span class="b-fa">' + esc(ln[2]) + '</span></button>'; }).join('') + '</section>' +
+      '<div class="row2"><button class="small-btn" type="button" data-play-dialog>▶ ' + S.playAll + '</button><button class="small-btn" type="button" data-toggle-fa>' + (v.showFa ? S.hideFa : S.showFa) + '</button></div><p class="set-help" style="text-align:center">' + S.dialogHint + '</p>';
+    bottom = '<button class="cta" type="button" data-next>' + S.cont + '</button>';
   } else if (step.t === 'ex'){
     if (step.review) h += '<div class="sec-title">' + S.reviewTitle + '</div>';
     var ex = step, pp = PHRASES[ex.p];
@@ -885,6 +1105,10 @@ function renderLesson(){
     } else if (ex.kind === 'order'){
       h += '<div class="q">' + S.qOrder + '</div><div class="q-center"><div class="q-emo">' + pp.emoji + '</div><div class="fa-mean">«' + esc(pp.fa) + '»</div></div>' +
         '<div class="answer-line" data-answer></div><div class="tiles">' + ex.tiles.map(function(t, k){ return '<button class="tile" type="button" data-tile="' + k + '" data-order="' + t.i + '">' + esc(t.w) + '</button>'; }).join('') + '</div>';
+    } else if (ex.kind === 'dq'){
+      var dq = L.dialog.qs[ex.qi];
+      if (!step.options) step.options = shuffle(dq[1].map(function(o, k){ return { t:o, ok:k === 0, fa:true }; }));
+      h += '<div class="sec-title">🎧 ' + S.dq + '</div><div class="q">' + esc(dq[0]) + '</div><div class="q-center"><button class="small-btn" type="button" data-play-dialog>▶ ' + S.replay + '</button></div><section class="quiz">' + choicesHtml(step.options) + '</section>';
     } else if (ex.kind === 'drill'){
       var dr = L.trap.drill;
       h += '<div class="sec-title">' + S.trap + ': ' + esc(L.trap.title) + '</div><div class="q">' + esc(dr.q) + (dr.en ? '<span class="en" lang="en">' + esc(dr.en) + '</span>' : '') + '</div>';
@@ -900,7 +1124,9 @@ function renderLesson(){
   h += '</div>';
   if (bottom) h += '<div class="bottom">' + bottom + '</div>';
   app.innerHTML = h;
+  dlgToken++;
   if (autoSay && v.autoplay) speak(autoSay, app.querySelector('.speaker'));
+  if (step.t === 'dialog' && v.autoplay && !v.dialogPlayed){ v.dialogPlayed = true; playDialog(L, 0); }
   var c = app.querySelector('.content'); if (c) c.scrollTop = 0;
 }
 function renderComplete(){
@@ -925,6 +1151,7 @@ function renderComplete(){
 function talkBlock(L){
   var brief = briefFor(L), ai = CONFIG.ai[st.settings.ai] || CONFIG.ai.chatgpt;
   return '<a class="ai-btn" data-ai-link href="' + esc(aiUrl(L)) + '" target="_blank" rel="noopener"><span class="mic">' + ic('i-mic') + '</span><span><span class="ai-main">' + S.talk + '</span><span class="ai-sub">با <span class="en" lang="en">' + ai.name + '</span> · ' + S.changeInSettings + '</span></span></a>' +
+    (L.talk ? '<div class="topic"><b>' + S.topic + '</b> ' + esc(L.talk.fa) + '</div>' : '') +
     '<p class="d-cap">' + S.talkCap + '</p>' +
     '<div class="paste-note" data-paste-note><ol class="steps">' + S.pasteSteps.map(function(x){ return '<li>' + x.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]/g, function(w){ return '<bdi>' + w + '</bdi>'; }).replace('%1', '<span class="en" lang="en">' + ai.name + '</span>').replace('%2', '<span class="voice-ic" aria-label="voice">' + ic('i-voice') + '</span>') + '</li>'; }).join('') + '</ol></div>' +
     '<div class="row2"><button class="small-btn" type="button" data-copy>' + ic('i-copy') + S.copy + '</button></div>' +
@@ -938,7 +1165,7 @@ function finishLesson(){
   markActivity();
 }
 function nextStep(){
-  var v = view;
+  var v = view; stopAll(); recReset();
   v.i++; v.answered = false; v.autoplay = true; v.flipped = false;
   if (v.steps[v.i].t === 'complete') finishLesson();
   renderLesson();
@@ -1018,6 +1245,10 @@ function renderSettings(){
   var s = st.settings, h = '<div class="content"><h1 class="page-title">' + S.settings + '</h1>';
   h += '<section class="card set-group"><label for="nm">' + S.name + '</label><input id="nm" type="text" value="' + esc(st.name) + '" autocomplete="given-name" data-name><p class="set-help">' + S.nameHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.aiLabel + '</div>' + seg('ai', s.ai, [['chatgpt', '<span class="en">ChatGPT</span>'], ['claude', '<span class="en">Claude</span>']]) + '<p class="set-help">' + S.aiHelp + '</p></section>';
+  h += '<section class="card set-group"><div class="set-label">' + S.voiceLabel + '</div>' + seg('voice', s.voice, [['f', S.voiceF], ['m', S.voiceM]]) + '<p class="set-help">' + S.voiceHelp + '</p></section>';
+  var rh = s.remind || 18, opts = '';
+  for (var hr = 7; hr <= 22; hr++) opts += '<option value="' + hr + '"' + (hr === rh ? ' selected' : '') + '>' + fa(hr) + ':۰۰</option>';
+  h += '<section class="card set-group"><div class="set-label">⏰ ' + S.remindLabel + '</div><div class="remind-row"><select data-remind aria-label="' + S.remindLabel + '">' + opts + '</select><a class="small-btn" data-remind-link href="reminders/' + (rh < 10 ? '0' : '') + rh + '.ics" target="_blank" rel="noopener">📅 ' + S.remindBtn + '</a></div><p class="set-help">' + S.remindHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.hintsLabel + '</div>' + seg('hints', s.hints, [['auto', S.hintsAuto], ['on', S.hintsOn], ['off', S.hintsOff]]) + '<p class="set-help">' + S.hintsHelp + '</p></section>';
   h += '<section class="card set-group"><div class="set-label">' + S.themeLabel + '</div>' + seg('theme', s.theme, [['b', 'رنگ'], ['a', 'نسیم'], ['c', 'کاشی']]) + '</section>';
   h += '<button class="cta" type="button" data-selfcheck>' + ic('i-shield') + S.checkBtn + ' <span class="en" lang="en" style="font-size:14px;opacity:.85">· ' + S.checkSub + '</span></button>';
@@ -1043,7 +1274,7 @@ function waitVoices(ms){
   });
 }
 function selfCheck(){
-  var out = app.querySelector('[data-check-out]'), rows = {}, order = ['storage','home','engine','voice','sound','net','ai','clip','font'];
+  var out = app.querySelector('[data-check-out]'), rows = {}, order = ['storage','home','audio','engine','voice','sound','net','ai','clip','font'];
   function paint(){
     var bad = order.some(function(k){ return rows[k] && rows[k].s === 'bad'; }), pending = order.some(function(k){ return !rows[k] || rows[k].s === 'wait'; }),
         asking = order.some(function(k){ return rows[k] && rows[k].s === 'ask'; });
@@ -1064,20 +1295,29 @@ function selfCheck(){
     : set('home', 'bad', 'هنوز روی صفحهٔ اصلی نصب نشده', 'Not added to Home Screen yet', 'در Safari: دکمهٔ Share (یا «⋯» بعد Share)، بعد «Add to Home Screen»، «Open as Web App» روشن، بعد «Add». بعد برنامه را از آیکن باز کنید. اگر قبلاً اضافه کرده‌اید، آیکن را پاک کنید و دوباره اضافه کنید.', 'In Safari: Share (or ⋯ then Share), "Add to Home Screen", keep "Open as Web App" on, then "Add". Open the app from the icon. If you already added it, delete the icon and add it again.');
   /* 3 engine */
   var hasEngine = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
-  hasEngine ? set('engine', 'ok', 'موتور صدا موجود است', 'Speech engine is available')
-      : set('engine', 'bad', 'موتور صدا در این مرورگر نیست', 'No speech engine in this browser', 'برنامه را در Safari آیفون باز کنید.', 'Open the app in Safari on the iPhone.');
+  hasEngine ? set('engine', 'ok', 'صدای خود موبایل هم است (برای کارت‌های خودتان)', 'Phone voice also available (for your own cards)')
+      : set('engine', 'warn', 'صدای خود موبایل نیست؛ کارت‌های خودتان صدا ندارند', 'No phone voice; your own cards will be silent', 'برنامه را در Safari آیفون باز کنید.', 'Open the app in Safari on the iPhone.');
   /* 4 voice */
-  if (!hasEngine) set('voice', 'bad', 'صدای انگلیسی پیدا نشد', 'No English voice found', 'اول موتور صدا باید کار کند.', 'The speech engine must work first.');
+  if (!hasEngine) set('voice', 'warn', 'صدای انگلیسی موبایل پیدا نشد', 'No phone English voice found', 'فقط برای کارت‌های خودتان لازم است.', 'Only needed for your own cards.');
   else waitVoices(2000).then(function(){
     var en = voices.filter(function(v){ return /^en/i.test(v.lang || ''); }), gb = en.filter(function(v){ return /en[-_]GB/i.test(v.lang); });
-    if (gb.length) set('voice', 'ok', 'صدای انگلیسی بریتانیایی پیدا شد', 'British English voice found (' + esc(gb[0].name || 'en-GB') + ')');
-    else if (en.length) set('voice', 'ok', 'صدای انگلیسی پیدا شد', 'English voice found (' + esc(en[0].name || en[0].lang) + ')');
+    var pv = pickVoice(), nice = pv && /premium|enhanced/i.test((pv.name || '') + (pv.voiceURI || ''));
+    var better = 'برای صدای بهتر در کارت‌های خودتان: <span dir="ltr" class="en">Settings → Accessibility → Spoken Content → Voices → English</span>، یک صدای (Enhanced) یا (Premium) بریتانیایی را دانلود کنید.';
+    if (pv && nice) set('voice', 'ok', 'صدای خوب موبایل پیدا شد', 'Good phone voice found (' + esc(pv.name) + ')');
+    else if (pv) set('voice', 'ok', 'صدای انگلیسی موبایل پیدا شد', 'Phone English voice found (' + esc(pv.name || pv.lang) + ')', better, 'For a nicer voice on your own cards, download an Enhanced or Premium British voice in Settings → Accessibility → Spoken Content → Voices → English.');
     else if (!voices.length) set('voice', 'warn', 'فهرست صداها خوانده نشد؛ با «پخش صدا» پایین امتحان کنید', 'Could not list voices; test with "play" below', '', '');
-    else set('voice', 'bad', 'صدای انگلیسی پیدا نشد', 'No English voice found', 'این را باز کنید و یک صدای انگلیسی دانلود کنید: <span dir="ltr" class="en">Settings → Accessibility → Spoken Content → Voices → English</span>', 'Settings → Accessibility → Spoken Content → Voices → English, then download a voice.');
+    else set('voice', 'warn', 'صدای انگلیسی موبایل پیدا نشد (فقط برای کارت‌های خودتان لازم است)', 'No phone English voice (only needed for your own cards)', 'این را باز کنید و یک صدای انگلیسی دانلود کنید: <span dir="ltr" class="en">Settings → Accessibility → Spoken Content → Voices → English</span>', 'Settings → Accessibility → Spoken Content → Voices → English, then download a voice.');
   });
+  /* 3b natural recorded voice */
+  var sample = clipUrl('Hello, how are you?');
+  if (!sample) set('audio', 'bad', 'فایل‌های صدای طبیعی در برنامه نیست', 'Natural voice files are missing from the app', 'به Mo بگویید؛ تا آن وقت صدای خود موبایل استفاده می‌شود.', 'Tell Mo; the phone voice is used until then.');
+  else fetch(sample, { cache:'no-store' }).then(function(r){
+    r.ok ? set('audio', 'ok', 'صدای طبیعی آماده است', 'Natural voice is ready')
+      : set('audio', 'warn', 'صدای طبیعی نیامد؛ صدای خود موبایل استفاده می‌شود', 'Natural voice did not load; using the phone voice', 'انترنت را بررسی کنید و برنامه را دوباره باز کنید.', 'Check the internet and reopen the app.');
+  }).catch(function(){ set('audio', 'warn', 'صدای طبیعی نیامد؛ صدای خود موبایل استفاده می‌شود', 'Natural voice did not load; using the phone voice', 'انترنت را بررسی کنید و برنامه را دوباره باز کنید.', 'Check the internet and reopen the app.'); });
   /* 5 sound heard (asks the person) */
   var soundAsk = '<div class="cr-actions"><button class="small-btn" type="button" data-sound-play>' + ic('i-speaker') + S.play + '</button><button class="small-btn" type="button" data-sound="yes">' + S.yes + '</button><button class="small-btn" type="button" data-sound="no">' + S.no + '</button></div>';
-  set('sound', 'ask', '«پخش صدا» را بزنید، بعد بگویید: ' + S.heardQ, 'Did you hear it? Tap "play", then answer.', '', '', soundAsk);
+  set('sound', 'ask', '«پخش صدا» را بزنید. دو جمله پخش می‌شود (صدای طبیعی و صدای موبایل). هر دو را شنیدید؟', 'Tap "play": two sentences play (natural voice, then phone voice). Did you hear both?', '', '', soundAsk);
   CHECKS.sound = function(ans){
     ans === 'yes' ? set('sound', 'ok', 'صدا شنیده می‌شود', 'Sound works')
       : set('sound', 'bad', 'صدا بسته است', 'Sound is off', 'حالت بی‌صدا را خاموش کنید (دکمهٔ کنار آیفون، یا زنگ در Control Centre) و صدا را بلند کنید.', 'Turn off silent mode (the switch or button on the side, or the bell in Control Centre) and turn the volume up.', soundAsk);
@@ -1104,7 +1344,7 @@ function selfCheck(){
   /* 9 font */
   var fontOK = false; try { document.fonts.forEach(function(f){ if (/Vazirmatn/.test(f.family) && f.status === 'loaded') fontOK = true; }); } catch (e) {}
   fontOK ? set('font', 'ok', 'قلم برنامه آماده است', 'App font loaded')
-    : set('font', 'warn', 'قلم اصلی نیامد؛ از قلم خود گوشی استفاده می‌شود', 'Main font did not load; using the phone\'s font', '', '');
+    : set('font', 'warn', 'قلم اصلی نیامد؛ از قلم خود موبایل استفاده می‌شود', 'Main font did not load; using the phone\'s font', '', '');
 }
 
 /* ---------- events ---------- */
@@ -1115,9 +1355,16 @@ app.addEventListener('click', function(e){
   if ((el = t.closest('[data-start]'))){ startLesson(+el.getAttribute('data-start')); view.autoplay = false; return; }
   if ((el = t.closest('[data-lesson]'))){
     var li = +el.getAttribute('data-lesson');
-    if (el.classList.contains('lock')) toast(S.locked); else startLesson(li);
+    startLesson(li);
     return;
   }
+  if (recording() && (t.closest('[data-slow]') || t.closest('[data-say]') || t.closest('[data-say-card]'))){ try { rec.mr.stop(); } catch (e2) {} return; }
+  if ((el = t.closest('[data-slow]'))){ speak(el.getAttribute('data-slow'), el, true); return; }
+  if ((el = t.closest('[data-rec]'))){ recToggle(el, el.getAttribute('data-rec')); return; }
+  if ((el = t.closest('[data-play-mine]'))){ playMine(); return; }
+  if ((el = t.closest('[data-play-dialog]'))){ var LD = LESSONS[view.li]; if (LD && LD.dialog) playDialog(LD, 0); return; }
+  if ((el = t.closest('[data-line]'))){ var LL = LESSONS[view.li]; if (LL && LL.dialog) playLine(LL, +el.getAttribute('data-line')); return; }
+  if ((el = t.closest('[data-toggle-fa]'))){ view.showFa = !view.showFa; var dgl = app.querySelector('.dialog'); if (dgl) dgl.classList.toggle('fa', view.showFa); el.textContent = view.showFa ? S.hideFa : S.showFa; return; }
   if ((el = t.closest('[data-say]'))){ speak(el.getAttribute('data-say'), el.classList.contains('speaker') ? el : null); return; }
   if ((el = t.closest('[data-say-card]'))){ var sp = el.querySelector('.speaker'); speak(sp.getAttribute('data-say'), sp); return; }
   if ((el = t.closest('.choice'))){ answer(el); return; }
@@ -1152,10 +1399,12 @@ app.addEventListener('click', function(e){
     var did = el.getAttribute('data-own-del'); st.own = st.own.filter(function(o){ return o.id !== did; }); delete st.cards[did]; syncOwn(); save(); renderReview(); return;
   }
   if ((el = t.closest('[data-set]'))){
-    st.settings[el.getAttribute('data-set')] = el.getAttribute('data-val'); save(); applyTheme(); renderSettings(); return;
+    st.settings[el.getAttribute('data-set')] = el.getAttribute('data-val'); save(); applyTheme(); renderSettings();
+    if (el.getAttribute('data-set') === 'voice') speak('Hello, how are you?', null);
+    return;
   }
   if ((el = t.closest('[data-selfcheck]'))){ selfCheck(); return; }
-  if ((el = t.closest('[data-sound-play]'))){ speak('Hello, how are you?', null); return; }
+  if ((el = t.closest('[data-sound-play]'))){ unlockSpeech(); speak('Hello, how are you?', el, false, function(){ setTimeout(function(){ speakDevice('Thank you very much', el); }, 300); }); return; }
   if ((el = t.closest('[data-sound]'))){ CHECKS.sound(el.getAttribute('data-sound')); return; }
   if ((el = t.closest('[data-reset]'))){
     if (!resetArmed){ resetArmed = true; el.textContent = S.resetSure; setTimeout(function(){ resetArmed = false; if (el.isConnected) el.textContent = S.reset; }, 4000); return; }
@@ -1163,11 +1412,17 @@ app.addEventListener('click', function(e){
   }
 });
 app.addEventListener('input', function(e){ if (e.target.matches('[data-name]')){ st.name = e.target.value.trim().slice(0, 30); save(); } });
+app.addEventListener('change', function(e){
+  if (e.target.matches('[data-remind]')){
+    var hr = +e.target.value; st.settings.remind = hr; save();
+    var a = app.querySelector('[data-remind-link]'); if (a) a.setAttribute('href', 'reminders/' + (hr < 10 ? '0' : '') + hr + '.ics');
+  }
+});
 app.addEventListener('keydown', function(e){ if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-lesson]')){ e.preventDefault(); e.target.click(); } });
 
 /* expose for tests */
 syncOwn();
-window.APP = { CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, briefFor:briefFor, aiUrl:aiUrl, go:go };
+window.APP = { lineUrl:lineUrl, rec:function(){ return rec; }, CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, briefFor:briefFor, aiUrl:aiUrl, go:go, clipUrl:clipUrl, clipText:clipText, hashText:hashText, audioIds:function(){ return Object.keys(AUDIO_SET); } };
 render();
 </script>
 </body>

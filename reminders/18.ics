@@ -1,0 +1,23 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//english//reminder//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:english-daily-reminder-18@mokingsacc.github.io
+DTSTAMP:20261004T120000Z
+DTSTART:20261005T180000
+DTEND:20261005T181000
+RRULE:FREQ=DAILY
+SUMMARY:🌟 درس انگلیسی / English lesson
+DESCRIPTION:ده دقیقه درس انگلیسی. برنامه را از 
+ صفحهٔ اصلی باز کنید.\n10 minutes of English. Open the app 
+ from your Home Screen.
+URL:https://mokingsacc.github.io/english/
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:🌟 درس انگلیسی
+TRIGGER:PT0M
+END:VALARM
+END:VEVENT
+END:VCALENDAR
