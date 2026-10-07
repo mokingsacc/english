@@ -455,7 +455,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.6.0',
+  version: '1.6.1',
   /* photo lessons: the Cloudflare Worker that saves photos for the evening check ('' hides the feature) */
   uploadUrl: 'https://english-upload.mobinkingsacc.workers.dev/',
   extraLessons: 'lessons/extra.json',
@@ -597,7 +597,7 @@ var S = {
   streakLabel: 'روز پشت سر هم', path: 'مسیر شما', lessonsOf: function(d,t){ return fa(d) + ' از ' + fa(t) + ' درس'; },
   done: 'تمام شد', now: 'امروز', open: 'باز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات', lessonsTab: 'درس‌ها',
   welcome: 'هر روز یک درس کوتاه.', camBig: 'عکس بگیرید', camSub: 'درس نو فردا', camWait: function(n){ return fa(n) + ' عکس در راه است'; },
-  talkBig: 'با ChatGPT گپ بزنید', talkSub: 'تمرین گپ زدن', newPill: 'درس نو', allDoneRow: 'همهٔ درس‌ها تمام شد',
+  talkBig: 'با ChatGPT گپ بزنید', talkSub: 'تمرین گپ زدن', afNote: 'در افغانستان شاید ChatGPT کار نکند.', hiHajji: 'سلام، حاجی صاحب', newPill: 'درس نو', allDoneRow: 'همهٔ درس‌ها تمام شد',
   pickTitle: 'دربارهٔ چی گپ بزنیم؟', back: 'برگشت', setVoice: 'آواز', setRemind: 'یادآوری هر روز', remindAdd: 'به تقویم',
   remindShort: 'بعد «Add to Calendar» یا «Add All» را بزنید.', setHints: 'کمک تلفظ', setCheck: 'آزمایش برنامه', checkGo: 'شروع', setReset: 'پاک کردن پیشرفت',
   allDone: 'همهٔ درس‌ها تمام شد! حالا تکرار کنید.',
@@ -716,6 +716,9 @@ function save(){
   return storageOK;
 }
 var st = loadState();
+/* Mo's dad Hajji in Afghanistan uses the same app from index.html?p=hajji: his own name, his own progress on his phone */
+var PROFILE = /(?:^|[?&])p=hajji(?:&|$)/i.test(location.search) ? 'hajji' : '';
+if (PROFILE === 'hajji') st.name = 'حاجی';
 st.settings.ai = 'chatgpt'; /* the settings no longer offer a choice */
 if (!Array.isArray(st.own)) st.own = [];
 save();
@@ -1079,7 +1082,7 @@ function copyFailed(){
 function briefFor(l){
   var topic = l.talk ? l.talk.role : 'A simple everyday conversation about: ' + l.title.en + '.';
   return 'لطفاً این درس انگلیسی را با من به شکل صوتی تمرین کن.\n' +
-    'You are my patient English teacher in a live voice conversation. My name is ' + (st.name || 'Freshta') + '. I speak Dari (Afghan Persian). My English is beginner level (A1): simple words and short phrases. I live in the UK.\n' +
+    'You are my patient English teacher in a live voice conversation. My name is ' + (PROFILE === 'hajji' ? 'Hajji' : (st.name || 'Freshta')) + '. I speak Dari (Afghan Persian). My English is beginner level (A1): simple words and short phrases. ' + (PROFILE === 'hajji' ? 'I live in Afghanistan.' : 'I live in the UK.') + '\n' +
     'Lesson: ' + l.title.en + '.\n' +
     'Phrases I just learned: ' + l.phrases.map(function(p){ return p.en; }).join('; ') + '.\n' +
     'Topic for our talk: ' + topic + '\n' +
@@ -1121,7 +1124,7 @@ function newPhotoLesson(){ var px = -1; LESSONS.forEach(function(l, i){ if (l.ex
 function renderHome(){
   var open = firstOpen(), px = newPhotoLesson();
   var h = '<div class="content sp">';
-  h += '<div class="sp-greet"><b>' + esc(S.hi(st.name)) + '</b><span>' + S.welcome + '</span></div>';
+  h += '<div class="sp-greet"><b>' + esc(PROFILE === 'hajji' ? S.hiHajji : S.hi(st.name)) + '</b><span>' + S.welcome + '</span></div>';
   if (!isStandalone()){
     h += '<section class="card install" data-install><div class="ii">📲</div><div><b>' + S.installTitle + '</b>' + S.installText.replace('{share}', '<svg class="ic share" aria-label="Share"><use href="#i-share"/></svg>') + '<div style="margin-top:6px;font-weight:700">⚠️ ' + S.installWarn + '</div></div></section>';
   }
@@ -1129,7 +1132,7 @@ function renderHome(){
     var pend = pendingPhotos();
     h += '<button class="sp-blk sp-cam" type="button" data-go="photo">' + ic('i-camera') + '<div><b>' + S.camBig + '</b><span>' + (pend ? S.camWait(pend) : S.camSub) + '</span></div></button>';
   }
-  h += '<button class="sp-blk sp-talk" type="button" data-go="talk">' + ic('i-talk') + '<div><b>' + S.talkBig + '</b><span>' + S.talkSub + '</span></div></button>';
+  h += '<button class="sp-blk sp-talk" type="button" data-go="talk">' + ic('i-talk') + '<div><b>' + S.talkBig + '</b><span>' + (PROFILE === 'hajji' ? S.afNote : S.talkSub) + '</span></div></button>';
   if (open >= 0) h += '<button class="sp-row" type="button" data-start="' + open + '">' + (open === px ? '<span class="sp-pill new">' + S.newPill : '<span class="sp-pill">' + S.now) + '</span><b>' + esc(LESSONS[open].title.fa) + '</b>' + ic('i-play') + '</button>';
   else h += '<button class="sp-row" type="button" data-go="lessons"><span class="sp-pill done">' + S.done + '</span><b>' + S.allDoneRow + '</b>' + ic('i-arrow') + '</button>';
   if (px >= 0 && px !== open) h += '<button class="sp-row" type="button" data-start="' + px + '"><span class="sp-pill new">' + S.newPill + '</span><b>' + esc(LESSONS[px].title.fa) + '</b>' + ic('i-play') + '</button>';
@@ -1151,7 +1154,7 @@ function renderLessons(){
 }
 /* ---------- talk: pick a lesson, one tap opens ChatGPT on it ---------- */
 function renderTalk(){
-  var h = '<div class="content sp"><button class="sp-back" type="button" data-go="home">' + ic('i-back') + S.back + '</button><h1 class="sp-title">' + S.pickTitle + '</h1><div class="sp-topics">';
+  var h = '<div class="content sp"><button class="sp-back" type="button" data-go="home">' + ic('i-back') + S.back + '</button><h1 class="sp-title">' + S.pickTitle + '</h1>' + (PROFILE === 'hajji' ? '<p class="sp-note" data-af-note>' + S.afNote + '</p>' : '') + '<div class="sp-topics">';
   LESSONS.forEach(function(l, i){
     h += '<a class="sp-topic" data-ai-link data-li="' + i + '" href="' + esc(aiUrl(l)) + '" target="_blank" rel="noopener"><span class="sp-sign">' + fa(i + 1) + '</span><span class="sp-tx"><b>' + esc(l.title.fa) + '</b><span class="en" lang="en">' + esc(l.title.en) + '</span></span><span class="go">' + ic('i-arrow') + '</span></a>';
   });
@@ -1668,7 +1671,7 @@ app.addEventListener('keydown', function(e){ if ((e.key === 'Enter' || e.key ===
 
 /* expose for tests */
 syncOwn();
-window.APP = { pickVoice:function(){ return pickVoice(); }, setVoices:function(v){ voices = v; }, addExtra:addExtra, validLesson:validLesson, pendingPhotos:pendingPhotos, lineUrl:lineUrl, rec:function(){ return rec; }, CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, briefFor:briefFor, aiUrl:aiUrl, go:go, clipUrl:clipUrl, clipText:clipText, hashText:hashText, audioIds:function(){ return Object.keys(AUDIO_SET); }, buildSteps:buildSteps, extraState:function(){ return extraState; } };
+window.APP = { pickVoice:function(){ return pickVoice(); }, setVoices:function(v){ voices = v; }, addExtra:addExtra, validLesson:validLesson, pendingPhotos:pendingPhotos, lineUrl:lineUrl, rec:function(){ return rec; }, CONFIG:CONFIG, LESSONS:LESSONS, state:function(){ return st; }, profile:function(){ return PROFILE; }, briefFor:briefFor, aiUrl:aiUrl, go:go, clipUrl:clipUrl, clipText:clipText, hashText:hashText, audioIds:function(){ return Object.keys(AUDIO_SET); }, buildSteps:buildSteps, extraState:function(){ return extraState; } };
 render();
 loadExtra();
 </script>
