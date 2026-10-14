@@ -1,7 +1,0 @@
-// Cloudflare Worker "sitbeside": serves the Beside screen-share app from beside/
-// at https://sitbeside.mobinkingsacc.workers.dev/. Deploys on every push to main.
-{
-  "name": "sitbeside",
-  "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./beside" }
-}
