@@ -182,7 +182,7 @@
     el.textContent = '';
     const dim = document.createElement('span');
     dim.className = 'dim';
-    dim.textContent = parts.join('/') + '/';
+    dim.textContent = parts.length ? parts.join('/') + '/' : '';
     const em = document.createElement('em');
     em.textContent = '#' + H.code + (n ? '-' + n : '');
     el.append(dim, (last ? last + '/' : ''), em);
