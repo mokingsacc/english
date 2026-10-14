@@ -25,7 +25,7 @@
   const CAN_SHARE = !IS_IOS && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   const NO_SHARE = IS_IOS
     ? 'iPhone and iPad can watch and talk, but can’t share. Open this page in Chrome on your Mac to share.'
-    : 'This browser can’t share its screen, only watch. Open this page in Chrome on your Mac to share.';
+    : 'This browser can’t share its screen, only watch. Open this page in Chrome on a computer to share.';
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -204,7 +204,7 @@
 
   // Put H.264 first: Macs and iPhones encode and decode it in hardware (less lag, less battery). Others stay as fallback.
   function preferH264(sdp) {
-    return sdp.replace(/^(m=video \d+ [A-Z/]+ )([\d ]+)(\r?)$/m, (line, head, pts, cr) => {
+    return sdp.replace(/^(m=video \d+ [A-Z/]+ )([\d ]+)(\r?)$/gm, (line, head, pts, cr) => {
       const ids = pts.trim().split(' ');
       const score = (id) => {
         const f = (sdp.match(new RegExp('^a=fmtp:' + id + ' (.*)$', 'm')) || [])[1] || '';
@@ -1058,10 +1058,25 @@
       const t = s.getVideoTracks()[0];
       t.addEventListener('ended', () => { if (G.cam === s) { G.cam = null; guestSlot(G.blank); } });
       guestSlot(t);
+      await keepMic();
       // iPhone can pause other videos while the camera starts.
       const v = $('screenVideo');
       if (app.state === 'watching' && v && v.srcObject && v.paused) playWithSound(v);
     } finally { G.camBusy = false; }
+  }
+  // Older iPhones end the microphone when the camera starts: get it back and put it in the same place.
+  async function keepMic() {
+    const a = G.mic && G.mic.getAudioTracks()[0];
+    if (!a || a.readyState !== 'ended') return;
+    try {
+      const m = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const t = m.getAudioTracks()[0];
+      t.enabled = !G.muted;
+      const pc = G.call && G.call.peerConnection;
+      const snd = pc && pc.getSenders().find((x) => x.track === a);
+      if (snd) await snd.replaceTrack(t);
+      G.mic = m;
+    } catch (e) { note('Your microphone stopped when the camera started. Leave and join again to talk.', 'stay'); }
   }
   function guestSlot(track) {
     if (G.camSender) G.camSender.replaceTrack(track).then(() => tuneCam(G.camSender)).catch(() => {});
