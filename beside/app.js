@@ -166,10 +166,24 @@
       el.hidden = true;
     }
   }
+  // Ask for a small camera picture; if this camera can't do that (or answers oddly), take any picture it gives:
+  // the 300 kbit/s cap on the lane keeps it small either way.
+  async function getCam() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: CAM });
+    } catch (e) {
+      if (!e || !/^(OverconstrainedError|NotFoundError|NotReadableError|AbortError|TypeError)$/.test(e.name)) throw e;
+      const s = await navigator.mediaDevices.getUserMedia({ video: true });
+      const t = s.getVideoTracks()[0];
+      if (t) t.applyConstraints({ width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15 } }).catch(() => {});
+      return s;
+    }
+  }
   function camError(e) {
     const n = e && e.name;
+    if (n === 'NotAllowedError' && /system/i.test((e && e.message) || '')) return 'Your Mac is blocking the camera for this browser. Open System Settings, Privacy & Security, Camera, turn your browser on, then reopen it.';
     if (n === 'NotAllowedError') return 'Your camera is blocked for this site. Click the icon at the left of the address bar (on iPhone: aA, then Website Settings), allow the camera, then press the camera button again.';
-    if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'No camera found on this device.';
+    if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Your browser can’t see a camera. On a MacBook with the lid closed the built-in camera is off: open the lid or plug in a webcam, then press Camera again.';
     if (n === 'NotReadableError') return 'Your camera is busy in another app. Close it there, then press the camera button again.';
     return 'The camera didn’t start (' + (n || 'unknown') + '). Try again.';
   }
@@ -570,7 +584,7 @@
     H.camBusy = true;
     try {
       let s;
-      try { s = await navigator.mediaDevices.getUserMedia({ video: CAM }); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
       if (app.state !== 'live' || H.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       H.cam = s;
       const t = s.getVideoTracks()[0];
@@ -1052,7 +1066,7 @@
     G.camBusy = true;
     try {
       let s;
-      try { s = await navigator.mediaDevices.getUserMedia({ video: CAM }); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
       if (G.left || G.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       G.cam = s;
       const t = s.getVideoTracks()[0];
