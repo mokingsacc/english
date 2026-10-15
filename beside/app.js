@@ -334,6 +334,8 @@
     document.body.dataset.alone = alone ? '1' : '';
     chatButton();
     docTitle();
+    fitDots();
+    pointTip();
   }
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
@@ -345,7 +347,9 @@
     V.pin = k === V.auto ? '' : k;
     layout();
   }
+  const mini = { win: null };
   function miniPeek() { /* the mini window comes later */ }
+  function miniDot() { /* the mini window comes later */ }
   // More: a bottom sheet on phones, a small card on computers.
   function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
   function openMore() {
@@ -359,6 +363,124 @@
     if (x) x.focus();
   }
   function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+
+  // ---------- POINT ----------
+  // Anyone looking at someone else's screen can point: a click (mouse) or a 0.4 s hold (touch) puts a dot with
+  // their initial on that spot for everyone, the sharer included. Positions are 0–1 inside the picture itself
+  // (black bars left out), so a dot lands on the same word at any size.
+  const P = { lastTick: 0, hold: 0, start: null, lastTouch: 0 };
+  function contentRect(v) {
+    const r = v.getBoundingClientRect();
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh || !r.width || !r.height) return null;
+    const k = Math.min(r.width / vw, r.height / vh); // object-fit: contain
+    const w = vw * k, h = vh * k;
+    return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h };
+  }
+  function fitLayer(v, layer) {
+    if (!v || !layer || !layer.parentElement) return;
+    const c = contentRect(v);
+    const t = layer.parentElement.getBoundingClientRect();
+    if (!c) { layer.style.cssText = 'left:0;top:0;width:100%;height:100%'; return; }
+    layer.style.cssText = 'left:' + (c.left - t.left) + 'px;top:' + (c.top - t.top) + 'px;width:' + c.width + 'px;height:' + c.height + 'px';
+  }
+  function fitDots() { fitLayer($('screenVideo'), $('dots')); }
+  function canPoint() {
+    const tile = $('screenTile');
+    if (!tile || !tile.classList.contains('big') || amSharing() || !screenSource()) return false;
+    return isGuest ? G.hostVer >= 2 : !!H.sharer && H.sharer !== H.me;
+  }
+  function dotColor(id) {
+    if (id === (isGuest ? hostId : H.me)) return 'var(--clay)';
+    let h = 0;
+    for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return ['var(--moss)', 'var(--amber)', 'var(--sky)'][h % 3];
+  }
+  function dotEl(doc, x, y, from, name) {
+    const el = doc.createElement('div');
+    el.className = 'dot';
+    el.style.left = Math.round(x * 1000) / 10 + '%';
+    el.style.top = Math.round(y * 1000) / 10 + '%';
+    el.style.setProperty('--dc', dotColor(from));
+    el.textContent = (name || '').charAt(0).toUpperCase();
+    setTimeout(() => el.remove(), 2600);
+    return el;
+  }
+  function showDot(x, y, from, name) {
+    const d = $('dots');
+    if (d) { fitDots(); d.appendChild(dotEl(document, x, y, from, name)); }
+    miniDot(x, y, from, name);
+  }
+  function pointAt(cx, cy) {
+    const v = $('screenVideo');
+    const c = v && contentRect(v);
+    if (!c) return;
+    const r3 = (n) => Math.round(n * 1000) / 1000;
+    const x = r3((cx - c.left) / c.width), y = r3((cy - c.top) / c.height);
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    store.set('beside.tip.point', '1');
+    if (isGuest) {
+      showDot(x, y, G.peer && G.peer.id, cleanName(store.get('beside.name')));
+      tell(G.conn, { t: 'ping', x, y });
+    } else {
+      showDot(x, y, H.me, myName());
+      toGuests({ t: 'ping', x, y, from: H.me, name: myName() });
+    }
+  }
+  function okPing(d) { const x = +d.x, y = +d.y; return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [x, y] : null; }
+  // Someone pointed at your screen while Beside is hidden and there's no mini window: a soft tick.
+  function maybeTick() { if (amSharing() && document.hidden && !mini.win) tick(); }
+  function tick() {
+    const now = Date.now();
+    if (now - P.lastTick < 1500) return;
+    const ctx = isGuest ? G.ctx : H.ctx;
+    if (!ctx) return;
+    P.lastTick = now;
+    app.ticks = (app.ticks || 0) + 1;
+    try {
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 1180;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.07, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g);
+      g.connect(ctx.destination); // the speakers only, never the call
+      o.start(t);
+      o.stop(t + 0.18);
+    } catch (e) { /* no sound is fine */ }
+  }
+  function pointTip() {
+    if (!canPoint() || store.get('beside.tip.point')) return;
+    store.set('beside.tip.point', '1');
+    const touch = matchMedia('(pointer: coarse)').matches;
+    peekLine(touch ? 'Hold on the screen to point at something.' : 'Click on the screen to point at something.');
+  }
+  function wirePointing() {
+    const tile = $('screenTile');
+    if (!tile) return;
+    const cancel = () => { clearTimeout(P.hold); P.start = null; };
+    tile.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      P.lastTouch = Date.now();
+      if (P.start) { cancel(); return; } // a second finger: pinch, not point
+      if (!canPoint()) return;
+      P.start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      P.hold = setTimeout(() => { const s = P.start; P.start = null; if (s && canPoint()) pointAt(s.x, s.y); }, 400);
+    });
+    tile.addEventListener('pointermove', (e) => {
+      if (P.start && e.pointerId === P.start.id && Math.hypot(e.clientX - P.start.x, e.clientY - P.start.y) > 12) cancel();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => tile.addEventListener(ev, (e) => { if (P.start && e.pointerId === P.start.id) cancel(); }));
+    tile.addEventListener('click', (e) => {
+      if (Date.now() - P.lastTouch < 800 || !canPoint()) return; // a short tap only wakes the controls
+      pointAt(e.clientX, e.clientY);
+    });
+    tile.addEventListener('contextmenu', (e) => { if (canPoint()) e.preventDefault(); });
+    try { new ResizeObserver(fitDots).observe(tile); } catch (e) { addEventListener('resize', fitDots); }
+    const v = $('screenVideo');
+    if (v) ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, fitDots));
+  }
 
   // ---------- CHAT AND FILES ----------
   // Messages and files ride the call's data link, straight between the browsers; the host passes them on to
@@ -459,12 +581,14 @@
     if (C.open) return;
     C.unread++;
     badge();
+    peekLine(rest, name || 'Someone');
+  }
+  function peekLine(rest, name) {
     const p = $('peek');
     if (!p) return;
     p.textContent = '';
-    const b = document.createElement('b');
-    b.textContent = name || 'Someone';
-    p.append(b, rest);
+    if (name) { const b = document.createElement('b'); b.textContent = name; p.appendChild(b); }
+    p.append(rest);
     p.hidden = false;
     clearTimeout(C.peekTimer);
     C.peekTimer = setTimeout(() => { p.hidden = true; }, 4000);
@@ -1045,6 +1169,13 @@
         const name = g.name || 'Guest';
         chatAdd(false, name, t);
         toGuests({ t: 'chat', id: String(d.id || '').slice(0, 12), text: t, from: g.id, name }, g);
+      } else if (d.t === 'ping') {
+        const xy = okPing(d);
+        if (!xy || !rate(g, 'pingT', 5)) return;
+        const name = g.name || '';
+        showDot(xy[0], xy[1], g.id, name);
+        toGuests({ t: 'ping', x: xy[0], y: xy[1], from: g.id, name }, g);
+        maybeTick();
       } else if (d.t === 'file') hostFile(g, d);
       else if (d.t === 'part') filePart(g.id + ':' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
@@ -1515,6 +1646,11 @@
         if (typeof d.text !== 'string') return;
         const t = d.text.slice(0, 2000).trim();
         if (t) chatAdd(false, cleanName(d.name) || (d.from === hostId ? hostLabel() : '') || 'Someone', t);
+      } else if (d.t === 'ping') {
+        const xy = okPing(d);
+        if (!xy) return;
+        showDot(xy[0], xy[1], String(d.from || hostId), cleanName(d.name));
+        maybeTick();
       } else if (d.t === 'file') {
         fileStart('h:' + String(d.id).slice(0, 12), d, cleanName(d.name) || (d.from === hostId ? hostLabel() : '') || 'Someone');
       } else if (d.t === 'part') filePart('h:' + String(d.id).slice(0, 12), d);
@@ -1929,6 +2065,7 @@
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
     on('watchRoot', 'click', swapTap);
+    wirePointing();
     on('chatBtn', 'click', () => chatOpen(!C.open));
     on('chatClose', 'click', () => chatOpen(false));
     on('chatForm', 'submit', (e) => { e.preventDefault(); sendText(); });

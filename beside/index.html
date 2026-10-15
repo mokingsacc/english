@@ -36,6 +36,7 @@
   --clay-ink:#FFF4EA;     /* text on clay */
   --clay-soft:#F1D9CC;    /* tint */
   --moss:#4C7D47;         /* calm / good */
+  --sky:#3F6FA6;          /* a third person's dot */
   --amber:#C48B1C;        /* ok */
   --rust:#B5352C;         /* bad */
   --screen:#1C1712;       /* behind shared video */
@@ -58,6 +59,7 @@
     --clay-ink:#20100A;
     --clay-soft:#3A241A;
     --moss:#8DC27F;
+    --sky:#8FB3E3;
     --amber:#E5B24A;
     --rust:#E8705F;
     --screen:#0C0A08;
@@ -397,6 +399,14 @@ body.chat-open .stage.watch .viewport{right:360px}
 .viewer{position:fixed;inset:0;z-index:70;background:rgba(12,10,8,.92);display:grid;place-items:center;padding:16px;cursor:zoom-out;animation:fade .2s}
 .viewer img{max-width:100%;max-height:calc(100dvh - 32px);border-radius:8px}
 body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:12px;z-index:6;display:grid;place-items:center;border:2px dashed rgba(240,231,216,.6);border-radius:20px;background:rgba(32,26,19,.55);color:#F0E7D8;font-size:20px;font-weight:600;pointer-events:none}
+/* pointing: a dot with the person's initial, on the same spot for everyone */
+#screenTile{touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#screenVideo{pointer-events:none}
+.dots{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;pointer-events:none}
+.dot{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--dc,var(--clay));color:#fff;display:grid;place-items:center;font:700 14px/1 var(--font-ui);box-shadow:0 0 0 2px #fff,0 6px 16px -4px rgba(0,0,0,.55);animation:dotlife 2.6s ease forwards}
+.dot::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:3px solid var(--dc,var(--clay));animation:ring 1s ease-out 1 forwards}
+.tile.small .dot{width:16px;height:16px;margin:-8px 0 0 -8px;font-size:9px}
+@keyframes dotlife{0%{opacity:0;transform:scale(.4)}8%{opacity:1;transform:scale(1)}82%{opacity:1}100%{opacity:0}}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -589,6 +599,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
