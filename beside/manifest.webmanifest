@@ -1,7 +1,7 @@
 {
   "name": "Beside",
   "short_name": "Beside",
-  "description": "Show someone your screen and talk. They just open your link.",
+  "description": "Talk, see each other and share your screen from a link.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,4 +1,4 @@
-/* Beside: share one tab or one app window and talk, with nothing in between.
+/* Beside: a call from a link: talk, see each other, share one tab or window, chat and send files.
    Audio and video go peer to peer (WebRTC, encrypted). PeerJS's free server
    (0.peerjs.com) only introduces the two browsers; it never sees the picture or sound. */
 (() => {
@@ -1305,7 +1305,13 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
-      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; guestStatus(); return; }
+      if (d.t === 'hello') {
+        g.ver = +d.v || 0;
+        g.canShare = !!d.share;
+        tell(g.conn, roomMsg()); // the sharer may have changed since we said hello
+        guestStatus();
+        return;
+      }
       if (g.ver < 2) return;
       if (d.t === 'chat') {
         if (typeof d.text !== 'string' || !rate(g, 'chatT', 10)) return;
