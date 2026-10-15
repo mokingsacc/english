@@ -482,7 +482,8 @@ details.more .row .btn.ghost{padding:0 10px}
 <!-- GUEST · WATCHING -->
 <section class="stage watch" data-state="watching" hidden>
   <div class="viewport" id="watchRoot">
-    <video id="screenVideo" playsinline autoplay></video>
+    <video id="screenVideo" muted playsinline autoplay></video>
+    <audio id="voice" autoplay playsinline></audio>
     <div class="hud" id="hud">
       <div class="top">
         <span class="pillbox"><span class="mark"><span class="big"></span><span class="dot"></span></span><span id="watchTitle">Their screen</span></span>
@@ -530,6 +531,6 @@ details.more .row .btn.ghost{padding:0 10px}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

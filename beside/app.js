@@ -187,6 +187,15 @@
     if (n === 'NotReadableError') return 'Your camera is busy in another app. Close it there, then press the camera button again.';
     return 'The camera didn’t start (' + (n || 'unknown') + '). Try again.';
   }
+  // PeerJS adds a stream's tracks in getTracks() order, and browsers order that differently: pin our order,
+  // so the lanes of a call are always [audio, screen, camera] (offer) and [mic, camera, screen] (answer).
+  function ordered(list) {
+    const l = list.filter(Boolean);
+    const s = new MediaStream(l);
+    try { s.getTracks = () => l.slice(); } catch (e) { /* the default order is the next best thing */ }
+    return s;
+  }
+  const VER = 2;
   function tell(conn, msg) { try { if (conn && conn.open) conn.send(msg); } catch (e) { /* the link is going anyway */ } }
 
   async function rtt(pc) {
@@ -506,8 +515,9 @@
           hostFace(g);
         });
     }
-    conn.on('data', (d) => { if (d && typeof d === 'object' && 'cam' in d && H.guests.get(conn.connectionId) === g) { g.camOn = !!d.cam; hostFace(g); } });
+    conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g) hostData(g, d); });
     tell(conn, { cam: !!H.cam });
+    tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE });
     // Joined but the picture never connected (a lost message, or they vanished): let them knock again.
     setTimeout(() => { if (H.guests.get(conn.connectionId) === g && !g.live) hostDropGuest(conn.connectionId); }, 25000);
     call.on('stream', (s) => {
@@ -523,6 +533,14 @@
     call.on('close', () => hostDropGuest(conn.connectionId));
     guestStatus();
     startHostLag();
+  }
+  // Everything a guest sends on the data link. Unknown or broken messages are ignored.
+  function hostData(g, d) {
+    try {
+      if (!d || typeof d !== 'object') return;
+      if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
+      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; }
+    } catch (e) { /* a bad message never breaks the call */ }
   }
   function hostDropGuest(id) {
     const g = H.guests.get(id);
@@ -575,7 +593,7 @@
     if (hint) hint.hidden = !any || !document.pictureInPictureEnabled || !box.querySelector('.face:not(.me):not([hidden])');
   }
   function hostOut() {
-    return new MediaStream([H.video, H.dest.stream.getAudioTracks()[0]].concat(H.camSlot ? [H.camSlot] : []));
+    return ordered([H.dest.stream.getAudioTracks()[0], H.video, H.camSlot]);
   }
   async function hostCam() {
     if (H.camBusy || app.state !== 'live') return;
@@ -758,7 +776,7 @@
     peer: null, conn: null, spare: null, call: null, mic: null, muted: false, retry: 0, lagTimer: 0, left: true,
     openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0,
     lost: false, dropped: false, joining: false, serverDown: false,
-    cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null,
+    cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null, hostVer: 0, room: null,
   };
   const hostId = PREFIX + guestCode;
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
@@ -772,9 +790,9 @@
       G.left = false;
       G.lost = G.dropped = false;
       G.tries = G.quiet = G.reopenedAt = 0;
-      // Unlock sound for this video inside the tap (iPhone).
-      const v = $('screenVideo');
-      if (v) { v.muted = false; v.play().catch(() => {}); }
+      // Unlock sound inside the tap (iPhone): their voice plays in its own element.
+      const vo = $('voice');
+      if (vo) { vo.muted = false; vo.play().catch(() => {}); }
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
       if (withMic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
@@ -848,7 +866,7 @@
     // Answer with the mic and the camera lane (the camera, or the blank that holds its place).
     const slot = G.cam ? G.cam.getVideoTracks()[0] : G.blank;
     const out = (G.mic ? G.mic.getAudioTracks() : []).concat(slot ? [slot] : []);
-    call.answer(out.length ? new MediaStream(out) : undefined);
+    call.answer(out.length ? ordered(out) : undefined);
     const pc = call.peerConnection;
     G.camSender = (pc && slot && pc.getSenders().find((s) => s.track === slot)) || null;
     if (pc) {
@@ -861,6 +879,7 @@
           clearInterval(G.lagTimer);
           app.watching = false;
           G.camOn = false;
+          roomReset();
           guestFace();
           if (never) wait('Can’t connect you two.', 'Trying again…', NET_WHY);
           else { G.lost = G.dropped = true; lostText(); }
@@ -931,6 +950,7 @@
         if (newer) { try { newer.close(); } catch (e) {} }
       }
       opened = true;
+      tell(conn, { t: 'hello', v: VER, name: cleanName(store.get('beside.name') || ''), share: CAN_SHARE });
       G.tries = G.quiet = 0;
       clearTimeout(G.openTimer);
       clearTimeout(G.retry);
@@ -947,8 +967,17 @@
       }, 10000);
     });
     conn.on('close', () => { if (G.conn === conn && (opened || G.call)) guestLost(); });
-    conn.on('data', (d) => { if (G.conn === conn && d && typeof d === 'object' && 'cam' in d) { G.camOn = !!d.cam; guestFace(); } });
+    conn.on('data', (d) => { if (G.conn === conn) guestData(d); });
   }
+  // Everything the host sends on the data link. Unknown or broken messages are ignored.
+  function guestData(d) {
+    try {
+      if (!d || typeof d !== 'object') return;
+      if (!d.t && 'cam' in d) { G.camOn = !!d.cam; guestFace(); return; }
+      if (d.t === 'hello') G.hostVer = +d.v || 0;
+    } catch (e) { /* a bad message never breaks the call */ }
+  }
+  function roomReset() { G.hostVer = 0; G.room = null; }
   function answered(conn) { const pc = conn && conn.peerConnection; return !!(pc && pc.remoteDescription); }
   function notLiveYet() {
     if (app.state === 'watching') return;
@@ -993,19 +1022,20 @@
     clearTimeout(G.picTimer);
     if (G.spare) { const s = G.spare; G.spare = null; try { s.close(); } catch (e) {} }
     show('watching');
-    // The big picture gets the screen lane and the sound; their camera goes in its own bubble.
-    let view = stream;
-    const screen = pc && lane(pc, 0);
-    if (screen) {
-      if (!G.view || G.viewFor !== pc) { G.view = new MediaStream(); G.viewFor = pc; }
-      [screen].concat(stream.getAudioTracks()).forEach((t) => { if (!G.view.getTrackById(t.id)) G.view.addTrack(t); });
-      view = G.view;
+    // The big picture gets only the screen lane; the sound has its own element, because a video whose
+    // picture lane is empty never starts its sound. PeerJS fires 'stream' once per track: only set what changed.
+    const screen = (pc && lane(pc, 0)) || stream.getVideoTracks()[0];
+    if (v && screen && (!v.srcObject || v.srcObject.getVideoTracks()[0] !== screen)) {
+      v.srcObject = new MediaStream([screen]);
+      v.muted = true;
+      v.play().catch(() => {});
     }
-    // PeerJS fires 'stream' once per track; re-assigning would restart playback.
-    if (v && v.srcObject !== view) {
-      v.srcObject = view;
-      v.muted = false;
-      playWithSound(v);
+    const a = stream.getAudioTracks()[0];
+    const vo = $('voice');
+    if (vo && a && (!vo.srcObject || vo.srcObject.getAudioTracks()[0] !== a)) {
+      vo.srcObject = new MediaStream([a]);
+      vo.muted = false;
+      playWithSound(vo);
     }
     guestFace();
     tell(G.conn, { cam: !!G.cam });
@@ -1017,17 +1047,23 @@
     stayAwake(true);
     wakeControls();
   }
-  function playWithSound(v) {
-    v.play().then(() => { app.autoplayErr = ''; if (!v.muted) tapHide(); }).catch((e) => {
+  function playWithSound(el) {
+    el.play().then(() => { app.autoplayErr = ''; tapHide(); }).catch((e) => {
       app.autoplayErr = e && e.name;
       if (!e || e.name !== 'NotAllowedError') return;
-      // Sound blocked until the next tap: play silently and offer "Tap to hear".
-      v.muted = true;
-      v.play().catch(() => {});
+      // Sound blocked until the next tap: offer "Tap to hear".
       const t = $('tapToHear');
       if (t) t.hidden = false;
       wakeControls();
     });
+  }
+  // iPhone pauses media while locked, in another app, or when the camera starts: start it again.
+  function resumeMedia() {
+    if (app.state !== 'watching') return;
+    const v = $('screenVideo');
+    if (v && v.srcObject && v.paused) v.play().catch(() => {});
+    const vo = $('voice');
+    if (vo && vo.srcObject && vo.paused) playWithSound(vo);
   }
   function tapHide() { const t = $('tapToHear'); if (t) t.hidden = true; }
   function guestLost() {
@@ -1036,8 +1072,12 @@
     app.watching = false;
     const v = $('screenVideo');
     if (v) v.srcObject = null;
+    const vo = $('voice');
+    if (vo) vo.srcObject = null;
+    tapHide();
     G.view = G.viewFor = null;
     G.camOn = false;
+    roomReset();
     guestFace();
     const pc = G.call && G.call.peerConnection;
     G.dropped = !!(pc && /failed|disconnected/.test(pc.iceConnectionState));
@@ -1073,9 +1113,8 @@
       t.addEventListener('ended', () => { if (G.cam === s) { G.cam = null; guestSlot(G.blank); } });
       guestSlot(t);
       await keepMic();
-      // iPhone can pause other videos while the camera starts.
-      const v = $('screenVideo');
-      if (app.state === 'watching' && v && v.srcObject && v.paused) playWithSound(v);
+      // iPhone can pause other media while the camera starts.
+      resumeMedia();
     } finally { G.camBusy = false; }
   }
   // Older iPhones end the microphone when the camera starts: get it back and put it in the same place.
@@ -1108,12 +1147,16 @@
     [G.mic, G.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
     G.peer = G.call = G.mic = G.cam = G.camSender = G.view = G.viewFor = null;
     G.camOn = false;
+    roomReset();
     app.watching = false;
     guestFace();
     showFace($('gSelf'), null, false);
     setPressed('gCamBtn', false, 'Turn my camera off', 'Turn my camera on');
     const v = $('screenVideo');
     if (v) v.srcObject = null;
+    const vo = $('voice');
+    if (vo) vo.srcObject = null;
+    tapHide();
     stayAwake(false);
     ended('You left.', 'Open the link again any time.', 'Join again');
   }
@@ -1340,7 +1383,7 @@
     on('fsBtn', 'click', fullscreen);
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
-    on('tapToHear', 'click', () => { const v = $('screenVideo'); if (v) { v.muted = false; v.play().catch(() => {}); } tapHide(); wakeControls(); });
+    on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
     on('checkBtn', 'click', runChecks);
     document.querySelectorAll('[data-check-open]').forEach((b) => b.addEventListener('click', runChecks));
     const sheet = document.querySelector('[data-state="check"]');
@@ -1366,9 +1409,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       if (app.state === 'live' || app.state === 'watching' || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
-      // iPhone pauses video while locked or in another app; start it again on return.
-      const v = $('screenVideo');
-      if (app.state === 'watching' && v && v.srcObject && v.paused) playWithSound(v);
+      resumeMedia();
     });
     const sv = $('screenVideo');
     if (sv) sv.addEventListener('webkitendfullscreen', () => { if (app.state === 'watching') sv.play().catch(() => {}); });
