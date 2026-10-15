@@ -310,6 +310,9 @@ body.idle .stage.watch{cursor:none}
 .waitrow{display:flex;align-items:center;gap:14px;padding:16px 20px 18px;font-size:15px;color:var(--ink-2)}
 .waitrow .ripple{margin:0 4px}
 /* top bar and dock */
+.hud .top{pointer-events:none}
+.hud .top > *{pointer-events:auto}
+body.idle .hud .top > *{pointer-events:none}
 .hud .top .right{display:flex;align-items:center;gap:8px;flex:none}
 .hud .top .pillbox:first-child{min-width:0}
 .hud .top .pillbox:first-child span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -528,6 +531,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

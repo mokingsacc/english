@@ -298,7 +298,9 @@
     }
     const screen = scr ? $('screenTile') : null;
     const visible = [screen].concat(others, [self]).filter(Boolean);
-    let big = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
+    const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
+    V.auto = auto ? auto.dataset.key : '';
+    let big = auto;
     if (!alone && V.pin) {
       const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
       if (p) big = p; else V.pin = '';
@@ -333,6 +335,15 @@
     if (!isGuest) hostTitle();
   }
 
+  // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
+  function swapTap(e) {
+    const t = e.target && e.target.closest && e.target.closest('.tile.small');
+    if (!t) return;
+    const k = t.dataset.key;
+    if (!k || k === 'self' || k === 'avatar' || k === 'invite') return;
+    V.pin = k === V.auto ? '' : k;
+    layout();
+  }
   function unreadPrefix() { return ''; }
   // More: a bottom sheet on phones, a small card on computers.
   function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
@@ -743,7 +754,7 @@
   }
   function roomMsg() {
     const g = H.sharer && H.sharer !== H.me ? guestById(H.sharer) : null;
-    return { t: 'room', sharer: H.sharer || '', name: H.sharer === H.me ? myName() : (g && g.name) || '' };
+    return { t: 'room', sharer: H.sharer || '', name: H.sharer === H.me ? myName() : (g && g.name) || '', n: H.shareN || 0 };
   }
   function roomScreen() {
     const t = roomTrack();
@@ -763,7 +774,8 @@
       if (was === H.me) hostUnshare(by + ' is sharing now, so your sharing stopped.', true);
       else { const og = guestById(was); if (og) tell(og.conn, { t: 'share', on: false, name: by }); }
     }
-    if (was !== id) V.pin = ''; // a new share always shows big
+    V.pin = ''; // a new share always shows big
+    H.shareN = (H.shareN || 0) + 1;
     H.sharer = id;
     roomScreen();
   }
@@ -789,7 +801,7 @@
     useVideoTrack(s.getVideoTracks()[0]);
     useTabAudio(s);
     if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
-    if (H.sharer === H.me) roomScreen(); else takeOver(H.me);
+    if (H.sharer === H.me) { V.pin = ''; H.shareN = (H.shareN || 0) + 1; roomScreen(); } else takeOver(H.me);
   }
   const hostChange = hostShare;
   function hostUnshare(msg, keepSharer) {
@@ -1122,8 +1134,8 @@
         if (G.hostName && !theirName) { text('camName', G.hostName); text('tapToHearText', 'Tap to hear ' + G.hostName); }
         layout();
       } else if (d.t === 'room') {
-        const room = { sharer: typeof d.sharer === 'string' ? d.sharer.slice(0, 80) : '', name: cleanName(d.name) };
-        if (!G.room || G.room.sharer !== room.sharer) V.pin = ''; // a new share always shows big
+        const room = { sharer: typeof d.sharer === 'string' ? d.sharer.slice(0, 80) : '', name: cleanName(d.name), n: +d.n || 0 };
+        if (!G.room || G.room.sharer !== room.sharer || G.room.n !== room.n) V.pin = ''; // a new share always shows big
         G.room = room;
         layout();
       }
@@ -1535,6 +1547,7 @@
     on('fsBtn', 'click', () => { closeMore(); fullscreen(); });
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
+    on('watchRoot', 'click', swapTap);
     on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
