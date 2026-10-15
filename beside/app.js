@@ -471,7 +471,10 @@
     tile.addEventListener('pointermove', (e) => {
       if (P.start && e.pointerId === P.start.id && Math.hypot(e.clientX - P.start.x, e.clientY - P.start.y) > 12) cancel();
     });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => tile.addEventListener(ev, (e) => { if (P.start && e.pointerId === P.start.id) cancel(); }));
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => tile.addEventListener(ev, (e) => {
+      if (e.pointerType !== 'mouse') P.lastTouch = Date.now(); // the click a long hold ends with is not a second point
+      if (P.start && e.pointerId === P.start.id) cancel();
+    }));
     tile.addEventListener('click', (e) => {
       if (Date.now() - P.lastTouch < 800 || !canPoint()) return; // a short tap only wakes the controls
       pointAt(e.clientX, e.clientY);
@@ -715,7 +718,13 @@
     }
     return body;
   }
+  function trimChat() {
+    const l = $('chatList');
+    const rows = l ? l.querySelectorAll('.msg') : [];
+    for (let i = 0; i < rows.length - 300; i++) rows[i].remove(); // keep the last 300
+  }
   function chatAdd(mine, name, t) {
+    trimChat();
     linkify(chatRow(mine, name), t);
     if (!mine) incoming(name, ': ' + t);
   }
@@ -733,6 +742,7 @@
     p.textContent = '';
     if (name) { const b = document.createElement('b'); b.textContent = name; p.appendChild(b); }
     p.append(rest);
+    p.dataset.chat = name ? '1' : ''; // a message preview opens the chat when tapped; a tip just goes away
     p.hidden = false;
     clearTimeout(C.peekTimer);
     C.peekTimer = setTimeout(() => { p.hidden = true; }, 4000);
@@ -808,7 +818,8 @@
             if (!q.conn.open || Q.get(q.conn) !== q) break;
             try { q.conn.send({ t: 'part', id: job.head.id, i, b }); } catch (e) { break; }
             // at most 250 KB/s while someone shares (the screen comes first), 1 MB/s otherwise
-            q.nextAt = Math.max(Date.now(), q.nextAt) + (b.byteLength / (someoneShares() ? 250000 : 1000000)) * 1000;
+            // (from up to half a second back, so a hidden tab's slow timers don't crawl it to 16 KB/s)
+            q.nextAt = Math.max(Date.now() - 500, q.nextAt) + (b.byteLength / (someoneShares() ? 250000 : 1000000)) * 1000;
             if (job.sent) job.sent(b.byteLength);
           }
         }
@@ -955,6 +966,7 @@
     const url = URL.createObjectURL(new Blob(r.parts, { type }));
     C.urls.push(url);
     r.card.finish(url, type);
+    if (isGuest) r.parts = []; // the Blob holds the bytes now; the host keeps parts only while relays read them
   }
   function fileFail(r) {
     if (r.done || r.failed) return;
@@ -972,6 +984,7 @@
     });
   }
   function hostFile(g, d) {
+    if (!rate(g, 'chatT', 10)) return;
     const busy = [...C.recv.values()].filter((r) => r.key.startsWith(g.id + ':') && !r.done && !r.failed).length;
     if (busy >= MAX_FILES) return;
     const name = g.name || 'Guest';
@@ -1157,7 +1170,6 @@
       guestStatus();
       setLag('lag', null);
       stayAwake(true);
-      autoPip(true);
       H.idRetries = 0;
       openHostPeer();
     } finally {
@@ -1459,6 +1471,7 @@
     useTabAudio(s);
     if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
     if (H.sharer === H.me) { V.pin = ''; H.shareN = (H.shareN || 0) + 1; roomScreen(); } else takeOver(H.me);
+    autoPip(true);
   }
   const hostChange = hostShare;
   function hostUnshare(msg, keepSharer) {
@@ -1468,6 +1481,7 @@
     if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
     if (d) d.getTracks().forEach((t) => t.stop());
     miniClose();
+    autoPip(false);
     if (H.sharer === H.me && !keepSharer) { H.sharer = ''; V.pin = ''; roomScreen(); }
     setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
     layout();
@@ -1807,6 +1821,8 @@
       } else if (d.t === 'share') {
         // Someone else started sharing: the host stopped ours.
         if (d.on === false && G.display) { guestUnshare(true); note((cleanName(d.name) || 'Someone') + ' is sharing now, so your sharing stopped.', 'info'); }
+        // Say so even if our picture started after the host's message left: otherwise the room keeps a frozen screen.
+        if (d.on === false) tell(G.conn, { t: 'share', on: false });
       } else if (d.t === 'chat') {
         if (typeof d.text !== 'string') return;
         const t = d.text.slice(0, 2000).trim();
@@ -1881,7 +1897,6 @@
     clearInterval(G.lagTimer);
     G.lagTimer = setInterval(async () => { const r = await rtt(pc); app.lag = r; setLag('lag', r); }, 2000);
     app.watching = true;
-    autoPip(true);
     G.lost = G.dropped = false;
     G.tries = G.quiet = 0;
     stayAwake(true);
@@ -1965,6 +1980,7 @@
       G.screenTrack = t;
       t.addEventListener('ended', () => { if (G.screenTrack === t) guestUnshare(); }); // Stop in the browser's bar
       tell(G.conn, { t: 'share', on: true });
+      autoPip(true);
       V.pin = '';
       setPressed('gScreenBtn', true, 'Stop sharing', 'Share screen');
       layout();
@@ -1979,6 +1995,7 @@
     d.getTracks().forEach((t) => t.stop());
     if (!quiet) tell(G.conn, { t: 'share', on: false });
     miniClose();
+    autoPip(false);
     setPressed('gScreenBtn', false, 'Stop sharing', 'Share screen');
     layout();
   }
@@ -2281,6 +2298,7 @@
     on('watchRoot', 'click', swapTap);
     wirePointing();
     on('chatBtn', 'click', () => chatOpen(!C.open));
+    on('peek', 'click', () => { const p = $('peek'); if (!p) return; p.hidden = true; if (p.dataset.chat) chatOpen(true); });
     on('chatClose', 'click', () => chatOpen(false));
     on('chatForm', 'submit', (e) => { e.preventDefault(); sendText(); });
     on('attachBtn', 'click', () => { const f = $('fileInput'); if (f) f.click(); });
