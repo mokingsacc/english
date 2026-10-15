@@ -332,6 +332,8 @@
     const mine = isGuest ? G.screenTrack : H.video;
     text('shareLabel', amSharing() ? 'You’re sharing ' + surfaceName(mine) : titleText());
     document.body.dataset.alone = alone ? '1' : '';
+    const gs = $('gScreenBtn');
+    if (gs) gs.hidden = !(CAN_SHARE && isGuest && G.hostVer >= 2 && G.screenSender && app.state === 'watching');
     chatButton();
     docTitle();
     fitDots();
@@ -1312,6 +1314,9 @@
         const name = g.name || 'Guest';
         chatAdd(false, name, t);
         toGuests({ t: 'chat', id: String(d.id || '').slice(0, 12), text: t, from: g.id, name }, g);
+      } else if (d.t === 'share') {
+        if (d.on && g.live && g.canShare) takeOver(g.id);
+        else if (!d.on && H.sharer === g.id) { H.sharer = ''; V.pin = ''; H.shareN = (H.shareN || 0) + 1; roomScreen(); }
       } else if (d.t === 'ping') {
         const xy = okPing(d);
         if (!xy || !rate(g, 'pingT', 5)) return;
@@ -1668,11 +1673,16 @@
     if (G.call) { const old = G.call; G.call = null; try { old.close(); } catch (e) {} }
     G.call = call;
     // Answer with the mic and the camera lane (the camera, or the blank that holds its place).
+    // A computer that can share also answers on the second video lane (its screen, blank until it shares).
+    if (G.display) guestUnshare(true);
     const slot = G.cam ? G.cam.getVideoTracks()[0] : G.blank;
-    const out = (G.mic ? G.mic.getAudioTracks() : []).concat(slot ? [slot] : []);
+    if (CAN_SHARE && slot && !G.screenBlank) G.screenBlank = blankTrack();
+    const scr = CAN_SHARE && slot ? G.screenBlank : null;
+    const out = (G.mic ? G.mic.getAudioTracks() : []).concat(slot ? [slot] : [], scr ? [scr] : []);
     call.answer(out.length ? ordered(out) : undefined);
     const pc = call.peerConnection;
     G.camSender = (pc && slot && pc.getSenders().find((s) => s.track === slot)) || null;
+    G.screenSender = (pc && scr && pc.getSenders().find((s) => s.track === scr)) || null;
     if (pc) {
       iceProblem(pc,
         (never) => {
@@ -1788,6 +1798,9 @@
         if (!G.room || G.room.sharer !== room.sharer || G.room.n !== room.n) V.pin = ''; // a new share always shows big
         G.room = room;
         layout();
+      } else if (d.t === 'share') {
+        // Someone else started sharing: the host stopped ours.
+        if (d.on === false && G.display) { guestUnshare(true); note((cleanName(d.name) || 'Someone') + ' is sharing now, so your sharing stopped.', 'info'); }
       } else if (d.t === 'chat') {
         if (typeof d.text !== 'string') return;
         const t = d.text.slice(0, 2000).trim();
@@ -1862,6 +1875,7 @@
     clearInterval(G.lagTimer);
     G.lagTimer = setInterval(async () => { const r = await rtt(pc); app.lag = r; setLag('lag', r); }, 2000);
     app.watching = true;
+    autoPip(true);
     G.lost = G.dropped = false;
     G.tries = G.quiet = 0;
     stayAwake(true);
@@ -1888,6 +1902,8 @@
   function tapHide() { const t = $('tapToHear'); if (t) t.hidden = true; }
   function guestLost() {
     if (G.left) return;
+    guestUnshare(true);
+    autoPip(false);
     clearInterval(G.lagTimer);
     app.watching = false;
     const v = $('screenVideo');
@@ -1917,6 +1933,49 @@
     setPressed('gMuteBtn', G.muted, 'Unmute my mic', 'Mute my mic');
   }
   function guestFace() { layout(); }
+  // A guest on a computer can share one tab or window back. It rides the second video lane of the same call;
+  // the host decides who shares (the newest share wins) and passes it on to the others.
+  async function guestShare() {
+    if (G.sharing || G.display || !G.screenSender || G.hostVer < 2 || app.state !== 'watching') return;
+    G.sharing = true;
+    try {
+      // The tick for a hidden sharer needs sound unlocked, so the audio engine starts inside this tap.
+      if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
+      let s;
+      try {
+        s = await getDisplay(false);
+      } catch (e) {
+        note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+        return;
+      }
+      s.getAudioTracks().forEach((t) => t.stop()); // guests send no tab sound
+      if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
+      const t = s.getVideoTracks()[0];
+      if (!t || app.state !== 'watching' || !G.screenSender) { s.getTracks().forEach((x) => x.stop()); return; }
+      try { t.contentHint = 'detail'; } catch (e) {}
+      try { await G.screenSender.replaceTrack(t); } catch (e) { s.getTracks().forEach((x) => x.stop()); note('Sharing didn’t start. Try again.', 'info'); return; }
+      tuneScreen(G.screenSender);
+      G.display = s;
+      G.screenTrack = t;
+      t.addEventListener('ended', () => { if (G.screenTrack === t) guestUnshare(); }); // Stop in the browser's bar
+      tell(G.conn, { t: 'share', on: true });
+      V.pin = '';
+      setPressed('gScreenBtn', true, 'Stop sharing', 'Share screen');
+      layout();
+    } finally { G.sharing = false; }
+  }
+  function guestUnshare(quiet) {
+    const d = G.display;
+    if (!d) return;
+    G.display = null;
+    G.screenTrack = null;
+    if (G.screenSender && G.screenBlank) G.screenSender.replaceTrack(G.screenBlank).catch(() => {});
+    d.getTracks().forEach((t) => t.stop());
+    if (!quiet) tell(G.conn, { t: 'share', on: false });
+    miniClose();
+    setPressed('gScreenBtn', false, 'Stop sharing', 'Share screen');
+    layout();
+  }
   async function guestCam() {
     if (G.camBusy || G.left) return;
     if (!G.blank) { note('This browser can’t send your camera. Use Safari or Chrome.', 'info'); return; }
@@ -1957,13 +2016,15 @@
   }
   function guestLeave() {
     G.left = true;
+    guestUnshare(true);
+    autoPip(false);
     clearTimeout(G.retry);
     clearInterval(G.lagTimer);
     dropKnocks();
     try { if (G.call) G.call.close(); } catch (e) {}
     try { if (G.peer) G.peer.destroy(); } catch (e) {}
     [G.mic, G.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
-    G.peer = G.call = G.mic = G.cam = G.camSender = G.view = G.viewFor = null;
+    G.peer = G.call = G.mic = G.cam = G.camSender = G.screenSender = G.view = G.viewFor = null;
     G.camOn = false;
     roomReset();
     V.pin = '';
@@ -2199,6 +2260,7 @@
     on('camBtn', 'click', hostCam);
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
     on('gCamBtn', 'click', guestCam);
+    on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else guestShare(); });
     on('changeBtn', 'click', () => { closeMore(); hostChange(); });
     on('stopBtn', 'click', () => hostStop());
     document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => hostMode(b.dataset.mode)));
