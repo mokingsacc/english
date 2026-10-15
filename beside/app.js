@@ -336,6 +336,7 @@
     docTitle();
     fitDots();
     pointTip();
+    miniRender();
   }
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
@@ -347,9 +348,6 @@
     V.pin = k === V.auto ? '' : k;
     layout();
   }
-  const mini = { win: null };
-  function miniPeek() { /* the mini window comes later */ }
-  function miniDot() { /* the mini window comes later */ }
   // More: a bottom sheet on phones, a small card on computers.
   function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
   function openMore() {
@@ -480,6 +478,150 @@
     try { new ResizeObserver(fitDots).observe(tile); } catch (e) { addEventListener('resize', fitDots); }
     const v = $('screenVideo');
     if (v) ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, fitDots));
+  }
+
+  // ---------- MINI WINDOW ----------
+  // Chrome and Edge, while you share: a small always-on-top window (Document Picture-in-Picture) over the shared
+  // tab or any app, with a live miniature of what you share, the dots on it, the others' faces, Mic, Camera and
+  // Stop sharing. It is its own window, so it never shows in the shared picture.
+  const HAS_MINI = 'documentPictureInPicture' in window;
+  const mini = { win: null, els: null, opening: false, sig: '', peekTimer: 0 };
+  async function miniOpen() {
+    if (!HAS_MINI || mini.win || mini.opening || !amSharing()) return;
+    mini.opening = true;
+    let win;
+    try {
+      win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 225 });
+    } catch (e) {
+      mini.opening = false;
+      note('The mini window didn’t open. Press Mini window to try again.', 'info');
+      return;
+    }
+    mini.opening = false;
+    if (!amSharing()) { try { win.close(); } catch (e) {} return; }
+    const d = win.document;
+    const css = document.querySelector('style');
+    const st = d.createElement('style');
+    st.textContent = css ? css.textContent : '';
+    const meta = d.createElement('meta');
+    meta.name = 'color-scheme';
+    meta.content = 'light dark';
+    d.head.append(meta, st);
+    d.title = 'Beside';
+    d.body.className = 'mini-body';
+    const root = d.createElement('div');
+    root.className = 'mini';
+    const stage = d.createElement('div');
+    stage.className = 'mini-stage';
+    const v = d.createElement('video');
+    v.muted = true; v.autoplay = true; v.setAttribute('playsinline', '');
+    const dots = d.createElement('div');
+    dots.className = 'dots';
+    stage.append(v, dots);
+    const peek = d.createElement('div');
+    peek.className = 'mini-peek';
+    peek.hidden = true;
+    const bar = d.createElement('div');
+    bar.className = 'mini-bar';
+    const faces = d.createElement('div');
+    faces.className = 'mini-faces';
+    const btn = (actName, label, from, cls) => {
+      const b = d.createElement('button');
+      b.className = 'mini-btn ' + (cls || '');
+      b.dataset.act = actName;
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      const svg = document.querySelector(from + ' svg');
+      if (svg) b.appendChild(d.importNode(svg, true));
+      return b;
+    };
+    const stop = d.createElement('button');
+    stop.className = 'mini-btn stop';
+    stop.dataset.act = 'unshare';
+    stop.textContent = 'Stop sharing';
+    bar.append(faces, btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'), stop);
+    root.append(stage, peek, bar);
+    d.body.appendChild(root);
+    bar.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
+    const fit = () => fitLayer(v, dots);
+    win.addEventListener('resize', fit);
+    ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, fit));
+    win.addEventListener('pagehide', () => { if (mini.win === win) { mini.win = null; mini.els = null; layout(); } });
+    mini.win = win;
+    mini.els = { v, dots, faces, peek, bar };
+    mini.sig = '';
+    layout();
+  }
+  // The mini window's buttons do what the same buttons in the dock do.
+  function act(name) {
+    if (name === 'mute') { if (isGuest) guestMute(); else hostMute(); }
+    else if (name === 'cam') { if (isGuest) guestCam(); else hostCam(); }
+    else if (name === 'unshare') { if (isGuest) guestUnshare(); else hostUnshare(); }
+    miniRender();
+  }
+  function miniClose() {
+    const w = mini.win;
+    mini.win = null;
+    mini.els = null;
+    if (w) { try { w.close(); } catch (e) {} }
+  }
+  function miniRender() {
+    const btn = $('miniBtn');
+    if (btn) { btn.hidden = !(HAS_MINI && amSharing()); btn.setAttribute('aria-pressed', mini.win ? 'true' : 'false'); }
+    if (!mini.win || !mini.els) return;
+    if (!amSharing()) { miniClose(); return; }
+    const { v, faces, bar } = mini.els;
+    const t = screenSource();
+    if (t && (!v.srcObject || v.srcObject.getVideoTracks()[0] !== t)) { v.srcObject = new MediaStream([t]); v.play().catch(() => {}); }
+    let people;
+    if (isGuest) {
+      const pc = G.call && G.call.peerConnection;
+      people = [{ key: 'host', name: hostLabel(), track: G.camOn && pc ? lane(pc, 1) : null }];
+    } else {
+      people = watchers().map((g) => ({ key: g.id, name: g.name, track: g.tile && g.call && g.call.peerConnection ? lane(g.call.peerConnection, 0) : null }));
+    }
+    const sig = people.map((p) => p.key + ':' + (p.track ? p.track.id : '') + ':' + p.name).join('|');
+    if (sig !== mini.sig) {
+      mini.sig = sig;
+      const d = mini.win.document;
+      faces.textContent = '';
+      people.slice(0, 4).forEach((p) => {
+        const f = d.createElement('div');
+        f.className = 'mini-face';
+        f.title = p.name || '';
+        if (p.track) {
+          const fv = d.createElement('video');
+          fv.muted = true; fv.autoplay = true; fv.setAttribute('playsinline', '');
+          fv.srcObject = new MediaStream([p.track]);
+          f.appendChild(fv);
+          fv.play().catch(() => {});
+        } else f.textContent = (p.name || '•').charAt(0).toUpperCase();
+        faces.appendChild(f);
+      });
+    }
+    const muted = isGuest ? G.muted : H.muted;
+    const camOn = isGuest ? !!G.cam : !!H.cam;
+    const m = bar.querySelector('[data-act=mute]');
+    if (m) m.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    const c = bar.querySelector('[data-act=cam]');
+    if (c) c.setAttribute('aria-pressed', camOn ? 'true' : 'false');
+  }
+  function miniDot(x, y, from, name) {
+    if (!mini.win || !mini.els) return;
+    fitLayer(mini.els.v, mini.els.dots);
+    mini.els.dots.appendChild(dotEl(mini.win.document, x, y, from, name));
+  }
+  function miniPeek(line) {
+    if (!mini.win || !mini.els) return;
+    const p = mini.els.peek;
+    p.textContent = line;
+    p.hidden = false;
+    clearTimeout(mini.peekTimer);
+    mini.peekTimer = setTimeout(() => { p.hidden = true; }, 6000);
+  }
+  // Chrome can open the mini window by itself when you switch to the shared tab (it may ask once to allow it).
+  function autoPip(on) {
+    try { navigator.mediaSession.setActionHandler('enterpictureinpicture', on && HAS_MINI ? () => { miniOpen(); } : null); } catch (e) { /* not offered here */ }
   }
 
   // ---------- CHAT AND FILES ----------
@@ -1013,6 +1155,7 @@
       guestStatus();
       setLag('lag', null);
       stayAwake(true);
+      autoPip(true);
       H.idRetries = 0;
       openHostPeer();
     } finally {
@@ -1313,6 +1456,7 @@
     H.video = null;
     if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
     if (d) d.getTracks().forEach((t) => t.stop());
+    miniClose();
     if (H.sharer === H.me && !keepSharer) { H.sharer = ''; V.pin = ''; roomScreen(); }
     setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
     layout();
@@ -1377,6 +1521,8 @@
     H.display = H.mic = H.video = H.ctx = H.tabSrc = H.cam = H.camSlot = H.blank = H.blankScreen = null;
     H.sharer = '';
     V.pin = '';
+    miniClose();
+    autoPip(false);
     chatReset();
     setPressed('camBtn', false, 'Turn my camera off', 'Turn my camera on');
     setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
@@ -2097,6 +2243,7 @@
       visualViewport.addEventListener('resize', kb);
       visualViewport.addEventListener('scroll', kb);
     }
+    on('miniBtn', 'click', () => { if (mini.win) miniClose(); else miniOpen(); });
     on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
