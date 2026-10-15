@@ -332,7 +332,8 @@
     const mine = isGuest ? G.screenTrack : H.video;
     text('shareLabel', amSharing() ? 'You’re sharing ' + surfaceName(mine) : titleText());
     document.body.dataset.alone = alone ? '1' : '';
-    if (!isGuest) hostTitle();
+    chatButton();
+    docTitle();
   }
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
@@ -344,7 +345,7 @@
     V.pin = k === V.auto ? '' : k;
     layout();
   }
-  function unreadPrefix() { return ''; }
+  function miniPeek() { /* the mini window comes later */ }
   // More: a bottom sheet on phones, a small card on computers.
   function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
   function openMore() {
@@ -358,6 +359,367 @@
     if (x) x.focus();
   }
   function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+
+  // ---------- CHAT AND FILES ----------
+  // Messages and files ride the call's data link, straight between the browsers; the host passes them on to
+  // everyone else (guests only have a link to the host). Nothing is kept: a reload or the end of the call clears it.
+  const C = { open: false, unread: 0, urls: [], recv: new Map(), peekTimer: 0 };
+  const PART = 16000; // under PeerJS's own 16 300-byte chunking, so parts are never split twice
+  const MAX_FILE = 25 * 1024 * 1024;
+  const MAX_FILES = 5;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function rid() { return code8(); }
+  function rate(obj, key, perSec) {
+    const now = Date.now();
+    const a = (obj[key] = (obj[key] || []).filter((x) => now - x < 1000));
+    if (a.length >= perSec) return false;
+    a.push(now);
+    return true;
+  }
+  function chatAvailable() {
+    if (isGuest) return app.state === 'watching' && G.hostVer >= 2;
+    return app.state === 'live' && watchers().some((g) => g.ver >= 2);
+  }
+  function chatButton() {
+    const b = $('chatBtn');
+    const okNow = chatAvailable();
+    if (b) b.hidden = !okNow;
+    if (!okNow && C.open) chatOpen(false);
+  }
+  function unreadPrefix() { return C.unread ? '(' + C.unread + ') ' : ''; }
+  function docTitle() {
+    if (!isGuest) { hostTitle(); return; }
+    const n = hostLabel();
+    document.title = unreadPrefix() + (n ? n + ' · Beside' : 'Beside');
+  }
+  function badge() {
+    const b = $('chatBadge');
+    if (b) { b.hidden = !C.unread; b.textContent = C.unread > 9 ? '9+' : String(C.unread); }
+    const cb = $('chatBtn');
+    if (cb) cb.setAttribute('aria-label', C.unread ? 'Chat, ' + C.unread + ' new' : 'Chat');
+    docTitle();
+  }
+  function chatOpen(on) {
+    C.open = !!on;
+    const el = $('chat');
+    if (el) el.hidden = !C.open;
+    document.body.classList.toggle('chat-open', C.open);
+    if (C.open) {
+      C.unread = 0;
+      badge();
+      const p = $('peek');
+      if (p) p.hidden = true;
+      const l = $('chatList');
+      if (l) l.scrollTop = l.scrollHeight;
+      const inp = $('chatInput');
+      if (inp && !matchMedia('(pointer: coarse)').matches) inp.focus();
+    }
+    wakeControls();
+  }
+  function linkify(el, t) {
+    // Text nodes and plain links only: nothing a peer sends is ever read as HTML.
+    String(t).split(/(https?:\/\/[^\s<>"']+)/g).forEach((part, i) => {
+      if (!part) return;
+      if (i % 2 === 0) { el.appendChild(document.createTextNode(part)); return; }
+      const tail = (part.match(/[.,!?;:)\]]+$/) || [''])[0];
+      const url = tail ? part.slice(0, -tail.length) : part;
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = url;
+      el.appendChild(a);
+      if (tail) el.appendChild(document.createTextNode(tail));
+    });
+  }
+  function chatRow(mine, name) {
+    const list = $('chatList');
+    const empty = $('chatEmpty');
+    if (empty) empty.hidden = true;
+    const row = document.createElement('div');
+    row.className = 'msg' + (mine ? ' mine' : '');
+    if (!mine) { const w = document.createElement('div'); w.className = 'who'; w.textContent = name || 'Someone'; row.appendChild(w); }
+    const body = document.createElement('div');
+    body.className = 'body';
+    row.appendChild(body);
+    if (list) {
+      const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      list.appendChild(row);
+      if (stick || mine) list.scrollTop = list.scrollHeight;
+    }
+    return body;
+  }
+  function chatAdd(mine, name, t) {
+    linkify(chatRow(mine, name), t);
+    if (!mine) incoming(name, ': ' + t);
+  }
+  // Something arrived: count it while the chat is closed, and show one line above the dock for 4 s.
+  function incoming(name, rest) {
+    miniPeek((name || 'Someone') + rest);
+    if (C.open) return;
+    C.unread++;
+    badge();
+    const p = $('peek');
+    if (!p) return;
+    p.textContent = '';
+    const b = document.createElement('b');
+    b.textContent = name || 'Someone';
+    p.append(b, rest);
+    p.hidden = false;
+    clearTimeout(C.peekTimer);
+    C.peekTimer = setTimeout(() => { p.hidden = true; }, 4000);
+  }
+  function toGuests(msg, except) { for (const g of H.guests.values()) if (g !== except && g.ver >= 2) tell(g.conn, msg); }
+  function sendText() {
+    const inp = $('chatInput');
+    if (!inp) return;
+    const t = inp.value.trim().slice(0, 2000);
+    if (!t || !chatAvailable()) return;
+    inp.value = '';
+    const msg = { t: 'chat', id: rid(), text: t };
+    if (isGuest) tell(G.conn, msg);
+    else toGuests({ ...msg, from: H.me, name: myName() });
+    chatAdd(true, '', t);
+  }
+  function chatReset() {
+    if (C.open) chatOpen(false);
+    C.unread = 0;
+    badge();
+    const p = $('peek');
+    if (p) p.hidden = true;
+    const l = $('chatList');
+    if (l) l.querySelectorAll('.msg').forEach((m) => m.remove());
+    const empty = $('chatEmpty');
+    if (empty) empty.hidden = false;
+    C.recv.forEach((r) => { clearTimeout(r.timer); r.failed = true; r.waiters.forEach((w) => w()); });
+    C.recv.clear();
+    Q.clear();
+    C.urls.forEach((u) => URL.revokeObjectURL(u));
+    C.urls = [];
+    const vw = $('viewer');
+    if (vw) vw.hidden = true;
+  }
+
+  // ----- files: 16 000-byte parts, one file at a time per link, paced so the screen keeps priority -----
+  const Q = new Map(); // data link -> { conn, jobs, busy, nextAt }
+  function enqueue(conn, job) {
+    if (!conn) return;
+    let q = Q.get(conn);
+    if (!q) { q = { conn, jobs: [], busy: false, nextAt: 0 }; Q.set(conn, q); }
+    q.jobs.push(job);
+    pump(q);
+  }
+  function someoneShares() { return isGuest ? !!(G.room && G.room.sharer) || !!G.screenTrack : !!H.sharer; }
+  // Wait until little is queued on the link (64 KB), so chat and pings never sit behind a file.
+  async function windowOpen(conn) {
+    for (;;) {
+      const dc = conn.dataChannel;
+      if (!conn.open || !dc) return;
+      if (dc.bufferedAmount < 65536 && !conn.bufferSize) return;
+      await new Promise((res) => {
+        const t = setTimeout(res, 250);
+        try { dc.bufferedAmountLowThreshold = 32768; dc.addEventListener('bufferedamountlow', () => { clearTimeout(t); res(); }, { once: true }); } catch (e) {}
+      });
+    }
+  }
+  async function pump(q) {
+    if (q.busy) return;
+    q.busy = true;
+    try {
+      while (q.jobs.length && Q.get(q.conn) === q) {
+        const job = q.jobs[0];
+        if (q.conn.open) {
+          tell(q.conn, job.head);
+          const n = Math.ceil(job.size / PART);
+          for (let i = 0; i < n; i++) {
+            const b = await job.part(i);
+            if (!b || !q.conn.open || Q.get(q.conn) !== q) break;
+            await windowOpen(q.conn);
+            const wait = q.nextAt - Date.now();
+            if (wait > 0) await sleep(wait);
+            if (!q.conn.open || Q.get(q.conn) !== q) break;
+            try { q.conn.send({ t: 'part', id: job.head.id, i, b }); } catch (e) { break; }
+            // at most 250 KB/s while someone shares (the screen comes first), 1 MB/s otherwise
+            q.nextAt = Math.max(Date.now(), q.nextAt) + (b.byteLength / (someoneShares() ? 250000 : 1000000)) * 1000;
+            if (job.sent) job.sent(b.byteLength);
+          }
+        }
+        q.jobs.shift();
+      }
+    } catch (e) { /* the link is going anyway */ } finally { q.busy = false; }
+  }
+  function isImage(mime) { return /^image\/(jpeg|png|gif|webp)$/.test(mime || ''); }
+  // Only pictures and PDFs open in the browser; anything else (HTML and SVG included) can only be saved.
+  function safeType(mime) { return isImage(mime) ? mime : mime === 'application/pdf' ? mime : 'application/octet-stream'; }
+  function sizeText(n) { return n >= 1048576 ? (n / 1048576).toFixed(n >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  // Big photos and iPhone HEIC pictures go as a JPEG of at most 2560 px: faster, and every browser can show it.
+  async function shrinkImage(f) {
+    const heic = /hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || '');
+    if (!heic && !(/^image\/(jpeg|png|webp)$/.test(f.type || '') && f.size > 3 * 1024 * 1024)) return f;
+    try {
+      const bmp = await createImageBitmap(f);
+      const k = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * k);
+      c.height = Math.round(bmp.height * k);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
+      if (!blob) return f;
+      return new File([blob], (f.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (e) { return f; }
+  }
+  function fileCard(mine, name, f) {
+    const body = chatRow(mine, name);
+    const card = document.createElement('div');
+    card.className = 'filecard';
+    const fn = document.createElement('div');
+    fn.className = 'fname';
+    fn.textContent = f.fname;
+    const meta = document.createElement('div');
+    meta.className = 'fmeta';
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('i');
+    bar.appendChild(fill);
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    card.append(fn, meta, bar, acts);
+    body.appendChild(card);
+    let last = 0;
+    const verb = mine ? 'Sending' : 'Receiving';
+    const api = {
+      progress(p) {
+        const now = Date.now();
+        if (p < 1 && now - last < 100) return; // at most 10 updates a second
+        last = now;
+        const pct = Math.min(100, Math.floor(p * 100));
+        card.dataset.pct = String(pct);
+        fill.style.width = pct + '%';
+        meta.textContent = sizeText(f.size) + ' · ' + (pct >= 100 ? (mine ? 'Sent' : 'Arrived') : verb + '… ' + pct + '%');
+        if (pct >= 100) bar.hidden = true;
+      },
+      photo(url) {
+        const img = document.createElement('img');
+        img.className = 'photo';
+        img.alt = f.fname;
+        img.src = url;
+        body.classList.add('photo');
+        body.insertBefore(img, card);
+        fn.hidden = true;
+      },
+      finish(url, type) {
+        api.progress(1);
+        if (isImage(type)) { api.photo(url); return; }
+        if (type === 'application/pdf') {
+          const o = document.createElement('a');
+          o.href = url; o.target = '_blank'; o.rel = 'noopener'; o.textContent = 'Open'; o.className = 'open';
+          acts.appendChild(o);
+        }
+        const s = document.createElement('a');
+        s.href = url; s.download = f.fname; s.textContent = 'Save'; s.className = 'save';
+        acts.appendChild(s);
+      },
+      fail(msg) {
+        card.dataset.pct = 'failed';
+        bar.hidden = true;
+        meta.textContent = msg || (mine ? 'Didn’t send. Try again.' : 'Didn’t arrive. Ask them to send it again.');
+      },
+    };
+    api.progress(0);
+    return api;
+  }
+  async function sendFiles(list) {
+    const files = [...(list || [])];
+    if (!files.length) return;
+    if (!chatAvailable()) { note('Files can be sent once someone with the latest Beside is in the call.', 'info'); return; }
+    if (files.length > MAX_FILES) note('You can send up to 5 files at a time. The first 5 are on their way.', 'info');
+    for (const f0 of files.slice(0, MAX_FILES)) {
+      if (f0.size > MAX_FILE) { note('“' + String(f0.name).slice(0, 60) + '” is too big. You can send files up to 25 MB.', 'info'); continue; }
+      const f = await shrinkImage(f0);
+      const head = { t: 'file', id: rid(), fname: String(f.name || 'file').slice(0, 120), size: f.size, mime: String(f.type || '').slice(0, 100) };
+      const card = fileCard(true, '', head);
+      if (isImage(head.mime)) { const u = URL.createObjectURL(f); C.urls.push(u); card.photo(u); }
+      const part = (i) => f.slice(i * PART, (i + 1) * PART).arrayBuffer();
+      const conns = isGuest ? [G.conn] : [...H.guests.values()].filter((g) => g.ver >= 2).map((g) => g.conn);
+      const want = f.size * conns.length;
+      let sent = 0;
+      if (!want) card.progress(1);
+      conns.forEach((conn) => enqueue(conn, {
+        head: isGuest ? head : { ...head, from: H.me, name: myName() },
+        size: f.size,
+        part,
+        sent: (n) => { sent += n; card.progress(sent / want); },
+      }));
+    }
+  }
+  function watchdog(r) {
+    clearTimeout(r.timer);
+    r.timer = setTimeout(() => fileFail(r), 20000); // nothing for 20 s: it isn't coming
+  }
+  function fileStart(key, d, name) {
+    const size = +d.size;
+    if (C.recv.has(key) || typeof d.fname !== 'string' || !(size >= 0 && size <= MAX_FILE)) return null;
+    const r = {
+      key, id: String(d.id).slice(0, 12), fname: d.fname.slice(0, 120) || 'file', size, mime: String(d.mime || '').slice(0, 100),
+      parts: [], got: 0, done: false, failed: false, waiters: [], timer: 0, card: null,
+    };
+    r.card = fileCard(false, name, r);
+    C.recv.set(key, r);
+    incoming(name, isImage(r.mime) ? ' sent a photo' : ' sent a file');
+    if (!size) fileDone(r); else watchdog(r);
+    return r;
+  }
+  function filePart(key, d) {
+    const r = C.recv.get(key);
+    if (!r || r.done || r.failed) return;
+    const b = d.b instanceof ArrayBuffer || ArrayBuffer.isView(d.b) ? d.b : null;
+    if (!b || b.byteLength > PART || d.i !== r.parts.length || r.got + b.byteLength > r.size) { fileFail(r); return; }
+    r.parts.push(b);
+    r.got += b.byteLength;
+    r.waiters.splice(0).forEach((w) => w());
+    r.card.progress(r.got / r.size);
+    if (r.got === r.size) fileDone(r); else watchdog(r);
+  }
+  function fileDone(r) {
+    r.done = true;
+    clearTimeout(r.timer);
+    const type = safeType(r.mime);
+    const url = URL.createObjectURL(new Blob(r.parts, { type }));
+    C.urls.push(url);
+    r.card.finish(url, type);
+  }
+  function fileFail(r) {
+    if (r.done || r.failed) return;
+    r.failed = true;
+    clearTimeout(r.timer);
+    r.parts = [];
+    r.card.fail();
+    r.waiters.splice(0).forEach((w) => w());
+  }
+  // The host passes a file on part by part as it arrives, so the others don't wait for the whole file.
+  function relayPart(r) {
+    return (i) => new Promise((res) => {
+      const look = () => { if (r.parts[i]) res(r.parts[i]); else if (r.failed || r.done) res(null); else r.waiters.push(look); };
+      look();
+    });
+  }
+  function hostFile(g, d) {
+    const busy = [...C.recv.values()].filter((r) => r.key.startsWith(g.id + ':') && !r.done && !r.failed).length;
+    if (busy >= MAX_FILES) return;
+    const name = g.name || 'Guest';
+    const r = fileStart(g.id + ':' + String(d.id).slice(0, 12), d, name);
+    if (!r) return;
+    for (const o of H.guests.values()) {
+      if (o === g || o.ver < 2) continue;
+      enqueue(o.conn, { head: { t: 'file', id: r.id, fname: r.fname, size: r.size, mime: r.mime, from: g.id, name }, size: r.size, part: relayPart(r) });
+    }
+  }
+  function showPhoto(src) {
+    const v = $('viewer'), im = $('viewerImg');
+    if (!v || !im) return;
+    im.src = src;
+    v.hidden = false;
+  }
 
   // ---------- HOST ----------
   // Mo starts a call with one tap; nothing is shared until Share screen. Every lane of the call exists from the
@@ -674,7 +1036,17 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
-      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; guestStatus(); }
+      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; guestStatus(); return; }
+      if (g.ver < 2) return;
+      if (d.t === 'chat') {
+        if (typeof d.text !== 'string' || !rate(g, 'chatT', 10)) return;
+        const t = d.text.slice(0, 2000).trim();
+        if (!t) return;
+        const name = g.name || 'Guest';
+        chatAdd(false, name, t);
+        toGuests({ t: 'chat', id: String(d.id || '').slice(0, 12), text: t, from: g.id, name }, g);
+      } else if (d.t === 'file') hostFile(g, d);
+      else if (d.t === 'part') filePart(g.id + ':' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
   }
   function hostDropGuest(id) {
@@ -874,6 +1246,7 @@
     H.display = H.mic = H.video = H.ctx = H.tabSrc = H.cam = H.camSlot = H.blank = H.blankScreen = null;
     H.sharer = '';
     V.pin = '';
+    chatReset();
     setPressed('camBtn', false, 'Turn my camera off', 'Turn my camera on');
     setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
     app.hostReady = false;
@@ -1138,7 +1511,13 @@
         if (!G.room || G.room.sharer !== room.sharer || G.room.n !== room.n) V.pin = ''; // a new share always shows big
         G.room = room;
         layout();
-      }
+      } else if (d.t === 'chat') {
+        if (typeof d.text !== 'string') return;
+        const t = d.text.slice(0, 2000).trim();
+        if (t) chatAdd(false, cleanName(d.name) || (d.from === hostId ? hostLabel() : '') || 'Someone', t);
+      } else if (d.t === 'file') {
+        fileStart('h:' + String(d.id).slice(0, 12), d, cleanName(d.name) || (d.from === hostId ? hostLabel() : '') || 'Someone');
+      } else if (d.t === 'part') filePart('h:' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
   }
   function roomReset() { G.hostVer = 0; G.room = null; }
@@ -1238,6 +1617,7 @@
     G.camOn = false;
     roomReset();
     V.pin = '';
+    chatReset();
     guestFace();
     const pc = G.call && G.call.peerConnection;
     G.dropped = !!(pc && /failed|disconnected/.test(pc.iceConnectionState));
@@ -1305,6 +1685,7 @@
     G.camOn = false;
     roomReset();
     V.pin = '';
+    chatReset();
     app.watching = false;
     guestFace();
     setPressed('gCamBtn', false, 'Turn my camera off', 'Turn my camera on');
@@ -1548,6 +1929,37 @@
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
     on('watchRoot', 'click', swapTap);
+    on('chatBtn', 'click', () => chatOpen(!C.open));
+    on('chatClose', 'click', () => chatOpen(false));
+    on('chatForm', 'submit', (e) => { e.preventDefault(); sendText(); });
+    on('attachBtn', 'click', () => { const f = $('fileInput'); if (f) f.click(); });
+    on('fileInput', 'change', (e) => { const f = e.target; sendFiles(f.files).finally(() => { f.value = ''; }); });
+    on('chatInput', 'paste', (e) => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length) { e.preventDefault(); sendFiles(files); }
+    });
+    on('chatList', 'click', (e) => { const im = e.target && e.target.closest && e.target.closest('img.photo'); if (im) showPhoto(im.src); });
+    on('viewer', 'click', () => { $('viewer').hidden = true; });
+    // Computers: drop files anywhere on the call.
+    const dropOk = (e) => chatAvailable() && e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+    on('watchRoot', 'dragover', (e) => { if (!dropOk(e)) return; e.preventDefault(); document.body.classList.add('dropping'); });
+    on('watchRoot', 'dragleave', (e) => { if (e.target === $('watchRoot') || !$('watchRoot').contains(e.relatedTarget)) document.body.classList.remove('dropping'); });
+    on('watchRoot', 'drop', (e) => {
+      document.body.classList.remove('dropping');
+      if (!dropOk(e)) return;
+      e.preventDefault();
+      chatOpen(true);
+      sendFiles(e.dataTransfer.files);
+    });
+    if (window.visualViewport) {
+      // Phones: keep the chat's typing line above the on-screen keyboard.
+      const kb = () => {
+        const vv = window.visualViewport;
+        document.documentElement.style.setProperty('--kb', Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) + 'px');
+      };
+      visualViewport.addEventListener('resize', kb);
+      visualViewport.addEventListener('scroll', kb);
+    }
     on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
@@ -1558,8 +1970,11 @@
     on('checkClose', 'click', closeSheet);
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      if (sheet && !sheet.hidden) closeSheet();
+      const vw = $('viewer');
+      if (vw && !vw.hidden) vw.hidden = true;
+      else if (sheet && !sheet.hidden) closeSheet();
       else if (moreOpen()) closeMore();
+      else if (C.open) chatOpen(false);
     });
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
     const more = $('moreSheet');
@@ -1623,7 +2038,7 @@
       if (bc) bc.postMessage('live?');
     }
     if (!window.Peer) peerLibOk();
-    if (LOCAL) app.debug = { H, G, V }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

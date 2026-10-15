@@ -351,6 +351,52 @@ button.pillbox:hover{background:rgba(32,26,19,.86)}
 .menu .field input:focus{outline:2px solid var(--clay);outline-offset:1px}
 .menu .links{display:flex;flex-wrap:wrap;gap:4px 8px;border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
 .menu .links .btn{padding:0 10px;min-height:44px;font-size:15px}
+/* chat: a drawer on the right on computers, a bottom sheet on phones */
+.chat{position:fixed;z-index:20;top:0;right:0;bottom:0;width:360px;display:flex;flex-direction:column;background:var(--paper);color:var(--ink);box-shadow:-1px 0 0 var(--line);padding-top:env(safe-area-inset-top)}
+.chat header{display:flex;align-items:center;justify-content:space-between;padding:12px 10px 10px 20px;border-bottom:1px solid var(--line)}
+.chat header h2{font-size:22px}
+.chat .x{min-height:44px;min-width:44px;padding:0;font-size:24px;color:var(--ink-2);border-radius:50%}
+.chat .x:hover{background:var(--paper-2)}
+.chat-list{flex:1;overflow:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain}
+.chat-empty{margin:auto;text-align:center;font-size:15px;color:var(--ink-3);max-width:26ch}
+.msg{max-width:84%;align-self:flex-start;display:flex;flex-direction:column;gap:3px}
+.msg .who{font-size:12px;font-weight:600;color:var(--ink-3);padding-left:12px}
+.msg .body{padding:9px 14px;border-radius:18px 18px 18px 6px;background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line);font-size:16px;line-height:1.38;overflow-wrap:anywhere;white-space:pre-wrap;color:var(--ink)}
+.msg.mine{align-self:flex-end}
+.msg.mine .body{background:var(--clay);color:var(--clay-ink);box-shadow:none;border-radius:18px 18px 6px 18px}
+.msg .body a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.msg .body.photo{padding:4px;white-space:normal}
+.msg img.photo{display:block;max-width:100%;max-height:280px;border-radius:14px;cursor:zoom-in}
+.filecard{display:flex;flex-direction:column;gap:7px;width:min(240px,62vw);white-space:normal}
+.filecard .fname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filecard .fmeta{font-size:13px;opacity:.75;font-variant-numeric:tabular-nums}
+.filecard .bar{height:4px;border-radius:2px;background:color-mix(in srgb,currentColor 18%,transparent);overflow:hidden}
+.filecard .bar i{display:block;height:100%;width:0;background:currentColor;transition:width .2s}
+.filecard .acts{display:flex;gap:8px}
+.filecard .acts:empty{display:none}
+.filecard .acts a{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;font-size:14px;font-weight:600;text-decoration:none;background:var(--paper);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.body.photo .filecard{padding:6px 10px 8px;width:auto}
+.composer{display:flex;align-items:center;gap:8px;padding:10px 12px max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--paper)}
+.composer input[type=text]{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);background:var(--paper-2);border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:999px;min-height:44px;padding:0 16px}
+.composer input[type=text]:focus{outline:2px solid var(--clay);outline-offset:1px}
+.composer .btn.icon{min-height:44px;min-width:44px;flex:none}
+.composer .btn svg{width:20px;height:20px}
+.composer .attach{background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--line)}
+.composer .send{background:var(--clay);color:var(--clay-ink)}
+body.chat-open .stage.watch .viewport{right:360px}
+@media (max-width:700px){
+  .chat{top:auto;left:0;width:auto;bottom:var(--kb,0px);height:min(58dvh,calc(100dvh - var(--kb,0px) - 64px));border-radius:22px 22px 0 0;box-shadow:0 -14px 40px -14px rgba(0,0,0,.55);padding-top:0}
+  body.chat-open .stage.watch .viewport{right:0;bottom:58dvh}
+  body.chat-open .dock,body.chat-open .peek{display:none}
+  body.chat-open .tile.small{width:92px}
+  body.chat-open .tile.small.self{width:56px}
+}
+.dock .badge{position:absolute;top:4px;right:4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--clay);color:var(--clay-ink);font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px rgba(32,26,19,.9)}
+.peek{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(18px,env(safe-area-inset-bottom)) + 74px);max-width:min(calc(100% - 32px),460px);min-height:40px;padding:0 16px;border-radius:999px;background:rgba(32,26,19,.84);color:#F0E7D8;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:fade .25s ease}
+.peek b{font-weight:700}
+.viewer{position:fixed;inset:0;z-index:70;background:rgba(12,10,8,.92);display:grid;place-items:center;padding:16px;cursor:zoom-out;animation:fade .2s}
+.viewer img{max-width:100%;max-height:calc(100dvh - 32px);border-radius:8px}
+body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:12px;z-index:6;display:grid;place-items:center;border:2px dashed rgba(240,231,216,.6);border-radius:20px;background:rgba(32,26,19,.55);color:#F0E7D8;font-size:20px;font-weight:600;pointer-events:none}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -456,6 +502,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
           <span class="pillbox lag none" id="lag">–</span>
         </span>
       </div>
+      <button class="peek" id="peek" hidden></button>
       <button class="hear" id="tapToHear" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><span id="tapToHearText">Tap to hear them</span></button>
       <div class="dock">
         <button class="btn icon" id="muteBtn" data-role="host" aria-label="Mute my mic" title="Mic" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M4 4l16 16"/></svg></button>
@@ -471,6 +518,17 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
       </div>
     </div>
   </div>
+  <aside class="chat" id="chat" aria-label="Chat" hidden>
+    <header><h2 class="display">Chat</h2><button class="btn x" id="chatClose" aria-label="Close chat">×</button></header>
+    <div class="chat-list" id="chatList" aria-live="polite"><p class="chat-empty" id="chatEmpty">Messages and files go straight to the people in this call. Nothing is kept.</p></div>
+    <form class="composer" id="chatForm" autocomplete="off">
+      <button type="button" class="btn icon attach" id="attachBtn" aria-label="Send a file or photo" title="Send a file or photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      <input type="file" id="fileInput" multiple hidden>
+      <input type="text" id="chatInput" enterkeyhint="send" placeholder="Message" maxlength="2000" aria-label="Message">
+      <button type="submit" class="btn icon send" id="sendBtn" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+    </form>
+  </aside>
+  <div class="viewer" id="viewer" hidden><img id="viewerImg" alt="Photo, full size"></div>
 </section>
 
 <!-- ENDED -->
@@ -531,6 +589,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
