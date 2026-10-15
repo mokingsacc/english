@@ -53,8 +53,10 @@
     document.body.dataset.app = state;
     document.querySelectorAll('[data-state]').forEach((el) => {
       if (el.dataset.state === 'check') return; // the check panel is an overlay
-      el.hidden = el.dataset.state !== state;
+      el.hidden = !el.dataset.state.split(' ').includes(state);
     });
+    if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
+    else { closeMore(); document.body.classList.remove('idle'); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -153,19 +155,6 @@
       return (t && t.receiver && t.receiver.track) || null;
     } catch (e) { return null; }
   }
-  function showFace(el, track, on) {
-    if (!el) return;
-    const v = el.querySelector('video');
-    if (on && track && v) {
-      if (!v.srcObject || v.srcObject.getVideoTracks()[0] !== track) v.srcObject = new MediaStream([track]);
-      v.play().catch(() => {});
-      el.hidden = false;
-    } else {
-      if (v && document.pictureInPictureElement === v) document.exitPictureInPicture().catch(() => {});
-      if (v) v.srcObject = null;
-      el.hidden = true;
-    }
-  }
   // Ask for a small camera picture; if this camera can't do that (or answers oddly), take any picture it gives:
   // the 300 kbit/s cap on the lane keeps it small either way.
   async function getCam() {
@@ -239,13 +228,136 @@
     });
   }
 
+  // ---------- VIEW (one call stage for both roles) ----------
+  // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
+  // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
+  const V = { pin: '' };
+  const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
+  function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
+  function screenSource() {
+    if (!isGuest) return roomTrack();
+    if (G.screenTrack) return G.screenTrack;
+    const pc = G.call && G.call.peerConnection;
+    const me = G.peer && G.peer.id;
+    return pc && G.room && G.room.sharer && G.room.sharer !== me ? lane(pc, 0) : null;
+  }
+  function setTrack(tile, track) {
+    const v = tile && tile.querySelector('video');
+    if (!v) return;
+    if (!track) { if (v.srcObject) v.srcObject = null; return; }
+    if (!v.srcObject || v.srcObject.getVideoTracks()[0] !== track) v.srcObject = new MediaStream([track]);
+    if (v.paused) v.play().catch(() => {});
+  }
+  function hostLabel() { return theirName || (G.hostName || ''); }
+  function titleText() {
+    const sid = sharerId();
+    if (isGuest) {
+      if (amSharing()) return 'You’re sharing';
+      const n = hostLabel();
+      if (sid && screenSource()) {
+        const who = sid === hostId ? n : (G.room && G.room.name) || '';
+        return who ? who + '’s screen' : 'Their screen';
+      }
+      return n ? 'With ' + n : 'In the call';
+    }
+    const live = watchers();
+    const joining = H.guests.size - live.length;
+    const who = live.length === 1 ? live[0].name || 'your guest' : live.length + ' people';
+    if (amSharing()) return live.length ? 'You’re sharing with ' + who : 'You’re sharing';
+    if (sid && roomTrack()) { const g = guestById(sid); return g && g.name ? g.name + '’s screen' : 'Their screen'; }
+    if (live.length === 1) return 'With ' + who;
+    if (live.length > 1) return live.length + ' people are here';
+    if (joining === 1) { const j = [...H.guests.values()].find((g) => !g.live); return ((j && j.name) || 'Someone') + ' is joining…'; }
+    if (joining) return joining + ' people are joining…';
+    return 'Waiting for someone to open your link';
+  }
+  function layout() {
+    const root = $('watchRoot'), bigSlot = $('bigSlot'), bub = $('bubbles'), park = $('parking');
+    if (!root || !bigSlot || !bub || !park) return;
+    const scr = screenSource();
+    setTrack($('screenTile'), scr);
+    const others = [];
+    let alone = false, name = '', self = null;
+    if (isGuest) {
+      const pc = G.call && G.call.peerConnection;
+      const face = G.camOn && app.state === 'watching' && pc ? lane(pc, 1) : null;
+      setTrack($('camBubble'), face);
+      if (face) others.push($('camBubble'));
+      name = hostLabel();
+      const mine = G.cam && G.cam.getVideoTracks()[0];
+      setTrack($('gSelf'), mine || null);
+      if (mine) self = $('gSelf');
+    } else {
+      const live = watchers();
+      alone = !live.length;
+      live.forEach((g) => { if (g.tile) others.push(g.tile); });
+      name = live.length ? live[0].name || '' : '';
+      setTrack($('selfFace'), H.cam ? H.camSlot : null);
+      if (H.cam) self = $('selfFace');
+    }
+    const screen = scr ? $('screenTile') : null;
+    const visible = [screen].concat(others, [self]).filter(Boolean);
+    let big = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
+    if (!alone && V.pin) {
+      const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
+      if (p) big = p; else V.pin = '';
+    }
+    const smalls = visible.filter((el) => el !== big);
+    root.querySelectorAll('.tile').forEach((el) => {
+      if (el === big || smalls.includes(el)) return;
+      el.hidden = true;
+      el.classList.remove('big', 'small');
+      if (el.parentNode !== park) park.appendChild(el);
+    });
+    const put = (el, box, i) => {
+      el.hidden = false;
+      el.classList.toggle('big', box === bigSlot);
+      el.classList.toggle('small', box !== bigSlot);
+      if (box.children[i] !== el) {
+        box.insertBefore(el, box.children[i] || null);
+        const v = el.querySelector('video');
+        if (v && v.srcObject) v.play().catch(() => {}); // iPhone can pause a moved video
+      }
+    };
+    if (big) put(big, bigSlot, 0);
+    smalls.forEach((el, i) => put(el, bub, i));
+    // their initial (or a plain figure) while their camera is off
+    const ini = $('avatarInitial');
+    if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
+    text('avatarName', name || (isGuest ? 'Your host' : 'Your guest'));
+    text('callTitle', titleText());
+    const mine = isGuest ? G.screenTrack : H.video;
+    text('shareLabel', amSharing() ? 'You’re sharing ' + surfaceName(mine) : titleText());
+    document.body.dataset.alone = alone ? '1' : '';
+    if (!isGuest) hostTitle();
+  }
+
+  function unreadPrefix() { return ''; }
+  // More: a bottom sheet on phones, a small card on computers.
+  function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
+  function openMore() {
+    const m = $('moreSheet');
+    if (!m) return;
+    const ch = $('changeBtn');
+    if (ch) ch.hidden = !amSharing() || isGuest;
+    m.hidden = false;
+    wakeControls();
+    const x = $('moreClose');
+    if (x) x.focus();
+  }
+  function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+
   // ---------- HOST ----------
+  // Mo starts a call with one tap; nothing is shared until Share screen. Every lane of the call exists from the
+  // first offer ([audio, screen, camera]); a blank track holds a lane while it has nothing to carry.
   const H = {
-    peer: null, code: '', video: null, display: null, mic: null, ctx: null, dest: null,
-    micGain: null, tabSrc: null, out: null, guests: new Map(), knocks: new Map(), muted: false, mode: 'detail',
+    peer: null, code: '', me: '', video: null, display: null, mic: null, ctx: null, dest: null,
+    micGain: null, tabSrc: null, guests: new Map(), knocks: new Map(), muted: false, mode: 'detail',
     lagTimer: 0, idRetries: 0, stopping: false, starting: false, changing: false, otherTabLive: false,
+    blank: null, blankScreen: null, camSlot: null, cam: null, camBusy: false, sharer: '',
   };
-  // Tabs of this browser tell each other when one is sharing, so a second tab can say so at once.
+  // Tabs of this browser tell each other when one is in a call, so a second tab can say so at once.
   const bc = (() => { try { return new BroadcastChannel('beside'); } catch (e) { return null; } })();
   if (bc) {
     bc.onmessage = (e) => {
@@ -255,7 +367,7 @@
       else if (e.data === 'off') H.otherTabLive = false;
     };
   }
-  const OTHER_TAB = 'Beside is already sharing in another tab or window. Use that one, or press Stop there first.';
+  const OTHER_TAB = 'Beside is already in a call in another tab or window. Use that one, or press End there first.';
 
   function hostCode() {
     let c = store.get('beside.room');
@@ -268,35 +380,38 @@
     return location.origin + location.pathname + '#' + H.code + (n ? '-' + encodeURIComponent(n) : '');
   }
   function renderLink() {
-    const el = $('linkText');
-    if (!el) return;
-    const parts = (location.host + location.pathname).replace(/[^/]*$/, '').replace(/\/$/, '').split('/');
-    const last = parts.pop();
-    const n = myName();
-    el.textContent = '';
-    const dim = document.createElement('span');
-    dim.className = 'dim';
-    dim.textContent = parts.length ? parts.join('/') + '/' : '';
-    const em = document.createElement('em');
-    em.textContent = '#' + H.code + (n ? '-' + n : '');
-    el.append(dim, (last ? last + '/' : ''), em);
+    ['linkText', 'moreLinkText'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      const parts = (location.host + location.pathname).replace(/[^/]*$/, '').replace(/\/$/, '').split('/');
+      const last = parts.pop();
+      const n = myName();
+      el.textContent = '';
+      const dim = document.createElement('span');
+      dim.className = 'dim';
+      dim.textContent = parts.length ? parts.join('/') + '/' : '';
+      const em = document.createElement('em');
+      em.textContent = '#' + H.code + (n ? '-' + n : '');
+      el.append(dim, (last ? last + '/' : ''), em);
+    });
   }
   function hostTitle() {
-    if (app.state !== 'live') { document.title = 'Beside'; return; }
+    if (app.state !== 'live') { document.title = unreadPrefix() + 'Beside'; return; }
     const n = watchers().length;
-    document.title = '● ' + (n ? n + ' watching' : 'Sharing') + ' · Beside';
+    document.title = unreadPrefix() + '● ' + (n ? n + ' in call' : 'Waiting') + (amSharing() ? ' · sharing' : '') + ' · Beside';
   }
 
-  async function getDisplay() {
+  async function getDisplay(withAudio) {
     const v = { frameRate: { ideal: 30, max: 60 }, width: { max: 1920 }, height: { max: 1080 } };
     // Safari and Firefox: a plain request, made straight inside the click as Safari requires.
     if (!IS_CHROMIUM) return navigator.mediaDevices.getDisplayMedia({ video: v });
     // Chrome/Edge: open on the Tab list, hide "Entire screen", never offer this page itself,
     // and don't pop "Share this tab instead" whenever you switch tabs.
     const opts = {
-      video: { ...v, displaySurface: 'browser' }, audio: true, preferCurrentTab: false,
-      selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', systemAudio: 'exclude', monitorTypeSurfaces: 'exclude',
+      video: { ...v, displaySurface: 'browser' }, audio: !!withAudio, preferCurrentTab: false,
+      selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude',
     };
+    if (withAudio) opts.systemAudio = 'exclude';
     try {
       return await navigator.mediaDevices.getDisplayMedia(opts);
     } catch (e) {
@@ -308,7 +423,7 @@
     const t = stream && stream.getVideoTracks()[0];
     try { return !!t && t.getSettings().displaySurface === 'monitor'; } catch (e) { return false; }
   }
-  const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Start sharing again.';
+  const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Share screen again.';
   function displayError(e) {
     const browser = IS_CHROMIUM ? 'Chrome' : 'your browser';
     if (e && /system/i.test(e.message || '')) {
@@ -316,50 +431,45 @@
     }
     if (e && e.name === 'NotAllowedError') {
       return IS_CHROMIUM
-        ? 'Nothing was shared. Press Start sharing and pick a tab or a window.'
-        : 'Nothing was shared. Press Start sharing, choose Allow, then pick a window.';
+        ? 'Nothing was shared. Press Share screen and pick a tab or a window.'
+        : 'Nothing was shared. Press Share screen, choose Allow, then pick a window.';
     }
     return 'Screen sharing didn’t start (' + ((e && e.name) || 'unknown') + '). Try again, or use Chrome.';
   }
-
-  function tuneSenders(pc) {
-    pc.getSenders().forEach((s) => {
-      if (!s.track || s.track.kind !== 'video') return;
-      if (s.track !== H.video) { tuneCam(s); return; }
-      const apply = (withPref) => {
-        const p = s.getParameters(); // always fresh: browsers reject a stale parameters object
-        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = H.mode === 'detail' ? 6000000 : 4000000;
-        p.encodings[0].maxFramerate = 30;
-        if (withPref) {
-          p.degradationPreference = H.mode === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
-          p.encodings[0].priority = 'high';
-          p.encodings[0].networkPriority = 'high';
-        }
-        return s.setParameters(p);
-      };
-      try { apply(true).catch(() => { try { apply(false).catch(() => {}); } catch (e) {} }); } catch (e) { /* defaults are fine */ }
-    });
+  // The screen lane: sharp, up to 30 fps, and first in line on the network.
+  function tuneScreen(s) {
+    if (!s) return;
+    const mode = isGuest ? 'detail' : H.mode;
+    const apply = (withPref) => {
+      const p = s.getParameters(); // always fresh: browsers reject a stale parameters object
+      if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+      p.encodings[0].maxBitrate = mode === 'detail' ? 6000000 : 4000000;
+      p.encodings[0].maxFramerate = 30;
+      if (withPref) {
+        p.degradationPreference = mode === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
+        p.encodings[0].priority = 'high';
+        p.encodings[0].networkPriority = 'high';
+      }
+      return s.setParameters(p);
+    };
+    try { apply(true).catch(() => { try { apply(false).catch(() => {}); } catch (e) {} }); } catch (e) { /* defaults are fine */ }
   }
   function useVideoTrack(track) {
     track.contentHint = H.mode;
     track.addEventListener('ended', () => {
-      if (H.video === track) hostStop('Sharing stopped because the tab or window closed, or Stop was pressed in the browser.');
+      if (H.video === track) hostUnshare('Sharing stopped (the tab or window closed, or Stop was pressed in the browser). You’re still in the call.');
     });
     H.video = track;
-    const pv = $('previewVideo');
-    if (pv) { pv.srcObject = new MediaStream([track]); pv.muted = true; pv.play().catch(() => {}); }
   }
   function useTabAudio(stream) {
     if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
-    const a = stream.getAudioTracks()[0];
-    if (a) { H.tabSrc = H.ctx.createMediaStreamSource(new MediaStream([a])); H.tabSrc.connect(H.dest); }
+    const a = stream && stream.getAudioTracks()[0];
+    if (a && H.ctx) { H.tabSrc = H.ctx.createMediaStreamSource(new MediaStream([a])); H.tabSrc.connect(H.dest); }
   }
   function setStartBusy(b) { ['startBtn', 'endedAction'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
   async function hostStart() {
     if (H.starting || app.state === 'live') return; // double click
-    if (!CAN_SHARE) { note(NO_SHARE, 'stay'); return; }
     if (!peerLibOk()) return;
     if (H.otherTabLive) {
       H.otherTabLive = false; // ask again, in case that tab has gone
@@ -370,51 +480,41 @@
     H.starting = true;
     setStartBusy(true);
     try {
-      // Audio engine first, inside the click, so Safari lets it run.
+      // Audio engine first, inside the click, so Safari lets it run. Mic and tab sound are mixed into one lane.
       H.ctx = new (window.AudioContext || window.webkitAudioContext)();
       H.ctx.resume().catch(() => {});
       H.dest = H.ctx.createMediaStreamDestination();
       H.micGain = H.ctx.createGain();
       H.micGain.connect(H.dest);
-      let display;
-      try {
-        display = await getDisplay();
-      } catch (e) {
-        hostCleanup();
-        show('idle');
-        note(displayError(e), 'stay');
-        return;
-      }
-      if (isWholeScreen(display)) {
-        display.getTracks().forEach((t) => t.stop());
-        hostCleanup();
-        show('idle');
-        note(WHOLE_SCREEN, 'stay');
-        return;
-      }
-      H.display = display;
-      useVideoTrack(display.getVideoTracks()[0]);
-      useTabAudio(display);
       const wantMic = !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
       if (wantMic) {
         try {
           H.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
           H.ctx.createMediaStreamSource(H.mic).connect(H.micGain);
         } catch (e) {
-          note('Your microphone is blocked, so they can see but not hear you. Click the icon at the left of the address bar, allow the microphone, then press Stop and Share again.', 'stay');
+          note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
         }
       }
       H.muted = !H.mic;
       H.micGain.gain.value = H.muted ? 0 : 1;
-      setPressed('muteBtn', H.muted, 'Unmute', 'Mute');
+      setPressed('muteBtn', H.muted, 'Unmute my mic', 'Mute my mic');
       H.blank = blankTrack();
+      H.blankScreen = blankTrack(); // a second one: one track can't ride two lanes of a call
+      if (!H.blank || !H.blankScreen) {
+        hostCleanup();
+        show('idle');
+        note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
+        return;
+      }
       H.camSlot = H.blank;
-      H.out = hostOut();
+      H.sharer = '';
       H.code = hostCode();
+      H.me = PREFIX + H.code;
+      V.pin = '';
       renderLink();
       show('live');
       guestStatus();
-      setLag('lagHost', null);
+      setLag('lag', null);
       stayAwake(true);
       H.idRetries = 0;
       openHostPeer();
@@ -475,32 +575,42 @@
           setTimeout(() => { if (H.peer === peer && !H.stopping && app.state === 'live') openHostPeer(); }, 2500);
           return;
         }
-        note('Your link is busy. If Beside is sharing on another computer or browser, stop it there, then press Share again.', 'stay');
+        note('Your link is busy. If Beside is in a call on another computer or browser, end it there, then press Start a call again.', 'stay');
         hostStop();
       } else if (t === 'browser-incompatible') {
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
       } else if (NET_ERR.test(t || '')) {
-        text('liveHint', 'Can’t reach the call server. Trying again… Anyone already watching stays connected.');
+        text('liveHint', 'Can’t reach the call server. Trying again… Anyone already in the call stays connected.');
         // A server that never answered leaves PeerJS destroyed: start a fresh one.
         setTimeout(() => { if (H.peer === peer && !H.stopping && app.state === 'live' && peer.destroyed) openHostPeer(); }, 3000);
       }
     });
   }
 
+  function guestById(id) { for (const g of H.guests.values()) if (g.id === id) return g; return null; }
+  // What this guest's screen lane carries: the room's screen, except its own (no echo), else blank.
+  function screenFor(g) { return (g.id === H.sharer ? null : roomTrack()) || H.blankScreen; }
   function hostAddGuest(conn) {
-    if (!H.peer || H.peer.destroyed || !H.out || H.guests.has(conn.connectionId)) return;
+    if (!H.peer || H.peer.destroyed || !H.dest || !H.blankScreen || H.guests.has(conn.connectionId)) return;
     for (const [k, old] of H.guests) if (old.conn.peer === conn.peer) hostDropGuest(k); // same guest reconnecting
-    const g = { conn, call: null, audio: null, live: false, name: cleanName(conn.metadata && conn.metadata.name) };
+    const g = {
+      id: conn.peer, conn, call: null, audio: null, live: false, ver: 0, canShare: false, tile: null,
+      screenSender: null, camSender: null, name: cleanName(conn.metadata && conn.metadata.name),
+    };
     const n = $('note');
     if (n && !n.hidden && n.textContent.includes(KNOCK_FAIL.trim())) note(''); // they got through after all
+    const screen = screenFor(g);
     let call = null;
-    try { call = H.peer.call(conn.peer, H.out, { sdpTransform: preferH264 }); } catch (e) { call = null; }
+    try { call = H.peer.call(conn.peer, ordered([H.dest.stream.getAudioTracks()[0], screen, H.camSlot]), { sdpTransform: preferH264 }); } catch (e) { call = null; }
     if (!call) { try { conn.close(); } catch (e) {} return; }
     g.call = call;
     H.guests.set(conn.connectionId, g);
     const pc = call.peerConnection;
-    g.camSender = (pc && H.camSlot && pc.getSenders().find((s) => s.track === H.camSlot)) || null;
     if (pc) {
+      // Senders are kept by role: a relayed screen is someone else's track, never look them up by track again.
+      const vids = pc.getSenders().filter((s) => s.track && s.track.kind === 'video');
+      g.screenSender = pc.getSenders().find((s) => s.track === screen) || vids[0] || null;
+      g.camSender = pc.getSenders().find((s) => s.track === H.camSlot) || vids[1] || null;
       iceProblem(pc,
         (never) => {
           if (never) note((g.name || 'Your guest') + ' couldn’t connect. ' + NET_WHY, 'stay');
@@ -508,7 +618,8 @@
         },
         () => { text('liveHint', 'Connection is shaky. Reconnecting…'); },
         () => {
-          tuneSenders(pc);
+          tuneScreen(g.screenSender);
+          tuneCam(g.camSender);
           text('liveHint', '');
           tell(conn, { cam: !!H.cam });
           if (!g.live) { g.live = true; guestStatus(); }
@@ -518,9 +629,21 @@
     conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g) hostData(g, d); });
     tell(conn, { cam: !!H.cam });
     tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE });
+    tell(conn, roomMsg());
+    // A guest on the old Beside never says hello: it can watch and talk, nothing more.
+    setTimeout(() => {
+      if (H.guests.get(conn.connectionId) === g && !g.ver) note((g.name || 'Someone') + ' has an older Beside open. Ask them to reload the page.', 'info');
+    }, 3000);
     // Joined but the picture never connected (a lost message, or they vanished): let them knock again.
     setTimeout(() => { if (H.guests.get(conn.connectionId) === g && !g.live) hostDropGuest(conn.connectionId); }, 25000);
     call.on('stream', (s) => {
+      if (pc) {
+        pc.getReceivers().forEach((r) => {
+          if (!r.track || r.track.kind !== 'video') return;
+          try { r.jitterBufferTarget = 0; } catch (e) {}
+          try { r.playoutDelayHint = 0; } catch (e) {}
+        });
+      }
       if (!g.audio) {
         g.audio = new Audio();
         g.audio.autoplay = true;
@@ -529,6 +652,7 @@
       }
       if (g.audio.srcObject !== s) g.audio.srcObject = s;
       g.audio.play().catch(() => note('Click anywhere on this page to hear ' + (g.name || 'them') + '.', 'stay'));
+      hostFace(g);
     });
     call.on('close', () => hostDropGuest(conn.connectionId));
     guestStatus();
@@ -539,7 +663,7 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
-      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; }
+      if (d.t === 'hello') { g.ver = +d.v || 0; g.canShare = !!d.share; guestStatus(); }
     } catch (e) { /* a bad message never breaks the call */ }
   }
   function hostDropGuest(id) {
@@ -549,51 +673,38 @@
     try { if (g.call) g.call.close(); } catch (e) {}
     try { g.conn.close(); } catch (e) {}
     if (g.audio) { g.audio.srcObject = null; g.audio.remove(); }
-    if (g.face) { showFace(g.face, null, false); g.face.remove(); g.face = null; }
-    facesShown();
+    if (g.tile) { const v = g.tile.querySelector('video'); if (v) v.srcObject = null; g.tile.remove(); g.tile = null; }
+    if (H.sharer && H.sharer === g.id) { H.sharer = ''; V.pin = ''; roomScreen(); }
     guestStatus();
   }
-  // Each guest's camera shows as a tile under the link; a click floats it over the other windows.
+  // A guest's camera becomes a face tile; layout() decides whether it is big or a bubble.
   function hostFace(g) {
     const pc = g.call && g.call.peerConnection;
     const track = g.camOn && g.live && pc ? lane(pc, 0) : null;
-    if (track) {
-      if (!g.face) {
-        g.face = faceTile(g.name || 'Guest', false);
-        const box = $('faces');
-        if (box) box.insertBefore(g.face, $('selfFace'));
-      }
-      showFace(g.face, track, true);
-    } else if (g.face) { showFace(g.face, null, false); g.face.remove(); g.face = null; }
-    facesShown();
+    if (track && !g.tile) {
+      g.tile = faceTile(g.name || 'Guest', g.id);
+      const park = $('parking');
+      if (park) park.appendChild(g.tile);
+    } else if (!track && g.tile) {
+      const v = g.tile.querySelector('video');
+      if (v) v.srcObject = null;
+      g.tile.remove();
+      g.tile = null;
+    }
+    if (g.tile) setTrack(g.tile, track);
+    layout();
   }
-  function faceTile(name, mine) {
-    const b = document.createElement('button');
-    b.className = 'face' + (mine ? ' me' : '');
-    b.title = 'Float over your other windows';
+  function faceTile(name, key) {
+    const d = document.createElement('div');
+    d.className = 'tile face peer';
+    d.dataset.key = key;
     const v = document.createElement('video');
     v.muted = true; v.autoplay = true; v.setAttribute('playsinline', '');
     const lab = document.createElement('span');
+    lab.className = 'label';
     lab.textContent = name;
-    b.append(v, lab);
-    b.addEventListener('click', () => floatFace(v));
-    return b;
-  }
-  function floatFace(v) {
-    if (!v || !v.srcObject) return;
-    if (document.pictureInPictureElement === v) { document.exitPictureInPicture().catch(() => {}); return; }
-    if (document.pictureInPictureEnabled && v.requestPictureInPicture) v.requestPictureInPicture().catch(() => {});
-  }
-  function facesShown() {
-    const box = $('faces');
-    if (!box) return;
-    const any = [...box.querySelectorAll('.face')].some((f) => !f.hidden);
-    box.hidden = !any;
-    const hint = $('facesHint');
-    if (hint) hint.hidden = !any || !document.pictureInPictureEnabled || !box.querySelector('.face:not(.me):not([hidden])');
-  }
-  function hostOut() {
-    return ordered([H.dest.stream.getAudioTracks()[0], H.video, H.camSlot]);
+    d.append(v, lab);
+    return d;
   }
   async function hostCam() {
     if (H.camBusy || app.state !== 'live') return;
@@ -616,38 +727,99 @@
       if (g.camSender) g.camSender.replaceTrack(track).then(() => tuneCam(g.camSender)).catch(() => {});
       tell(g.conn, { cam: !!H.cam });
     }
-    if (H.video && H.dest) H.out = hostOut();
-    showFace($('selfFace'), track, !!H.cam);
-    setPressed('camBtn', !!H.cam, 'Camera on', 'Camera');
-    facesShown();
+    setPressed('camBtn', !!H.cam, 'Turn my camera off', 'Turn my camera on');
+    layout();
   }
-  function surfaceName() {
+
+  // ----- who is sharing (only the host decides: one screen for the room, the newest share wins) -----
+  function roomTrack() {
+    if (!H.sharer) return null;
+    if (H.sharer === H.me) return H.video || null;
+    const g = guestById(H.sharer);
+    const pc = g && g.call && g.call.peerConnection;
+    const t = pc ? lane(pc, 1) : null;
+    if (t) { try { t.contentHint = 'detail'; } catch (e) {} }
+    return t;
+  }
+  function roomMsg() {
+    const g = H.sharer && H.sharer !== H.me ? guestById(H.sharer) : null;
+    return { t: 'room', sharer: H.sharer || '', name: H.sharer === H.me ? myName() : (g && g.name) || '' };
+  }
+  function roomScreen() {
+    const t = roomTrack();
+    for (const g of H.guests.values()) {
+      const want = (g.id === H.sharer ? null : t) || H.blankScreen;
+      const s = g.screenSender;
+      if (s && want && s.track !== want) s.replaceTrack(want).then(() => tuneScreen(s)).catch(() => {});
+      if (g.ver >= 2) tell(g.conn, roomMsg());
+    }
+    setPressed('screenBtn', amSharing(), 'Stop sharing', 'Share screen');
+    guestStatus();
+  }
+  function takeOver(id) {
+    const was = H.sharer;
+    if (was && was !== id) {
+      const by = id === H.me ? (myName() || 'Your host') : ((guestById(id) || {}).name || 'Someone');
+      if (was === H.me) hostUnshare(by + ' is sharing now, so your sharing stopped.', true);
+      else { const og = guestById(was); if (og) tell(og.conn, { t: 'share', on: false, name: by }); }
+    }
+    if (was !== id) V.pin = ''; // a new share always shows big
+    H.sharer = id;
+    roomScreen();
+  }
+  async function hostShare() {
+    if (H.changing || app.state !== 'live') return;
+    if (!CAN_SHARE) { note(NO_SHARE, 'info'); return; }
+    H.changing = true;
+    let s;
+    try {
+      s = await getDisplay(true);
+    } catch (e) {
+      // Cancelling the picker is fine; a Mac that blocks sharing needs the steps.
+      if (e && /system/i.test(e.message || '')) note(displayError(e), 'stay');
+      else if (!H.video) note(displayError(e), 'info');
+      return;
+    } finally {
+      H.changing = false;
+    }
+    if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
+    if (app.state !== 'live') { s.getTracks().forEach((t) => t.stop()); return; }
+    const prev = H.display;
+    H.display = s;
+    useVideoTrack(s.getVideoTracks()[0]);
+    useTabAudio(s);
+    if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
+    if (H.sharer === H.me) roomScreen(); else takeOver(H.me);
+  }
+  const hostChange = hostShare;
+  function hostUnshare(msg, keepSharer) {
+    const d = H.display;
+    H.display = null;
+    H.video = null;
+    if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
+    if (d) d.getTracks().forEach((t) => t.stop());
+    if (H.sharer === H.me && !keepSharer) { H.sharer = ''; V.pin = ''; roomScreen(); }
+    setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
+    layout();
+    if (msg) note(msg, 'info');
+  }
+
+  function surfaceName(track) {
     let d = '';
-    try { d = H.video && H.video.getSettings ? H.video.getSettings().displaySurface : ''; } catch (e) { d = ''; }
-    return d === 'window' ? 'One window' : d === 'browser' ? 'One tab' : d === 'monitor' ? 'Entire screen' : 'Your screen';
+    try { d = track && track.getSettings ? track.getSettings().displaySurface : ''; } catch (e) { d = ''; }
+    return d === 'window' ? 'one window' : d === 'browser' ? 'one tab' : d === 'monitor' ? 'your whole screen' : 'your screen';
   }
   function watchers() { return [...H.guests.values()].filter((g) => g.live); }
   function guestStatus() {
+    if (isGuest) return;
     const live = watchers();
     const joining = [...H.guests.values()].filter((g) => !g.live);
-    const n = live.length;
-    const names = live.map((g) => g.name).filter(Boolean);
-    let s;
-    if (n === 1) s = (names[0] || 'Someone') + ' is watching';
-    else if (n > 1) s = n + ' people are watching';
-    else if (joining.length === 1) s = (joining[0].name || 'Someone') + ' is joining…';
-    else if (joining.length > 1) s = joining.length + ' people are joining…';
-    else s = 'Waiting for someone to open your link';
-    text('guestStatus', s);
-    text('guestSub', surfaceName() + ' · mic ' + (H.mic && !H.muted ? 'on' : 'off'));
-    const av = $('guestAvatar');
-    if (av) {
-      av.classList.toggle('empty', !n);
-      av.textContent = !n ? '' : n > 1 ? String(n) : (names[0] || '•').charAt(0).toUpperCase();
-    }
-    document.body.dataset.guests = String(n);
-    if (!n) setLag('lagHost', null);
-    hostTitle();
+    text('inviteStatus', joining.length === 1 ? (joining[0].name || 'Someone') + ' is joining…'
+      : joining.length > 1 ? joining.length + ' people are joining…'
+        : 'Send this link to the person you want to talk to.');
+    document.body.dataset.guests = String(live.length);
+    if (!live.length) setLag('lag', null);
+    layout();
   }
   function startHostLag() {
     clearInterval(H.lagTimer);
@@ -658,52 +830,21 @@
         if (r != null && (worst == null || r > worst)) worst = r;
       }
       app.lag = worst;
-      setLag('lagHost', worst);
+      setLag('lag', worst);
     }, 2000);
   }
   function hostMute() {
-    if (!H.mic) { note('No microphone yet. Allow the microphone for this site, then press Stop and Share again.', 'info'); return; }
+    if (!H.mic) { note('No microphone yet. Allow the microphone for this site, then press End and start the call again.', 'info'); return; }
     H.muted = !H.muted;
     H.micGain.gain.value = H.muted ? 0 : 1;
-    setPressed('muteBtn', H.muted, 'Unmute', 'Mute');
-    guestStatus();
-  }
-  async function hostChange() {
-    if (H.changing || app.state !== 'live') return;
-    H.changing = true;
-    let s;
-    try {
-      s = await getDisplay();
-    } catch (e) {
-      if (e && /system/i.test(e.message || '')) note(displayError(e), 'stay');
-      return;
-    } finally {
-      H.changing = false;
-    }
-    if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN.replace(' Press Start sharing again.', ''), 'stay'); return; }
-    if (app.state !== 'live') { s.getTracks().forEach((t) => t.stop()); return; }
-    const prev = H.display;
-    const oldVideo = H.video;
-    H.display = s;
-    useVideoTrack(s.getVideoTracks()[0]);
-    useTabAudio(s);
-    for (const g of H.guests.values()) {
-      const pc = g.call && g.call.peerConnection;
-      if (!pc) continue;
-      pc.getSenders().forEach((snd) => {
-        if (snd.track && snd.track === oldVideo) snd.replaceTrack(H.video).then(() => tuneSenders(pc)).catch(() => {});
-      });
-    }
-    H.out = hostOut();
-    if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
-    guestStatus();
+    setPressed('muteBtn', H.muted, 'Unmute my mic', 'Mute my mic');
   }
   function hostMode(mode) {
     if (mode === H.mode) return;
     H.mode = mode;
     store.set('beside.mode', H.mode);
     if (H.video) H.video.contentHint = H.mode;
-    for (const g of H.guests.values()) if (g.call && g.call.peerConnection) tuneSenders(g.call.peerConnection);
+    for (const g of H.guests.values()) tuneScreen(g.screenSender);
     modeLabel();
   }
   function modeLabel() {
@@ -716,13 +857,13 @@
     for (const id of [...H.guests.keys()]) hostDropGuest(id);
     if (H.peer) { try { H.peer.destroy(); } catch (e) {} H.peer = null; }
     [H.display, H.mic, H.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
-    if (H.video) H.video.stop();
-    if (H.blank) H.blank.stop();
+    [H.video, H.blank, H.blankScreen].forEach((t) => t && t.stop());
     if (H.ctx) H.ctx.close().catch(() => {});
-    H.display = H.mic = H.video = H.ctx = H.out = H.tabSrc = H.cam = H.camSlot = H.blank = null;
-    showFace($('selfFace'), null, false);
-    setPressed('camBtn', false, 'Camera on', 'Camera');
-    facesShown();
+    H.display = H.mic = H.video = H.ctx = H.tabSrc = H.cam = H.camSlot = H.blank = H.blankScreen = null;
+    H.sharer = '';
+    V.pin = '';
+    setPressed('camBtn', false, 'Turn my camera off', 'Turn my camera on');
+    setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
     app.hostReady = false;
     stayAwake(false);
     if (wasLive && bc) bc.postMessage('off');
@@ -735,9 +876,9 @@
   }
   function hostStop(msg) {
     hostCleanup();
-    ended('You stopped sharing.', msg || 'Your link stays the same for next time.', 'Share again');
+    ended('Call ended.', msg || 'Your link stays the same for next time.', 'Start a call');
   }
-  async function copyLink() {
+  async function copyLink(btn) {
     const link = hostLink();
     try {
       await navigator.clipboard.writeText(link);
@@ -746,25 +887,25 @@
       if (el) { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
       try { document.execCommand('copy'); } catch (e2) {}
     }
-    const b = $('copyBtn');
-    const lab = b && b.querySelector('.label-t');
+    const lab = btn && btn.querySelector('.label-t');
     if (lab) { lab.textContent = 'Copied'; setTimeout(() => { lab.textContent = 'Copy'; }, 1500); }
   }
-  async function shareLink() {
+  async function shareLink(btn) {
     const link = hostLink();
     if (navigator.share) {
-      try { await navigator.share({ title: 'Beside', text: 'Open this to see my screen and talk with me:', url: link }); return; }
+      try { await navigator.share({ title: 'Beside', text: 'Open this to join my call on Beside:', url: link }); return; }
       catch (e) { if (e && e.name === 'AbortError') return; }
     }
-    copyLink();
+    copyLink(btn);
   }
   function newLink() {
     if (!confirm('Make a new link? The old link will stop working.')) return;
+    closeMore();
     hostCleanup();
     H.code = code8();
     store.set('beside.room', H.code);
     renderLink();
-    ended('New link ready.', 'The old link no longer works. Press Share again, then send the new link.', 'Share again');
+    ended('New link ready.', 'The old link no longer works. Start a call, then send the new link.', 'Start a call');
   }
   function setHostName(v) {
     store.set('beside.name.host', cleanName(v));
@@ -777,6 +918,7 @@
     openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0,
     lost: false, dropped: false, joining: false, serverDown: false,
     cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null, hostVer: 0, room: null,
+    hostName: '', ctx: null, display: null, screenTrack: null, screenBlank: null, screenSender: null,
   };
   const hostId = PREFIX + guestCode;
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
@@ -802,10 +944,10 @@
         }
       }
       G.muted = !G.mic;
-      setPressed('gMuteBtn', G.muted, 'Unmute', 'Mute');
+      setPressed('gMuteBtn', G.muted, 'Unmute my mic', 'Mute my mic');
       if (!G.blank) G.blank = blankTrack();
       if ($('nameInput')) store.set('beside.name', cleanName($('nameInput').value));
-      wait('Connecting…', 'Looking for ' + (theirName || 'the person sharing') + '…', '');
+      wait('Connecting…', 'Looking for ' + (theirName || 'them') + '…', '');
       openGuestPeer();
     } finally {
       G.joining = false;
@@ -830,7 +972,7 @@
     // 'open' also fires after a call-server blip; an existing link to them must be left alone.
     peer.on('open', () => {
       if (G.peer !== peer || G.left || (G.conn && G.conn.open) || app.state === 'watching') return;
-      if (G.serverDown) { G.serverDown = false; if (G.lost) lostText(); else wait('Connecting…', 'Looking for ' + (theirName || 'the person sharing') + '…', ''); }
+      if (G.serverDown) { G.serverDown = false; if (G.lost) lostText(); else wait('Connecting…', 'Looking for ' + (theirName || 'them') + '…', ''); }
       guestConnect();
     });
     peer.on('call', (call) => guestOnCall(peer, call));
@@ -955,7 +1097,7 @@
       clearTimeout(G.openTimer);
       clearTimeout(G.retry);
       if (app.state === 'watching') return;
-      wait('Found ' + (theirName || 'them') + '.', 'Starting the picture…', '');
+      wait('Found ' + (theirName || 'them') + '.', 'Joining the call…', '');
       // The picture follows within a second or two. If a message got lost on the way, start over.
       clearTimeout(G.picTimer);
       G.picTimer = setTimeout(() => {
@@ -974,7 +1116,17 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { G.camOn = !!d.cam; guestFace(); return; }
-      if (d.t === 'hello') G.hostVer = +d.v || 0;
+      if (d.t === 'hello') {
+        G.hostVer = +d.v || 0;
+        G.hostName = cleanName(d.name);
+        if (G.hostName && !theirName) { text('camName', G.hostName); text('tapToHearText', 'Tap to hear ' + G.hostName); }
+        layout();
+      } else if (d.t === 'room') {
+        const room = { sharer: typeof d.sharer === 'string' ? d.sharer.slice(0, 80) : '', name: cleanName(d.name) };
+        if (!G.room || G.room.sharer !== room.sharer) V.pin = ''; // a new share always shows big
+        G.room = room;
+        layout();
+      }
     } catch (e) { /* a bad message never breaks the call */ }
   }
   function roomReset() { G.hostVer = 0; G.room = null; }
@@ -983,14 +1135,14 @@
     if (app.state === 'watching') return;
     if (G.serverDown || (G.peer && !G.peer.open)) return; // "Can't reach the call server" stays until we're back
     if (G.lost) { lostText(); return; }
-    wait(theirName ? 'You’re in. ' + theirName + ' hasn’t started yet.' : 'You’re in. They haven’t started yet.',
-      'Waiting for ' + (theirName || 'them') + ' to start sharing…',
-      'Keep this open. The moment ' + (theirName ? theirName + ' starts' : 'they start') + ', you’ll see the screen here.');
+    wait(theirName ? 'You’re in. ' + theirName + ' hasn’t started the call yet.' : 'You’re in. They haven’t started the call yet.',
+      'Waiting for ' + (theirName || 'them') + '…',
+      'Keep this open. You’ll join the moment ' + (theirName ? theirName + ' starts' : 'they start') + '.');
   }
-  // After watching: a dropped connection keeps saying so until it's back; a stop says they stopped.
+  // After a call: a dropped connection keeps saying so until it's back; an end says they ended it.
   function lostText() {
     if (G.dropped) wait('The connection dropped.', 'Reconnecting…', 'Usually a Wi-Fi hiccup. Keep this open.');
-    else wait((theirName || 'They') + ' stopped sharing.', 'Waiting for ' + (theirName || 'them') + ' to start again…', 'Keep this open and it reconnects by itself.');
+    else wait((theirName || 'They') + ' ended the call.', 'Waiting for ' + (theirName || 'them') + ' to start again…', 'Keep this open and it reconnects by itself.');
   }
   function wait(title, status, hint) {
     if (app.state !== 'waiting') G.waitSince = Date.now();
@@ -1010,7 +1162,6 @@
     G.retry = setTimeout(guestConnect, ms);
   }
   function guestWatch(stream, pc) {
-    const v = $('screenVideo');
     if (pc) {
       pc.getReceivers().forEach((r) => {
         if (!r.track || r.track.kind !== 'video') return; // sound keeps its default buffer so it doesn't crackle
@@ -1022,14 +1173,10 @@
     clearTimeout(G.picTimer);
     if (G.spare) { const s = G.spare; G.spare = null; try { s.close(); } catch (e) {} }
     show('watching');
-    // The big picture gets only the screen lane; the sound has its own element, because a video whose
-    // picture lane is empty never starts its sound. PeerJS fires 'stream' once per track: only set what changed.
-    const screen = (pc && lane(pc, 0)) || stream.getVideoTracks()[0];
-    if (v && screen && (!v.srcObject || v.srcObject.getVideoTracks()[0] !== screen)) {
-      v.srcObject = new MediaStream([screen]);
-      v.muted = true;
-      v.play().catch(() => {});
-    }
+    // An old host never says hello, and it was only live while sharing: its screen lane is the picture.
+    if (!G.hostVer && !G.room) G.room = { sharer: hostId, name: theirName };
+    // The sound has its own element, because a video whose picture lane is empty never starts its sound.
+    // PeerJS fires 'stream' once per track: only set what changed.
     const a = stream.getAudioTracks()[0];
     const vo = $('voice');
     if (vo && a && (!vo.srcObject || vo.srcObject.getAudioTracks()[0] !== a)) {
@@ -1037,10 +1184,10 @@
       vo.muted = false;
       playWithSound(vo);
     }
-    guestFace();
+    layout();
     tell(G.conn, { cam: !!G.cam });
     clearInterval(G.lagTimer);
-    G.lagTimer = setInterval(async () => { const r = await rtt(pc); app.lag = r; setLag('lagGuest', r); }, 2000);
+    G.lagTimer = setInterval(async () => { const r = await rtt(pc); app.lag = r; setLag('lag', r); }, 2000);
     app.watching = true;
     G.lost = G.dropped = false;
     G.tries = G.quiet = 0;
@@ -1078,6 +1225,7 @@
     G.view = G.viewFor = null;
     G.camOn = false;
     roomReset();
+    V.pin = '';
     guestFace();
     const pc = G.call && G.call.peerConnection;
     G.dropped = !!(pc && /failed|disconnected/.test(pc.iceConnectionState));
@@ -1092,13 +1240,9 @@
     if (!G.mic) { note('Your microphone is off for this call. Leave and join again with the mic to talk.', 'info'); return; }
     G.muted = !G.muted;
     G.mic.getAudioTracks().forEach((t) => { t.enabled = !G.muted; });
-    setPressed('gMuteBtn', G.muted, 'Unmute', 'Mute');
+    setPressed('gMuteBtn', G.muted, 'Unmute my mic', 'Mute my mic');
   }
-  function guestFace() {
-    const pc = G.call && G.call.peerConnection;
-    const on = G.camOn && app.state === 'watching';
-    showFace($('camBubble'), on && pc ? lane(pc, 1) : null, on);
-  }
+  function guestFace() { layout(); }
   async function guestCam() {
     if (G.camBusy || G.left) return;
     if (!G.blank) { note('This browser can’t send your camera. Use Safari or Chrome.', 'info'); return; }
@@ -1133,9 +1277,9 @@
   }
   function guestSlot(track) {
     if (G.camSender) G.camSender.replaceTrack(track).then(() => tuneCam(G.camSender)).catch(() => {});
-    showFace($('gSelf'), track, !!G.cam);
     setPressed('gCamBtn', !!G.cam, 'Turn my camera off', 'Turn my camera on');
     tell(G.conn, { cam: !!G.cam });
+    layout();
   }
   function guestLeave() {
     G.left = true;
@@ -1148,9 +1292,9 @@
     G.peer = G.call = G.mic = G.cam = G.camSender = G.view = G.viewFor = null;
     G.camOn = false;
     roomReset();
+    V.pin = '';
     app.watching = false;
     guestFace();
-    showFace($('gSelf'), null, false);
     setPressed('gCamBtn', false, 'Turn my camera off', 'Turn my camera on');
     const v = $('screenVideo');
     if (v) v.srcObject = null;
@@ -1179,10 +1323,17 @@
     if (e && e.type === 'pointerdown' && document.body.classList.contains('idle')) wokeAt = Date.now();
     document.body.classList.remove('idle');
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      const t = $('tapToHear');
-      if (app.state === 'watching' && !(t && !t.hidden)) document.body.classList.add('idle');
-    }, 3000);
+    idleTimer = setTimeout(() => { if (canIdle()) document.body.classList.add('idle'); }, 3000);
+  }
+  // The bars fade after 3 s, except while you're alone, or More, the check or the chat is open.
+  function canIdle() {
+    if (app.state !== 'watching' && app.state !== 'live') return false;
+    const t = $('tapToHear');
+    if (t && !t.hidden) return false;
+    if (!isGuest && !watchers().length) return false;
+    const ck = document.querySelector('[data-state="check"]');
+    if (moreOpen() || (ck && !ck.hidden) || document.body.classList.contains('chat-open')) return false;
+    return true;
   }
 
   // ---------- SELF-CHECK ----------
@@ -1235,12 +1386,13 @@
     app.checks = {};
     app.checkDone = false;
     const panel = document.querySelector('[data-state="check"]');
+    closeMore();
     if (panel) panel.hidden = false;
     text('checkSummary', 'Checking…');
     const closeBtn = $('checkClose');
     if (closeBtn) closeBtn.focus();
 
-    const basics = checkRow('basics', isGuest ? 'Watching works here' : 'Screen sharing works here');
+    const basics = checkRow('basics', 'Calls work here');
     const micRow = checkRow('mic', 'Microphone');
     const server = checkRow('server', 'Can reach the call server');
     const net = checkRow('net', 'Network allows direct calls');
@@ -1249,7 +1401,7 @@
 
     if (!window.isSecureContext) basics.set('bad', 'This page must be opened with https:// at the start. Use the link exactly as it was sent.');
     else if (!window.RTCPeerConnection) basics.set('bad', 'This browser is too old for calls. Update it, or use Chrome or Safari.');
-    else if (!isGuest && !CAN_SHARE) basics.set('bad', NO_SHARE);
+    else if (!isGuest && !CAN_SHARE) basics.set('warn', 'Calls work here. Sharing your screen needs Chrome on a computer.');
     else basics.set('ok', '', browserName());
 
     const micP = (async () => {
@@ -1352,6 +1504,7 @@
 
   // ---------- WIRE UP ----------
   function boot() {
+    document.body.dataset.role = isGuest ? 'guest' : 'host';
     if (store.get('beside.mode') === 'motion') H.mode = 'motion';
     modeLabel();
     const saved = store.get('beside.name');
@@ -1365,14 +1518,13 @@
       const sw = el.querySelector('.switch');
       if (sw) sw.classList.toggle('off', !onNow);
     });
-    on('copyBtn', 'click', copyLink);
-    on('shareBtn', 'click', shareLink);
+    ['copyBtn', 'moreCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
+    ['shareBtn', 'moreShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
-    on('selfFace', 'click', () => floatFace($('selfFace').querySelector('video')));
+    on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
     on('gCamBtn', 'click', guestCam);
-    on('camBubble', 'click', () => { const b = $('bubbles'); if (b) b.classList.toggle('left'); });
-    on('changeBtn', 'click', hostChange);
+    on('changeBtn', 'click', () => { closeMore(); hostChange(); });
     on('stopBtn', 'click', () => hostStop());
     document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => hostMode(b.dataset.mode)));
     on('hostName', 'change', (e) => setHostName(e.target.value));
@@ -1380,17 +1532,25 @@
     on('joinBtn', 'click', () => guestJoin(true));
     on('joinNoMicBtn', 'click', () => guestJoin(false));
     on('gMuteBtn', 'click', guestMute);
-    on('fsBtn', 'click', fullscreen);
+    on('fsBtn', 'click', () => { closeMore(); fullscreen(); });
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
+    on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
+    on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
     on('checkBtn', 'click', runChecks);
     document.querySelectorAll('[data-check-open]').forEach((b) => b.addEventListener('click', runChecks));
     const sheet = document.querySelector('[data-state="check"]');
-    const closeSheet = () => { if (sheet) sheet.hidden = true; };
+    const closeSheet = () => { if (sheet) sheet.hidden = true; wakeControls(); };
     on('checkClose', 'click', closeSheet);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheet && !sheet.hidden) closeSheet(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (sheet && !sheet.hidden) closeSheet();
+      else if (moreOpen()) closeMore();
+    });
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+    const more = $('moreSheet');
+    if (more) more.addEventListener('click', (e) => { if (e.target === more) closeMore(); });
     on('endedAction', 'click', () => { if (isGuest) show('join'); else hostStart(); });
     document.addEventListener('pointerdown', () => {
       if (H.ctx && H.ctx.state === 'suspended') H.ctx.resume().catch(() => {});
@@ -1401,18 +1561,21 @@
         }
       }
     }, { passive: true });
-    ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (app.state === 'watching') wakeControls(e); }, { passive: true, capture: true }));
+    const inCall = () => app.state === 'watching' || app.state === 'live';
+    ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (inCall()) wakeControls(e); }, { passive: true, capture: true }));
+    // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
-      if (wokeAt && Date.now() - wokeAt < 700 && app.state === 'watching') { e.stopPropagation(); e.preventDefault(); }
+      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles');
+      if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); }
       wokeAt = 0;
     }, true);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
-      if (app.state === 'live' || app.state === 'watching' || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
+      if (inCall() || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
       resumeMedia();
     });
     const sv = $('screenVideo');
-    if (sv) sv.addEventListener('webkitendfullscreen', () => { if (app.state === 'watching') sv.play().catch(() => {}); });
+    if (sv) sv.addEventListener('webkitendfullscreen', () => { if (inCall()) sv.play().catch(() => {}); });
     addEventListener('hashchange', () => location.reload());
     addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
     addEventListener('beforeunload', (e) => { if (app.state === 'live') { e.preventDefault(); e.returnValue = ''; } });
@@ -1423,14 +1586,15 @@
     });
     if (sheet) sheet.hidden = true;
     if ($('hostName')) $('hostName').value = myName();
+    const sb = $('screenBtn');
+    if (sb) sb.hidden = !CAN_SHARE;
     if (isGuest) {
       const n = theirName;
       if (n) {
         text('hostInitial', n.charAt(0).toUpperCase());
-        text('joinTitle', n + ' wants to show you something.');
-        text('joinText', 'You’ll see what ' + n + ' shares and you can talk. It’s just the two of you, and nothing is recorded.');
+        text('joinTitle', n + ' invites you to a call.');
+        text('joinText', 'You can talk, see each other if you like, and see what ' + n + ' shows you. Nothing is recorded.');
         text('joinBtn', 'Sit beside ' + n);
-        text('watchTitle', n + '’s screen');
         text('tapToHearText', 'Tap to hear ' + n);
         text('camName', n);
         document.title = n + ' · Beside';
@@ -1444,10 +1608,9 @@
       renderLink();
       show('idle');
       if (bc) bc.postMessage('live?');
-      if (!CAN_SHARE) note(NO_SHARE, 'stay');
     }
     if (!window.Peer) peerLibOk();
-    if (LOCAL) app.debug = { H, G }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
