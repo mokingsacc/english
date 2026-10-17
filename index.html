@@ -455,7 +455,7 @@ details.brief pre{white-space:pre-wrap;direction:ltr;text-align:left;font-family
    CONFIG — version, AI links, defaults
    ============================================================ */
 var CONFIG = {
-  version: '1.6.1',
+  version: '1.7.0',
   /* photo lessons: the Cloudflare Worker that saves photos for the evening check ('' hides the feature) */
   uploadUrl: 'https://english-upload.mobinkingsacc.workers.dev/',
   extraLessons: 'lessons/extra.json',
@@ -596,7 +596,7 @@ var S = {
   todayLesson: 'درس امروز', start: 'شروع درس', minutes: 'دقیقه', newPhrases: 'جملهٔ نو',
   streakLabel: 'روز پشت سر هم', path: 'مسیر شما', lessonsOf: function(d,t){ return fa(d) + ' از ' + fa(t) + ' درس'; },
   done: 'تمام شد', now: 'امروز', open: 'باز', home: 'خانه', review: 'کارت‌ها', settings: 'تنظیمات', lessonsTab: 'درس‌ها',
-  welcome: 'هر روز یک درس کوتاه.', camBig: 'عکس بگیرید', camSub: 'درس نو فردا', camWait: function(n){ return fa(n) + ' عکس در راه است'; },
+  welcome: 'هر روز یک درس کوتاه.', camBig: 'عکس بگیرید', camSub: 'درس نو در یک دقیقه', camWait: function(n){ return fa(n) + ' عکس در راه است'; },
   talkBig: 'با ChatGPT گپ بزنید', talkSub: 'تمرین گپ زدن', afNote: 'در افغانستان شاید ChatGPT کار نکند.', hiHajji: 'سلام، حاجی صاحب', newPill: 'درس نو', allDoneRow: 'همهٔ درس‌ها تمام شد',
   pickTitle: 'دربارهٔ چی گپ بزنیم؟', back: 'برگشت', setVoice: 'آواز', setRemind: 'یادآوری هر روز', remindAdd: 'به تقویم',
   remindShort: 'بعد «Add to Calendar» یا «Add All» را بزنید.', setHints: 'کمک تلفظ', setCheck: 'آزمایش برنامه', checkGo: 'شروع', setReset: 'پاک کردن پیشرفت',
@@ -612,11 +612,11 @@ var S = {
   points: 'امتیاز', talk: 'گپ زدن با هوش مصنوعی',
   changeInSettings: '',
   topic: 'موضوع گپ:',
-  isNew: 'نو', photoReady: '✨ درس نو از عکس شما', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ فردا از آن یک درس نو ساخته می‌شود.',
+  isNew: 'نو', photoReady: '✨ درس نو از عکس شما', photoTitle: 'درس از عکس', photoOpen: 'عکس بفرستید', photoShort: 'از کتاب یا هر چیز دیگر عکس بگیرید؛ در یک دقیقه از آن یک درس نو ساخته می‌شود.',
   photoPending: function(n){ return fa(n) + ' عکس در انتظار است؛ درس نو تا فردا آماده می‌شود.'; },
-  photoIntro: 'از کتاب یا ورق صنف عکس بگیرید. فردا درس نو آماده می‌شود.',
+  photoIntro: 'از کتاب یا ورق صنف عکس بگیرید. در یک دقیقه درس نو آماده می‌شود.',
   photoPick: 'عکس بگیرید', photoChange: 'عکس دیگر', photoNote: 'چه چیزی می‌خواهید یاد بگیرید؟ (اختیاری)', photoNoteHint: 'مثلاً: کلمه‌های این صفحه',
-  photoSend: 'فرستادن', photoSending: 'در حال فرستادن…', photoSent: 'عکس فرستاده شد!', photoWhen: 'درس نو فردا آماده می‌شود.', photoAnother: 'یک عکس دیگر',
+  photoSend: 'فرستادن', photoSending: 'در حال ساختن درس… (تا یک دقیقه)', photoMade: 'درس شما آماده است!', photoStart: 'شروع درس', photoNoLesson: 'از این عکس درس ساخته نشد. یک عکس واضح از کتاب، ورق یا تابلو بگیرید.', photoSent: 'عکس فرستاده شد!', photoWhen: 'درس نو فردا آماده می‌شود.', photoAnother: 'یک عکس دیگر',
   photoOffline: 'انترنت وصل نیست. وصل شوید و دوباره «فرستادن» را بزنید.', photoTooBig: 'عکس بسیار کلان است. یک عکس دیگر انتخاب کنید.',
   photoFailed: 'فرستاده نشد. کمی بعد دوباره کوشش کنید. اگر باز هم نشد، به Mo بگویید.', photoNotImage: 'این فایل عکس نیست. یک عکس انتخاب کنید.',
   slow: 'آهسته', sayIt: 'خودتان بگویید', recStop: 'بس', mine: 'صدای شما', original: 'صدای اصلی',
@@ -680,7 +680,7 @@ function niceDate(s){
 /* ---------- storage ---------- */
 var storageOK = true;
 function freshState(){
-  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'on', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[], sent:[], seen:{} };
+  return { v:1, name:'فرشته', points:0, settings:{ ai:'chatgpt', voice:'f', hints:'on', theme:CONFIG.defaultTheme, remind:18 }, aiV2:true, done:{}, streak:{ count:0, last:'' }, days:[], cards:{}, own:[], sent:[], seen:{}, mine:[] };
 }
 function loadState(){
   try {
@@ -705,6 +705,7 @@ function loadState(){
     if (!s.cards || typeof s.cards !== 'object') s.cards = {};
     if (!s.done || typeof s.done !== 'object') s.done = {};
     if (!Array.isArray(s.sent)) s.sent = [];
+    if (!Array.isArray(s.mine)) s.mine = [];
     if (!s.seen || typeof s.seen !== 'object') s.seen = {};
     if (typeof s.points !== 'number') s.points = 0;
     return s;
@@ -761,11 +762,25 @@ function addExtra(data){
   return added;
 }
 function loadExtra(){
-  if (!CONFIG.extraLessons || !window.fetch) return;
+  if (!CONFIG.extraLessons || !window.fetch){ addMine(); return; }
   fetch(CONFIG.extraLessons, { cache:'no-cache' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
-    var n = addExtra(d); extraState = d ? 'ok' : 'none';
+    var n = addExtra(d) + addMine(); extraState = d ? 'ok' : 'none';
     if (n){ syncOwn(); if (view.name === 'home') render(); }
-  }).catch(function(){ extraState = 'fail'; });
+  }).catch(function(){ extraState = 'fail'; if (addMine() && view.name === 'home') render(); });
+}
+/* lessons Claude made from her photos a moment ago (kept on this phone); the evening check publishes them in extra.json with the same id */
+function addMine(){
+  var added = 0;
+  st.mine = st.mine.filter(function(l){
+    if (!l || lessonIndex(l.id) >= 0) return false; /* published now: the extra.json copy wins */
+    var c = JSON.parse(JSON.stringify(l));
+    if (!validLesson(c)) return false;
+    c.icon = 'i-star'; c.extra = true; c.mine = true;
+    LESSONS.push(c); indexLesson(c, LESSONS.length - 1); added++;
+    return true;
+  });
+  if (added) save();
+  return added;
 }
 function syncOwn(){
   for (var id in PHRASES) if (PHRASES[id].own) delete PHRASES[id];
@@ -1320,8 +1335,12 @@ var photoData = null, photoSending = false;
 function renderPhoto(){
   var v = view, h = '<div class="content photo-big"><button class="sp-back" type="button" data-go="home">' + ic('i-back') + S.back + '</button><h1 class="page-title">📷 ' + S.photoTitle + '</h1>';
   h += '<section class="card set-group"><p style="margin:0;line-height:1.8">' + S.photoIntro + '</p></section>';
-  if (v.sentOk){
-    h += '<section class="card set-group photo-done"><div class="big-emoji">✅</div><b>' + S.photoSent + '</b><p class="set-help">' + S.photoWhen + '</p></section>' +
+  if (v.sentOk && v.made >= 0 && LESSONS[v.made]){
+    var ML = LESSONS[v.made];
+    h += '<section class="card set-group photo-done"><div class="big-emoji">' + ML.emoji + '</div><b>' + S.photoMade + '</b><p style="margin:6px 0 0;font-size:20px">' + esc(ML.title.fa) + '</p><div class="en" lang="en" style="color:var(--p-muted)">' + esc(ML.title.en) + '</div></section>' +
+      '<button class="cta" type="button" data-start="' + v.made + '">' + S.photoStart + '</button><button class="ghost" type="button" data-photo-again>' + S.photoAnother + '</button>';
+  } else if (v.sentOk){
+    h += '<section class="card set-group photo-done"><div class="big-emoji">' + (v.noLesson ? '🤔' : '✅') + '</div><b>' + S.photoSent + '</b><p class="set-help">' + (v.noLesson ? S.photoNoLesson : S.photoWhen) + '</p></section>' +
       '<button class="cta" type="button" data-photo-again>' + S.photoAnother + '</button><button class="ghost" type="button" data-go="home">' + S.home + '</button>';
   } else {
     h += '<label class="cta photo-pick">' + (photoData ? S.photoChange : '📷 ' + S.photoPick) + '<input type="file" accept="image/*" data-photo-input hidden></label>';
@@ -1362,7 +1381,13 @@ function sendPhoto(){
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status:r.status, j:j }; }); })
     .then(function(res){
       clearTimeout(to); photoSending = false;
-      if (res.status === 200 && res.j && res.j.ok){ st.sent.push({ id:res.j.id, at:today() }); st.sent = st.sent.slice(-50); save(); photoData = null; view.note = ''; view.sentOk = true; }
+      if (res.status === 200 && res.j && res.j.ok){
+        st.sent.push({ id:res.j.id, at:today() }); st.sent = st.sent.slice(-50);
+        view.made = -1; view.noLesson = res.j.instant === 'skipped';
+        var nl = res.j.lesson;
+        if (nl && nl.id && lessonIndex(nl.id) < 0){ st.mine.push(nl); st.mine = st.mine.slice(-30); if (addMine()) view.made = lessonIndex(nl.id); }
+        save(); photoData = null; view.note = ''; view.sentOk = true;
+      }
       else view.err = res.status === 413 ? S.photoTooBig : S.photoFailed + ' (' + res.status + (res.j && res.j.error ? ' ' + esc(res.j.error) : '') + ')';
       if (view.name === 'photo') renderPhoto();
     })
@@ -1583,8 +1608,9 @@ function selfCheck(){
     : set('clip', 'warn', 'کپی خودکار شاید کار نکند؛ متن را دستی کپی کنید', 'Auto-copy may not work; copy the text by hand', '', '');
   /* 10 photo lessons */
   if (CONFIG.uploadUrl) fetch(CONFIG.uploadUrl, { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(j){
-    j && j.ok && j.token ? set('photo', 'ok', 'فرستادن عکس آماده است', 'Photo upload is ready')
-      : set('photo', 'bad', 'سرور عکس کلید GitHub ندارد', 'Photo server has no GitHub key', 'به Mo بگویید.', 'Tell Mo: add the GITHUB_TOKEN secret to the Cloudflare Worker.');
+    !(j && j.ok && j.token) ? set('photo', 'bad', 'سرور عکس کلید GitHub ندارد', 'Photo server has no GitHub key', 'به Mo بگویید.', 'Tell Mo: add the GITHUB_TOKEN secret to the Cloudflare Worker.')
+      : j.claude === 'ok' ? set('photo', 'ok', 'درس فوری از عکس آماده است', 'Photo upload and instant lessons are ready')
+      : set('photo', 'warn', 'عکس فرستاده می‌شود، ولی درس تا فردا آماده می‌شود', 'Photos send, but lessons wait for the evening (Claude: ' + (j.claude || 'old Worker') + ')', 'به Mo بگویید.', 'Tell Mo: check ANTHROPIC_API_KEY on the Cloudflare Worker.');
   }).catch(function(){ set('photo', 'warn', 'سرور عکس جواب نداد', 'Photo server did not answer', 'انترنت را بررسی کنید. اگر درست نشد، به Mo بگویید.', 'Check the internet. If it stays like this, tell Mo.'); });
   /* 9 font */
   var fontOK = false; try { document.fonts.forEach(function(f){ if (/Vazirmatn/.test(f.family) && f.status === 'loaded') fontOK = true; }); } catch (e) {}
@@ -1656,7 +1682,7 @@ app.addEventListener('click', function(e){
   if ((el = t.closest('[data-sound]'))){ CHECKS.sound(el.getAttribute('data-sound')); return; }
   if ((el = t.closest('[data-reset]'))){
     if (!resetArmed){ resetArmed = true; el.textContent = S.resetSure; setTimeout(function(){ resetArmed = false; if (el.isConnected) el.textContent = S.reset; }, 4000); return; }
-    resetArmed = false; var keep = st.settings, nm = st.name, own = st.own; st = freshState(); st.settings = keep; st.name = nm; st.own = own; syncOwn(); own.forEach(function(o){ addCard(o.id); }); save(); toast(S.resetDone); renderSettings(); return;
+    resetArmed = false; var keep = st.settings, nm = st.name, own = st.own, mine = st.mine; st = freshState(); st.settings = keep; st.name = nm; st.own = own; st.mine = mine; syncOwn(); own.forEach(function(o){ addCard(o.id); }); save(); toast(S.resetDone); renderSettings(); return;
   }
 });
 app.addEventListener('input', function(e){ if (e.target.matches('[data-name]')){ st.name = e.target.value.trim().slice(0, 30); save(); } if (e.target.matches('[data-photo-note]')) view.note = e.target.value; });

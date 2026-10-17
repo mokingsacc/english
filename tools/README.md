@@ -1,6 +1,6 @@
 # Evening photo-lesson check
 
-Freshta sends photos from the app (📷 درس از عکس). A Cloudflare Worker saves each one in the private repo `mokingsacc/english-inbox` as `inbox/<id>.jpg` plus `inbox/<id>.json` (`{id, note, name, sentAt}`). Every evening Claude turns new photos into lessons in this repo. They appear in her app the next time she opens it.
+Freshta sends photos from the app (📷 درس از عکس). A Cloudflare Worker (`tools/worker.js`, secrets GITHUB_TOKEN and ANTHROPIC_API_KEY) saves each one in the private repo `mokingsacc/english-inbox` as `inbox/<id>.jpg` plus `inbox/<id>.json` (`{id, note, name, sentAt}`). It also asks Claude (Opus 5.5) to make the lesson at once: the lesson goes straight to her app (kept on her phone, with the phone voice) and is saved as `inbox/<id>.lesson.json`. Every evening Claude records the natural voices and publishes the lesson in this repo; her app then uses the published copy.
 
 ## Steps
 
@@ -10,15 +10,16 @@ Clone both repos (`mokingsacc/english` and `mokingsacc/english-inbox`). Run step
 
 1. Look in `english-inbox/inbox/`. If there are no `.jpg` files, stop. Change nothing and push nothing.
 2. Set up the voice tools once per run: `bash tools/setup_tts.sh` (pip packages plus models from GitHub releases).
-3. For each photo, or a group of photos on the same topic, open the image and read the note. Write one lesson JSON file in a temp folder (format below). The lesson teaches what the photo shows: the words and phrases on a book page, a school letter, a sign, a menu, a form. Turn it into 6 useful everyday phrases she can say out loud. If a photo has nothing usable (blank, blurred, private document), make no lesson from it and move its files to `rejected/` in step 7, add its id to the top-level `"skipped"` list in `lessons/extra.json` (create the list if missing) so the app stops showing it as waiting, and say why in the commit message.
+3. For each photo that has an `inbox/<id>.lesson.json`: that lesson is already in her app. Use that file as the lesson file as it is: keep its `id` and `from` (her progress is stored under them) and only correct Dari or English lines that break the quality rules. Do not make a second lesson from the same photo.
+   For each photo without one (the instant lesson failed, was off, or hit the daily limit), or a group of photos on the same topic, open the image and read the note. Write one lesson JSON file in a temp folder (format below). The lesson teaches what the photo shows: the words and phrases on a book page, a school letter, a sign, a menu, a form. Turn it into 6 useful everyday phrases she can say out loud. If a photo has nothing usable (blank, blurred, private document), make no lesson from it and move its files to `rejected/` in step 7, add its id to the top-level `"skipped"` list in `lessons/extra.json` (create the list if missing) so the app stops showing it as waiting, and say why in the commit message.
 4. Run `python3 tools/build_extra.py /tmp/x<N>.json`. Fix every problem it lists and run it again. Re-record or reword any clip it says the recogniser heard differently.
 5. Check: `python3 -m http.server 8765 --bind 127.0.0.1 &`, then `NODE_PATH=/opt/node-tools/node_modules node tools/check_extra.js http://127.0.0.1:8765/`. It must print `OK`.
 6. Commit `lessons/extra.json` and the new `audio/` files to `main` in `mokingsacc/english`, and push.
-7. In `english-inbox`, move the used photos and notes from `inbox/` to `processed/` and the rejected ones to `rejected/`, then commit and push.
+7. In `english-inbox`, move the used photos, notes and `.lesson.json` files from `inbox/` to `processed/` and the rejected ones to `rejected/`, then commit and push.
 
 ## Lesson format (one JSON object)
 
-- `id`: the next free `x<number>` (look at `lessons/extra.json`).
+- `id`: the next free `x<number>` (look at `lessons/extra.json`). Instant lessons have long ids such as `x1792244270320`; keep those.
 - `from`: the photo ids used, exactly the `.jpg` file names without the extension (e.g. `2026-10-04T18-11-22-123Z-ab12cd`). The app uses these to stop showing "waiting".
 - `emoji`
 - `title`: `{fa, en}`
