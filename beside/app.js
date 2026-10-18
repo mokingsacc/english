@@ -56,7 +56,7 @@
       el.hidden = !el.dataset.state.split(' ').includes(state);
     });
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); document.body.classList.remove('idle'); }
+    else { closeMore(); soundOpen(false); document.body.classList.remove('idle'); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -138,9 +138,10 @@
     };
     try { apply(true).catch(() => { try { apply(false).catch(() => {}); } catch (e) {} }); } catch (e) {}
   }
-  // The video lanes of a call, in the order its offer lists them: 0 is the shared screen, 1 the sharer's camera.
-  // (The guest's camera comes back on lane 0, the only lane the guest sends on.)
-  function lane(pc, i) {
+  // The lanes of a call, in the order its offer lists them. Video: 0 the shared screen, 1 the host's camera,
+  // 2 and 3 two other guests' cameras (relayed by the host). Sound: 0 voices, 1 the shared video's sound.
+  // (A guest's camera comes back on video lane 0 and its screen on 1; its mic on sound lane 0, its tab on 1.)
+  function lane(pc, i, want) {
     try {
       const offer = [pc.localDescription, pc.remoteDescription].find((d) => d && d.type === 'offer');
       if (!offer) return null;
@@ -148,7 +149,7 @@
       let kind = '';
       offer.sdp.split(/\r?\n/).forEach((l) => {
         if (l.startsWith('m=')) kind = l.slice(2).split(' ')[0];
-        else if (kind === 'video' && l.startsWith('a=mid:')) mids.push(l.slice(6).trim());
+        else if (kind === (want || 'video') && l.startsWith('a=mid:')) mids.push(l.slice(6).trim());
       });
       if (mids[i] == null) return null;
       const t = pc.getTransceivers().find((x) => x.mid === mids[i]);
@@ -177,14 +178,15 @@
     return 'The camera didn’t start (' + (n || 'unknown') + '). Try again.';
   }
   // PeerJS adds a stream's tracks in getTracks() order, and browsers order that differently: pin our order,
-  // so the lanes of a call are always [audio, screen, camera] (offer) and [mic, camera, screen] (answer).
+  // so the lanes of a call are always [voices, video sound, screen, camera, face, face] (offer) and
+  // [mic, tab sound, camera, screen] (answer).
   function ordered(list) {
     const l = list.filter(Boolean);
     const s = new MediaStream(l);
     try { s.getTracks = () => l.slice(); } catch (e) { /* the default order is the next best thing */ }
     return s;
   }
-  const VER = 2;
+  const VER = 3;
   function tell(conn, msg) { try { if (conn && conn.open) conn.send(msg); } catch (e) { /* the link is going anyway */ } }
 
   async function rtt(pc) {
@@ -226,6 +228,116 @@
       if (!h264.length) return line;
       return head + h264.concat(ids.filter((id) => !h264.includes(id))).join(' ') + cr;
     });
+  }
+
+  // ---------- SOUND ----------
+  // Voices and the shared video's sound travel in two lanes, so neither squashes the other and each has its own
+  // volume. The voice lane asks for clear speech (64 kbit/s, repairs lost packets); the video lane for stereo
+  // music quality (128 kbit/s). Each side's own description says how it wants to be sent to.
+  const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  function tuneOpus(sdp) {
+    const nl = /\r\n/.test(sdp) ? '\r\n' : '\n';
+    let a = -1;
+    return sdp.split(/\r?\n(?=m=)/).map((sec) => {
+      if (!sec.startsWith('m=audio')) return sec;
+      a++;
+      const m = sec.match(/^a=rtpmap:(\d+) opus\/48000/im);
+      if (!m || a > 1) return sec;
+      const want = a === 0
+        ? { useinbandfec: '1', usedtx: '0', maxaveragebitrate: '64000' }
+        : { stereo: '1', 'sprop-stereo': '1', useinbandfec: '1', usedtx: '0', maxaveragebitrate: '128000' };
+      const re = new RegExp('^a=fmtp:' + m[1] + ' (.*)$', 'm');
+      const fm = sec.match(re);
+      const kv = new Map();
+      if (fm) fm[1].split(';').forEach((p) => { const i = p.indexOf('='); if (i > 0) kv.set(p.slice(0, i).trim(), p.slice(i + 1).trim()); });
+      Object.entries(want).forEach(([k, v]) => kv.set(k, v));
+      const line = 'a=fmtp:' + m[1] + ' ' + [...kv].map(([k, v]) => k + '=' + v).join(';');
+      return fm ? sec.replace(re, line) : sec.replace(/^(a=rtpmap:\d+ opus\/48000.*)$/im, (l) => l + nl + line);
+    }).join(nl);
+  }
+  // Voices go first on a busy network.
+  function tuneVoice(s) {
+    try {
+      const p = s && s.getParameters();
+      if (!p || !p.encodings || !p.encodings.length) return;
+      p.encodings[0].priority = 'high';
+      p.encodings[0].networkPriority = 'high';
+      s.setParameters(p).catch(() => {});
+    } catch (e) { /* defaults are fine */ }
+  }
+  // Your own volumes for voices and for the shared video. iPhone ignores page volumes: its side buttons do it.
+  const CAN_VOL = !IS_IOS;
+  function savedVol(k) { const v = parseFloat(store.get(k)); return v >= 0 && v <= 1 ? v : 1; }
+  const SND = { voice: savedVol('beside.vol.voice'), media: savedVol('beside.vol.media') };
+  function voiceEls() { return isGuest ? [$('voice')] : [...H.guests.values()].map((g) => g.audio); }
+  function applyVolumes() {
+    voiceEls().forEach((el) => { if (el) el.volume = SND.voice; });
+    const me = $('media');
+    if (me) me.volume = SND.media;
+    soundUi();
+  }
+  function setVol(k, v) {
+    SND[k] = Math.max(0, Math.min(1, v));
+    store.set('beside.vol.' + k, String(SND[k]));
+    applyVolumes();
+  }
+  // A sound lane that holds its place in the call and sends silence.
+  function silentTrack(ctx) {
+    try { const d = ctx.createMediaStreamDestination(); d.channelCount = 1; return d.stream.getAudioTracks()[0] || null; } catch (e) { return null; }
+  }
+  function play(el, track) {
+    if (!el) return;
+    if (!track) { if (el.srcObject) el.srcObject = null; return; }
+    if (!el.srcObject || el.srcObject.getAudioTracks()[0] !== track) el.srcObject = new MediaStream([track]);
+    el.muted = false;
+    if (el.paused) el.play().catch(() => {});
+  }
+
+  // Who is talking: the host listens to every voice and tells everyone; a green ring marks them.
+  const T = { ids: new Set(), sig: '', timer: 0, last: new Map(), buf: null };
+  function renderTalk() {
+    const has = (el) => !!el.dataset.pid && T.ids.has(el.dataset.pid);
+    document.querySelectorAll('#watchRoot .tile').forEach((el) => el.classList.toggle('talking', has(el)));
+    if (mini.els) mini.els.grid.querySelectorAll('.fw-tile').forEach((el) => el.classList.toggle('talking', has(el)));
+  }
+  function setTalk(ids) {
+    const sig = [...ids].sort().join(',');
+    if (sig === T.sig) return false;
+    T.sig = sig;
+    T.ids = new Set(ids);
+    renderTalk();
+    return true;
+  }
+  function loud(an) {
+    if (!an) return 0;
+    if (!T.buf || T.buf.length !== an.fftSize) T.buf = new Float32Array(an.fftSize);
+    an.getFloatTimeDomainData(T.buf);
+    let s = 0;
+    for (let i = 0; i < T.buf.length; i++) s += T.buf[i] * T.buf[i];
+    return Math.sqrt(s / T.buf.length);
+  }
+  function hostListen() {
+    clearInterval(T.timer);
+    T.timer = setInterval(() => {
+      if (!H.ctx) return;
+      const now = Date.now();
+      const src = [[H.me, H.micAn]].concat([...H.guests.values()].filter((g) => g.live).map((g) => [g.id, g.an]));
+      const ids = [];
+      src.forEach(([id, an]) => {
+        if (loud(an) > 0.02) T.last.set(id, now);
+        if (now - (T.last.get(id) || 0) < 700) ids.push(id);
+      });
+      if (setTalk(ids)) toGuests({ t: 'talk', ids });
+    }, 120);
+  }
+  function analyser(node) {
+    try {
+      const an = H.ctx.createAnalyser();
+      an.fftSize = 512;
+      node.connect(an);
+      an.connect(H.sink); // a silent sink keeps it measuring in every browser
+      return an;
+    } catch (e) { return null; }
   }
 
   // ---------- VIEW (one call stage for both roles) ----------
@@ -278,24 +390,42 @@
     const scr = screenSource();
     setTrack($('screenTile'), scr);
     const others = [];
-    let alone = false, name = '', self = null;
+    let alone = false, name = '', self = null, avatarId = '';
     if (isGuest) {
       const pc = G.call && G.call.peerConnection;
       const face = G.camOn && app.state === 'watching' && pc ? lane(pc, 1) : null;
       setTrack($('camBubble'), face);
+      if ($('camBubble')) $('camBubble').dataset.pid = hostId;
       if (face) others.push($('camBubble'));
+      // the other guests' faces, passed on by the host
+      const keep = new Set();
+      G.people.forEach((p) => {
+        const t = p.cam && p.lane > 1 && pc && app.state === 'watching' ? lane(pc, p.lane) : null;
+        if (!t) return;
+        keep.add(p.id);
+        let tile = G.tiles.get(p.id);
+        if (!tile) { tile = faceTile(p.name || 'Guest', 'p:' + p.id); tile.dataset.pid = p.id; park.appendChild(tile); G.tiles.set(p.id, tile); }
+        setTrack(tile, t);
+        others.push(tile);
+      });
+      for (const [id, tile] of G.tiles) if (!keep.has(id)) { setTrack(tile, null); tile.remove(); G.tiles.delete(id); }
       name = hostLabel();
+      avatarId = hostId;
       const mine = G.cam && G.cam.getVideoTracks()[0];
       setTrack($('gSelf'), mine || null);
+      if ($('gSelf')) $('gSelf').dataset.pid = (G.peer && G.peer.id) || '';
       if (mine) self = $('gSelf');
     } else {
       const live = watchers();
       alone = !live.length;
       live.forEach((g) => { if (g.tile) others.push(g.tile); });
       name = live.length ? live[0].name || '' : '';
+      avatarId = live.length ? live[0].id : '';
       setTrack($('selfFace'), H.cam ? H.camSlot : null);
+      if ($('selfFace')) $('selfFace').dataset.pid = H.me || '';
       if (H.cam) self = $('selfFace');
     }
+    if ($('avatarTile')) $('avatarTile').dataset.pid = avatarId;
     const screen = scr ? $('screenTile') : null;
     const visible = [screen].concat(others, [self]).filter(Boolean);
     const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
@@ -305,7 +435,8 @@
       const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
       if (p) big = p; else V.pin = '';
     }
-    const smalls = visible.filter((el) => el !== big);
+    // The faces window is open: the faces are there, so the shared screen here stays clear.
+    const smalls = mini.win && big === screen ? [] : visible.filter((el) => el !== big);
     root.querySelectorAll('.tile').forEach((el) => {
       if (el === big || smalls.includes(el)) return;
       el.hidden = true;
@@ -334,11 +465,14 @@
     document.body.dataset.alone = alone ? '1' : '';
     const gs = $('gScreenBtn');
     if (gs) gs.hidden = !(CAN_SHARE && isGuest && G.hostVer >= 2 && G.screenSender && app.state === 'watching');
+    const sb = $('soundBtn');
+    if (sb) { sb.hidden = !CAN_VOL || !inCallWithSomeone(); if (sb.hidden) soundOpen(false); }
     chatButton();
     docTitle();
     fitDots();
     pointTip();
     miniRender();
+    renderTalk();
   }
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
@@ -363,6 +497,13 @@
     if (x) x.focus();
   }
   function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+  function soundOpen(on) {
+    const p = $('soundPop'), b = $('soundBtn');
+    if (!p) return;
+    p.hidden = !on;
+    if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) { soundUi(); wakeControls(); }
+  }
 
   // ---------- POINT ----------
   // Anyone looking at someone else's screen can point: a click (mouse) or a 0.4 s hold (touch) puts a dot with
@@ -485,25 +626,46 @@
     if (v) ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, fitDots));
   }
 
-  // ---------- MINI WINDOW ----------
-  // Chrome and Edge, while you share: a small always-on-top window (Document Picture-in-Picture) over the shared
-  // tab or any app, with a live miniature of what you share, the dots on it, the others' faces, Mic, Camera and
-  // Stop sharing. It is its own window, so it never shows in the shared picture.
+  // ---------- FACES WINDOW ----------
+  // Chrome and Edge, in a call: the faces pop out into their own always-on-top window (Document Picture-in-
+  // Picture), like Teams. You on one side, them on the other; three people split three ways, four make a grid.
+  // Drag it over the tab you share or onto another screen and size it as you like. It is its own window, so it
+  // never shows in the shared picture. While you share, a dot someone puts on your screen flashes up in it.
   const HAS_MINI = 'documentPictureInPicture' in window;
-  const mini = { win: null, els: null, opening: false, sig: '', peekTimer: 0 };
+  const mini = { win: null, els: null, opening: false, sig: '', auto: false, peekTimer: 0, stageTimer: 0, awakeTimer: 0 };
+  function inCallWithSomeone() { return isGuest ? app.state === 'watching' : app.state === 'live' && watchers().length > 0; }
+  // Everyone in the call, you first: { pid, name, track (their camera, or null), self }
+  function people() {
+    const list = [];
+    if (isGuest) {
+      const pc = G.call && G.call.peerConnection;
+      const mine = G.cam && G.cam.getVideoTracks()[0];
+      list.push({ pid: (G.peer && G.peer.id) || 'me', name: 'You', initial: cleanName(store.get('beside.name')), track: mine || null, self: true });
+      list.push({ pid: hostId, name: hostLabel() || 'Host', track: G.camOn && pc ? lane(pc, 1) : null });
+      G.people.forEach((p) => list.push({ pid: p.id, name: p.name || 'Guest', track: p.cam && p.lane > 1 && pc ? lane(pc, p.lane) : null }));
+    } else {
+      list.push({ pid: H.me, name: 'You', initial: myName(), track: H.cam ? H.camSlot : null, self: true });
+      watchers().forEach((g) => {
+        const pc = g.call && g.call.peerConnection;
+        list.push({ pid: g.id, name: g.name || 'Guest', track: g.camOn && pc ? lane(pc, 0) : null });
+      });
+    }
+    return list;
+  }
+  function miniSize(n) { return n <= 2 ? { width: 520, height: 230 } : n === 3 ? { width: 660, height: 220 } : { width: 480, height: 360 }; }
   async function miniOpen() {
-    if (!HAS_MINI || mini.win || mini.opening || !amSharing()) return;
+    if (!HAS_MINI || mini.win || mini.opening || !inCallWithSomeone()) return;
     mini.opening = true;
     let win;
     try {
-      win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 225 });
+      win = await window.documentPictureInPicture.requestWindow(miniSize(people().length));
     } catch (e) {
       mini.opening = false;
-      note('The mini window didn’t open. Press Mini window to try again.', 'info');
+      note('The faces window didn’t open. Press Pop out to try again.', 'info');
       return;
     }
     mini.opening = false;
-    if (!amSharing()) { try { win.close(); } catch (e) {} return; }
+    if (!inCallWithSomeone()) { try { win.close(); } catch (e) {} return; }
     const d = win.document;
     const css = document.querySelector('style');
     const st = d.createElement('style');
@@ -514,22 +676,22 @@
     d.head.append(meta, st);
     d.title = 'Beside';
     d.body.className = 'mini-body';
-    const root = d.createElement('div');
-    root.className = 'mini';
-    const stage = d.createElement('div');
-    stage.className = 'mini-stage';
+    const div = (cls) => { const e = d.createElement('div'); e.className = cls; return e; };
+    const root = div('fw');
+    const grid = div('fw-grid');
+    // a small picture of the screen you share, shown for a moment when someone points at it
+    const stage = div('fw-stage');
+    stage.hidden = true;
     const v = d.createElement('video');
     v.muted = true; v.autoplay = true; v.setAttribute('playsinline', '');
-    const dots = d.createElement('div');
-    dots.className = 'dots';
+    const dots = div('dots');
     stage.append(v, dots);
-    const peek = d.createElement('div');
-    peek.className = 'mini-peek';
+    const peek = div('mini-peek');
     peek.hidden = true;
-    const bar = d.createElement('div');
-    bar.className = 'mini-bar';
-    const faces = d.createElement('div');
-    faces.className = 'mini-faces';
+    const snd = soundPanel(d);
+    snd.classList.add('fw-sound');
+    snd.hidden = true;
+    const bar = div('fw-bar');
     const btn = (actName, label, from, cls) => {
       const b = d.createElement('button');
       b.className = 'mini-btn ' + (cls || '');
@@ -544,24 +706,36 @@
     stop.className = 'mini-btn stop';
     stop.dataset.act = 'unshare';
     stop.textContent = 'Stop sharing';
-    bar.append(faces, btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'), stop);
-    root.append(stage, peek, bar);
+    bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'));
+    if (CAN_VOL) bar.append(btn('sound', 'Sound', '#soundBtn'));
+    bar.append(stop);
+    root.append(grid, stage, peek, snd, bar);
     d.body.appendChild(root);
     bar.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
-    const fit = () => fitLayer(v, dots);
+    const awake = () => {
+      root.classList.add('awake');
+      clearTimeout(mini.awakeTimer);
+      mini.awakeTimer = setTimeout(() => { if (snd.hidden) root.classList.remove('awake'); }, 2500);
+    };
+    root.addEventListener('pointermove', awake);
+    root.addEventListener('pointerdown', awake);
+    const fit = () => { fitGrid(); fitLayer(v, dots); };
     win.addEventListener('resize', fit);
-    ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, fit));
+    ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, () => fitLayer(v, dots)));
     win.addEventListener('pagehide', () => { if (mini.win === win) { mini.win = null; mini.els = null; layout(); } });
     mini.win = win;
-    mini.els = { v, dots, faces, peek, bar };
+    mini.els = { grid, stage, v, dots, peek, bar, snd, root };
     mini.sig = '';
     layout();
+    soundUi();
+    awake();
   }
-  // The mini window's buttons do what the same buttons in the dock do.
+  // The faces window's buttons do what the same buttons in the dock do.
   function act(name) {
     if (name === 'mute') { if (isGuest) guestMute(); else hostMute(); }
     else if (name === 'cam') { if (isGuest) guestCam(); else hostCam(); }
     else if (name === 'unshare') { if (isGuest) guestUnshare(); else hostUnshare(); }
+    else if (name === 'sound' && mini.els) { mini.els.snd.hidden = !mini.els.snd.hidden; mini.els.root.classList.toggle('awake', !mini.els.snd.hidden); }
     miniRender();
   }
   function miniClose() {
@@ -570,51 +744,93 @@
     mini.els = null;
     if (w) { try { w.close(); } catch (e) {} }
   }
-  function miniRender() {
-    const btn = $('miniBtn');
-    if (btn) { btn.hidden = !(HAS_MINI && amSharing()); btn.setAttribute('aria-pressed', mini.win ? 'true' : 'false'); }
-    if (!mini.win || !mini.els) return;
-    if (!amSharing()) { miniClose(); return; }
-    const { v, faces, bar } = mini.els;
-    const t = screenSource();
-    if (t && (!v.srcObject || v.srcObject.getVideoTracks()[0] !== t)) { v.srcObject = new MediaStream([t]); v.play().catch(() => {}); }
-    let people;
-    if (isGuest) {
-      const pc = G.call && G.call.peerConnection;
-      people = [{ key: 'host', name: hostLabel(), track: G.camOn && pc ? lane(pc, 1) : null }];
-    } else {
-      people = watchers().map((g) => ({ key: g.id, name: g.name, track: g.tile && g.call && g.call.peerConnection ? lane(g.call.peerConnection, 0) : null }));
+  // Tiles as big as the window allows: try every number of columns and keep the one whose tiles come closest to
+  // a camera's 4:3 shape, with few empty places. Two people in a wide window sit side by side, in a tall one
+  // above each other.
+  function fitGrid() {
+    if (!mini.els) return;
+    const g = mini.els.grid;
+    const tiles = [...g.children];
+    const n = tiles.length, W = g.clientWidth, Ht = g.clientHeight;
+    if (!n || !W || !Ht) return;
+    let best = null;
+    for (let c = 1; c <= n; c++) {
+      const r = Math.ceil(n / c);
+      const score = Math.abs(Math.log((W / c) / (Ht / r) / (4 / 3))) + 0.5 * (c * r - n);
+      if (!best || score < best.score) best = { c, r, score };
     }
-    const sig = people.map((p) => p.key + ':' + (p.track ? p.track.id : '') + ':' + p.name).join('|');
+    const gap = 6;
+    const w = Math.floor((W - gap * (best.c - 1)) / best.c), h = Math.floor((Ht - gap * (best.r - 1)) / best.r);
+    tiles.forEach((t) => { t.style.width = w + 'px'; t.style.height = h + 'px'; });
+    g.dataset.cols = String(best.c);
+  }
+  function miniRender() {
+    const want = HAS_MINI && inCallWithSomeone();
+    if (want !== mini.auto) autoPip(want);
+    const btn = $('miniBtn');
+    if (btn) { btn.hidden = !want; btn.setAttribute('aria-pressed', mini.win ? 'true' : 'false'); }
+    if (!mini.win || !mini.els) return;
+    if (!want) { miniClose(); return; }
+    const { grid, bar } = mini.els;
+    const list = people();
+    const sig = list.map((p) => p.pid + ':' + (p.track ? p.track.id : '') + ':' + p.name + ':' + (p.initial || '')).join('|');
     if (sig !== mini.sig) {
       mini.sig = sig;
       const d = mini.win.document;
-      faces.textContent = '';
-      people.slice(0, 4).forEach((p) => {
+      grid.querySelectorAll('video').forEach((x) => { x.srcObject = null; });
+      grid.textContent = '';
+      list.forEach((p) => {
         const f = d.createElement('div');
-        f.className = 'mini-face';
-        f.title = p.name || '';
+        f.className = 'fw-tile' + (p.self ? ' self' : '');
+        f.dataset.pid = p.pid;
+        // their initial, covered by their camera once its picture arrives
+        const b = d.createElement('b');
+        const ini = (p.self ? p.initial : p.name) || '';
+        if (ini) b.textContent = ini.charAt(0).toUpperCase(); else b.innerHTML = PERSON;
+        f.appendChild(b);
         if (p.track) {
           const fv = d.createElement('video');
           fv.muted = true; fv.autoplay = true; fv.setAttribute('playsinline', '');
           fv.srcObject = new MediaStream([p.track]);
           f.appendChild(fv);
           fv.play().catch(() => {});
-        } else f.textContent = (p.name || '•').charAt(0).toUpperCase();
-        faces.appendChild(f);
+        }
+        const lab = d.createElement('span');
+        lab.className = 'label';
+        lab.textContent = p.name;
+        f.appendChild(lab);
+        grid.appendChild(f);
       });
+      fitGrid();
+      renderTalk();
     }
     const muted = isGuest ? G.muted : H.muted;
     const camOn = isGuest ? !!G.cam : !!H.cam;
+    const self = grid.querySelector('.fw-tile.self');
+    if (self) self.classList.toggle('muted', muted);
     const m = bar.querySelector('[data-act=mute]');
     if (m) m.setAttribute('aria-pressed', muted ? 'true' : 'false');
     const c = bar.querySelector('[data-act=cam]');
     if (c) c.setAttribute('aria-pressed', camOn ? 'true' : 'false');
+    const s = bar.querySelector('[data-act=unshare]');
+    if (s) s.hidden = !amSharing();
   }
   function miniDot(x, y, from, name) {
-    if (!mini.win || !mini.els) return;
-    fitLayer(mini.els.v, mini.els.dots);
-    mini.els.dots.appendChild(dotEl(mini.win.document, x, y, from, name));
+    if (!mini.win || !mini.els || !amSharing()) return;
+    const { stage, v, dots } = mini.els;
+    const t = screenSource();
+    if (!t) return;
+    if (!v.srcObject || v.srcObject.getVideoTracks()[0] !== t) v.srcObject = new MediaStream([t]);
+    v.play().catch(() => {});
+    stage.hidden = false;
+    fitLayer(v, dots);
+    dots.appendChild(dotEl(mini.win.document, x, y, from, name));
+    clearTimeout(mini.stageTimer);
+    mini.stageTimer = setTimeout(() => {
+      if (!mini.els || mini.els.stage !== stage) return;
+      stage.hidden = true;
+      v.srcObject = null;
+    }, 2800);
   }
   function miniPeek(line) {
     if (!mini.win || !mini.els) return;
@@ -624,9 +840,58 @@
     clearTimeout(mini.peekTimer);
     mini.peekTimer = setTimeout(() => { p.hidden = true; }, 6000);
   }
-  // Chrome can open the mini window by itself when you switch to the shared tab (it may ask once to allow it).
+  // Chrome can pop the faces out by itself when you switch to another tab during a call (it may ask once).
   function autoPip(on) {
+    mini.auto = !!on;
     try { navigator.mediaSession.setActionHandler('enterpictureinpicture', on && HAS_MINI ? () => { miniOpen(); } : null); } catch (e) { /* not offered here */ }
+  }
+  // Voices and Shared video sliders: one set in the page, one in the faces window, always showing the same.
+  function soundPanel(doc) {
+    const box = doc.createElement('div');
+    box.className = 'sound';
+    [['voice', 'Voices'], ['media', 'Shared video']].forEach(([k, label]) => {
+      const row = doc.createElement('label');
+      row.className = 'sound-row';
+      row.dataset.k = k;
+      const name = doc.createElement('span');
+      name.className = 'sound-name';
+      name.textContent = label;
+      const r = doc.createElement('input');
+      r.type = 'range'; r.min = '0'; r.max = '100'; r.step = '1';
+      r.value = String(Math.round(SND[k] * 100));
+      r.setAttribute('aria-label', label + ' volume');
+      r.addEventListener('input', () => setVol(k, r.value / 100));
+      const pct = doc.createElement('span');
+      pct.className = 'sound-pct';
+      row.append(name, r, pct);
+      box.appendChild(row);
+    });
+    const hint = doc.createElement('p');
+    hint.className = 'sound-hint';
+    box.appendChild(hint);
+    return box;
+  }
+  function soundUi() {
+    const disp = isGuest ? G.display : H.display;
+    const mine = amSharing() && !!disp && disp.getAudioTracks().some((t) => t.readyState === 'live');
+    [$('soundPop'), mini.els && mini.els.snd].filter(Boolean).forEach((b) => {
+      b.querySelectorAll('.sound-row').forEach((row) => {
+        const k = row.dataset.k;
+        const r = row.querySelector('input');
+        const n = Math.round(SND[k] * 100);
+        if (+r.value !== n) r.value = String(n);
+        row.querySelector('.sound-pct').textContent = n + '%';
+        const off = k === 'media' && amSharing();
+        r.disabled = off;
+        row.classList.toggle('off', off);
+      });
+      const h = b.querySelector('.sound-hint');
+      if (h) {
+        h.textContent = !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
+          : mine ? 'You’re sharing: use the video’s own volume. Everyone hears that change.'
+            : 'You’re sharing without sound. Share a tab with “Also share tab audio” on to send its sound.';
+      }
+    });
   }
 
   // ---------- CHAT AND FILES ----------
@@ -1006,10 +1271,10 @@
   // Mo starts a call with one tap; nothing is shared until Share screen. Every lane of the call exists from the
   // first offer ([audio, screen, camera]); a blank track holds a lane while it has nothing to carry.
   const H = {
-    peer: null, code: '', me: '', video: null, display: null, mic: null, ctx: null, dest: null,
-    micGain: null, tabSrc: null, guests: new Map(), knocks: new Map(), muted: false, mode: 'detail',
-    lagTimer: 0, idRetries: 0, stopping: false, starting: false, changing: false, otherTabLive: false,
-    blank: null, blankScreen: null, camSlot: null, cam: null, camBusy: false, sharer: '',
+    peer: null, code: '', me: '', video: null, display: null, mic: null, ctx: null, sink: null, silent: null,
+    micGain: null, micAn: null, mediaSrc: null, mediaTrack: null, guests: new Map(), knocks: new Map(), muted: false,
+    mode: 'detail', lagTimer: 0, idRetries: 0, stopping: false, starting: false, changing: false, otherTabLive: false,
+    blank: null, blankScreen: null, blankF: [], camSlot: null, cam: null, camBusy: false, sharer: '',
   };
   // Tabs of this browser tell each other when one is in a call, so a second tab can say so at once.
   const bc = (() => { try { return new BroadcastChannel('beside'); } catch (e) { return null; } })();
@@ -1115,11 +1380,6 @@
     });
     H.video = track;
   }
-  function useTabAudio(stream) {
-    if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
-    const a = stream && stream.getAudioTracks()[0];
-    if (a && H.ctx) { H.tabSrc = H.ctx.createMediaStreamSource(new MediaStream([a])); H.tabSrc.connect(H.dest); }
-  }
   function setStartBusy(b) { ['startBtn', 'endedAction'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
   async function hostStart() {
@@ -1134,16 +1394,21 @@
     H.starting = true;
     setStartBusy(true);
     try {
-      // Audio engine first, inside the click, so Safari lets it run. Mic and tab sound are mixed into one lane.
+      // Audio engine first, inside the click, so Safari lets it run. Each guest gets their own voice mix: your
+      // mic plus everyone else's voice (never their own). The shared video's sound has a lane of its own.
       H.ctx = new (window.AudioContext || window.webkitAudioContext)();
       H.ctx.resume().catch(() => {});
-      H.dest = H.ctx.createMediaStreamDestination();
+      H.sink = H.ctx.createGain();
+      H.sink.gain.value = 0;
+      H.sink.connect(H.ctx.destination);
+      H.silent = silentTrack(H.ctx);
       H.micGain = H.ctx.createGain();
-      H.micGain.connect(H.dest);
+      H.micAn = analyser(H.micGain);
       const wantMic = !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
       if (wantMic) {
         try {
-          H.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+          H.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+          H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
           H.ctx.createMediaStreamSource(H.mic).connect(H.micGain);
         } catch (e) {
           note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
@@ -1153,8 +1418,9 @@
       H.micGain.gain.value = H.muted ? 0 : 1;
       setPressed('muteBtn', H.muted, 'Unmute my mic', 'Mute my mic');
       H.blank = blankTrack();
-      H.blankScreen = blankTrack(); // a second one: one track can't ride two lanes of a call
-      if (!H.blank || !H.blankScreen) {
+      H.blankScreen = blankTrack(); // more of them: one track can't ride two lanes of a call
+      H.blankF = [blankTrack(), blankTrack()];
+      if (!H.blank || !H.blankScreen || !H.silent) {
         hostCleanup();
         show('idle');
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
@@ -1172,6 +1438,7 @@
       stayAwake(true);
       H.idRetries = 0;
       openHostPeer();
+      hostListen();
     } finally {
       H.starting = false;
       setStartBusy(false);
@@ -1245,26 +1512,39 @@
   // What this guest's screen lane carries: the room's screen, except its own (no echo), else blank.
   function screenFor(g) { return (g.id === H.sharer ? null : roomTrack()) || H.blankScreen; }
   function hostAddGuest(conn) {
-    if (!H.peer || H.peer.destroyed || !H.dest || !H.blankScreen || H.guests.has(conn.connectionId)) return;
+    if (!H.peer || H.peer.destroyed || !H.ctx || !H.blankScreen || H.guests.has(conn.connectionId)) return;
     for (const [k, old] of H.guests) if (old.conn.peer === conn.peer) hostDropGuest(k); // same guest reconnecting
     const g = {
       id: conn.peer, conn, call: null, audio: null, live: false, ver: 0, canShare: false, tile: null,
-      screenSender: null, camSender: null, name: cleanName(conn.metadata && conn.metadata.name),
+      screenSender: null, camSender: null, faceSenders: [], voiceSender: null, mediaSender: null,
+      vdest: null, vsrc: null, an: null, voice: null, peopleSig: '', name: cleanName(conn.metadata && conn.metadata.name),
     };
     const n = $('note');
     if (n && !n.hidden && n.textContent.includes(KNOCK_FAIL.trim())) note(''); // they got through after all
+    g.vdest = H.ctx.createMediaStreamDestination();
+    g.vdest.channelCount = 1;
+    H.micGain.connect(g.vdest);
+    const voice = g.vdest.stream.getAudioTracks()[0];
+    const media = mediaFor(g);
     const screen = screenFor(g);
     let call = null;
-    try { call = H.peer.call(conn.peer, ordered([H.dest.stream.getAudioTracks()[0], screen, H.camSlot]), { sdpTransform: preferH264 }); } catch (e) { call = null; }
-    if (!call) { try { conn.close(); } catch (e) {} return; }
+    try {
+      call = H.peer.call(conn.peer, ordered([voice, media, screen, H.camSlot].concat(H.blankF)), { sdpTransform: (sdp) => tuneOpus(preferH264(sdp)) });
+    } catch (e) { call = null; }
+    if (!call) { try { H.micGain.disconnect(g.vdest); } catch (e) {} try { conn.close(); } catch (e) {} return; }
     g.call = call;
     H.guests.set(conn.connectionId, g);
+    rewire();
     const pc = call.peerConnection;
     if (pc) {
       // Senders are kept by role: a relayed screen is someone else's track, never look them up by track again.
       const vids = pc.getSenders().filter((s) => s.track && s.track.kind === 'video');
+      const auds = pc.getSenders().filter((s) => s.track && s.track.kind === 'audio');
+      g.voiceSender = pc.getSenders().find((s) => s.track === voice) || auds[0] || null;
+      g.mediaSender = pc.getSenders().find((s) => s.track === media) || auds[1] || null;
       g.screenSender = pc.getSenders().find((s) => s.track === screen) || vids[0] || null;
       g.camSender = pc.getSenders().find((s) => s.track === H.camSlot) || vids[1] || null;
+      g.faceSenders = H.blankF.map((t, k) => pc.getSenders().find((s) => s.track === t) || vids[2 + k] || null);
       iceProblem(pc,
         (never) => {
           if (never) note((g.name || 'Your guest') + ' couldn’t connect. ' + NET_WHY, 'stay');
@@ -1274,6 +1554,8 @@
         () => {
           tuneScreen(g.screenSender);
           tuneCam(g.camSender);
+          g.faceSenders.forEach(tuneCam);
+          tuneVoice(g.voiceSender);
           text('liveHint', '');
           tell(conn, { cam: !!H.cam });
           if (!g.live) { g.live = true; guestStatus(); }
@@ -1304,9 +1586,19 @@
         g.audio.setAttribute('playsinline', '');
         document.body.appendChild(g.audio);
       }
-      if (g.audio.srcObject !== s) g.audio.srcObject = s;
-      g.audio.play().catch(() => note('Click anywhere on this page to hear ' + (g.name || 'them') + '.', 'stay'));
+      // Their voice plays here on its own, and joins everyone else's mix (an element must play it for that).
+      const a = (pc && lane(pc, 0, 'audio')) || s.getAudioTracks()[0];
+      if (a && a !== g.voice) {
+        g.voice = a;
+        g.audio.srcObject = new MediaStream([a]);
+        g.audio.volume = SND.voice;
+        if (g.vsrc) { try { g.vsrc.disconnect(); } catch (e) {} }
+        try { g.vsrc = H.ctx.createMediaStreamSource(new MediaStream([a])); g.an = analyser(g.vsrc); } catch (e) { g.vsrc = g.an = null; }
+        rewire();
+      }
+      if (g.audio.paused) g.audio.play().catch(() => note('Click anywhere on this page to hear ' + (g.name || 'them') + '.', 'stay'));
       hostFace(g);
+      if (H.sharer === g.id) roomSound(); // their shared video's sound may have just arrived
     });
     call.on('close', () => hostDropGuest(conn.connectionId));
     guestStatus();
@@ -1321,6 +1613,8 @@
         g.ver = +d.v || 0;
         g.canShare = !!d.share;
         tell(g.conn, roomMsg()); // the sharer may have changed since we said hello
+        g.peopleSig = '';
+        rewire();
         guestStatus();
         return;
       }
@@ -1354,6 +1648,11 @@
     try { g.conn.close(); } catch (e) {}
     if (g.audio) { g.audio.srcObject = null; g.audio.remove(); }
     if (g.tile) { const v = g.tile.querySelector('video'); if (v) v.srcObject = null; g.tile.remove(); g.tile = null; }
+    [g.vsrc, g.an].forEach((nd) => { if (nd) { try { nd.disconnect(); } catch (e) {} } });
+    if (g.vdest && H.micGain) { try { H.micGain.disconnect(g.vdest); } catch (e) {} }
+    g.vsrc = g.an = g.vdest = null;
+    T.last.delete(g.id);
+    rewire();
     if (H.sharer && H.sharer === g.id) { H.sharer = ''; V.pin = ''; roomScreen(); }
     guestStatus();
   }
@@ -1363,6 +1662,7 @@
     const track = g.camOn && g.live && pc ? lane(pc, 0) : null;
     if (track && !g.tile) {
       g.tile = faceTile(g.name || 'Guest', g.id);
+      g.tile.dataset.pid = g.id;
       const park = $('parking');
       if (park) park.appendChild(g.tile);
     } else if (!track && g.tile) {
@@ -1372,6 +1672,7 @@
       g.tile = null;
     }
     if (g.tile) setTrack(g.tile, track);
+    relayFaces();
     layout();
   }
   function faceTile(name, key) {
@@ -1433,8 +1734,70 @@
       if (s && want && s.track !== want) s.replaceTrack(want).then(() => tuneScreen(s)).catch(() => {});
       if (g.ver >= 2) tell(g.conn, roomMsg());
     }
+    roomSound();
     setPressed('screenBtn', amSharing(), 'Stop sharing', 'Share screen');
     guestStatus();
+  }
+  // ----- sound: the shared video's sound rides its own lane to everyone but its sharer -----
+  function roomAudio() {
+    if (!H.sharer) return null;
+    if (H.sharer === H.me) { const a = H.display && H.display.getAudioTracks()[0]; return a && a.readyState === 'live' ? a : null; }
+    const g = guestById(H.sharer);
+    const pc = g && g.ver >= 3 && g.call && g.call.peerConnection;
+    return pc ? lane(pc, 1, 'audio') : null;
+  }
+  function mediaFor(g) { return (g.id === H.sharer ? null : roomAudio()) || H.silent; }
+  function roomSound() {
+    const t = roomAudio();
+    for (const g of H.guests.values()) {
+      const want = mediaFor(g);
+      const s = g.mediaSender;
+      if (s && want && s.track !== want) s.replaceTrack(want).catch(() => {});
+    }
+    if (H.mediaTrack !== t) {
+      if (H.mediaSrc) { try { H.mediaSrc.disconnect(); } catch (e) {} }
+      H.mediaSrc = null;
+      H.mediaTrack = t;
+      if (t && H.ctx) { try { H.mediaSrc = H.ctx.createMediaStreamSource(new MediaStream([t])); } catch (e) { H.mediaSrc = null; } }
+      rewire();
+    }
+    play($('media'), t && H.sharer !== H.me ? t : null); // a guest's shared video: you hear it here
+    applyVolumes();
+  }
+  // Each guest's voice mix: everyone else's voice. A guest on the old Beside has no video-sound lane, so the
+  // shared video's sound goes into its voice mix, as before.
+  function rewire() {
+    if (!H.ctx) return;
+    const all = [...H.guests.values()];
+    all.forEach((g) => {
+      if (!g.vsrc) return;
+      try { g.vsrc.disconnect(); } catch (e) {}
+      if (g.an) g.vsrc.connect(g.an);
+      all.forEach((o) => { if (o !== g && o.vdest) g.vsrc.connect(o.vdest); });
+    });
+    if (H.mediaSrc) {
+      try { H.mediaSrc.disconnect(); } catch (e) {}
+      all.forEach((o) => { if (o.vdest && o.ver < 3 && o.id !== H.sharer) H.mediaSrc.connect(o.vdest); });
+    }
+  }
+  // Faces for guests: each guest gets up to two other guests' cameras on lanes 2 and 3 (so four people all see
+  // each other), and the list of who is in the call, so even people without a camera get a tile.
+  function relayFaces() {
+    const live = watchers();
+    for (const g of H.guests.values()) {
+      const others = live.filter((o) => o !== g);
+      g.faceSenders.forEach((s, k) => {
+        if (!s) return;
+        const o = others[k];
+        const pc = o && o.camOn && o.call && o.call.peerConnection;
+        const t = (pc && lane(pc, 0)) || H.blankF[k];
+        if (t && s.track !== t) s.replaceTrack(t).then(() => tuneCam(s)).catch(() => {});
+      });
+      if (g.ver < 3) continue;
+      const list = others.map((o, k) => ({ id: o.id, name: o.name || '', cam: !!o.camOn, lane: k < 2 && g.faceSenders[k] ? k + 2 : -1 }));
+      const sig = JSON.stringify(list);
+      if (sig !== g.peopleSig) { g.peopleSig = sig; tell(g.conn, { t: 'people', list }); }
+    }
   }
   function takeOver(id) {
     const was = H.sharer;
@@ -1468,20 +1831,16 @@
     const prev = H.display;
     H.display = s;
     useVideoTrack(s.getVideoTracks()[0]);
-    useTabAudio(s);
+    s.getAudioTracks().forEach((t) => { try { t.contentHint = 'music'; } catch (e) {} });
     if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
     if (H.sharer === H.me) { V.pin = ''; H.shareN = (H.shareN || 0) + 1; roomScreen(); } else takeOver(H.me);
-    autoPip(true);
   }
   const hostChange = hostShare;
   function hostUnshare(msg, keepSharer) {
     const d = H.display;
     H.display = null;
     H.video = null;
-    if (H.tabSrc) { try { H.tabSrc.disconnect(); } catch (e) {} H.tabSrc = null; }
     if (d) d.getTracks().forEach((t) => t.stop());
-    miniClose();
-    autoPip(false);
     if (H.sharer === H.me && !keepSharer) { H.sharer = ''; V.pin = ''; roomScreen(); }
     setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
     layout();
@@ -1503,6 +1862,7 @@
         : 'Send this link to the person you want to talk to.');
     document.body.dataset.guests = String(live.length);
     if (!live.length) setLag('lag', null);
+    relayFaces();
     layout();
   }
   function startHostLag() {
@@ -1538,13 +1898,20 @@
     const wasLive = app.state === 'live';
     H.stopping = true;
     clearInterval(H.lagTimer);
+    clearInterval(T.timer);
     for (const id of [...H.guests.keys()]) hostDropGuest(id);
     if (H.peer) { try { H.peer.destroy(); } catch (e) {} H.peer = null; }
     [H.display, H.mic, H.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
-    [H.video, H.blank, H.blankScreen].forEach((t) => t && t.stop());
+    [H.video, H.blank, H.blankScreen, H.silent].concat(H.blankF).forEach((t) => t && t.stop());
     if (H.ctx) H.ctx.close().catch(() => {});
-    H.display = H.mic = H.video = H.ctx = H.tabSrc = H.cam = H.camSlot = H.blank = H.blankScreen = null;
+    H.display = H.mic = H.video = H.ctx = H.sink = H.silent = H.micGain = H.micAn = H.mediaSrc = H.mediaTrack = null;
+    H.cam = H.camSlot = H.blank = H.blankScreen = null;
+    H.blankF = [];
     H.sharer = '';
+    T.last.clear();
+    setTalk([]);
+    const me = $('media');
+    if (me) me.srcObject = null;
     V.pin = '';
     miniClose();
     autoPip(false);
@@ -1606,6 +1973,7 @@
     lost: false, dropped: false, joining: false, serverDown: false,
     cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null, hostVer: 0, room: null,
     hostName: '', ctx: null, display: null, screenTrack: null, screenBlank: null, screenSender: null,
+    voiceSender: null, mediaSender: null, silentA: null, silentB: null, people: [], tiles: new Map(),
   };
   const hostId = PREFIX + guestCode;
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
@@ -1619,13 +1987,21 @@
       G.left = false;
       G.lost = G.dropped = false;
       G.tries = G.quiet = G.reopenedAt = 0;
-      // Unlock sound inside the tap (iPhone): their voice plays in its own element.
-      const vo = $('voice');
-      if (vo) { vo.muted = false; vo.play().catch(() => {}); }
+      // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
+      ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = false; el.play().catch(() => {}); } });
+      // Computers that can share back hold two silent sound lanes ready: the mic's (if joining without it) and the
+      // shared tab's. The audio engine starts inside the tap, so it is allowed to run.
+      if (CAN_SHARE && !G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
+      if (G.ctx) {
+        G.ctx.resume().catch(() => {});
+        if (!G.silentA) G.silentA = silentTrack(G.ctx);
+        if (!G.silentB) G.silentB = silentTrack(G.ctx);
+      }
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
       if (withMic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
-          G.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+          G.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+          G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
         } catch (e) {
           note(MIC_BLOCKED, 'stay');
         }
@@ -1698,11 +2074,17 @@
     const slot = G.cam ? G.cam.getVideoTracks()[0] : G.blank;
     if (CAN_SHARE && slot && !G.screenBlank) G.screenBlank = blankTrack();
     const scr = CAN_SHARE && slot ? G.screenBlank : null;
-    const out = (G.mic ? G.mic.getAudioTracks() : []).concat(slot ? [slot] : [], scr ? [scr] : []);
-    call.answer(out.length ? ordered(out) : undefined);
+    const mic = G.mic && G.mic.getAudioTracks()[0];
+    const voice = mic || (G.silentB && G.silentA) || null; // with a tab's sound to come, the voice lane must be held first
+    const media = voice && G.silentB ? G.silentB : null;
+    const out = [voice, media, slot, scr].filter(Boolean);
+    call.answer(out.length ? ordered(out) : undefined, { sdpTransform: tuneOpus });
     const pc = call.peerConnection;
-    G.camSender = (pc && slot && pc.getSenders().find((s) => s.track === slot)) || null;
-    G.screenSender = (pc && scr && pc.getSenders().find((s) => s.track === scr)) || null;
+    const find = (t) => (pc && t && pc.getSenders().find((s) => s.track === t)) || null;
+    G.camSender = find(slot);
+    G.screenSender = find(scr);
+    G.voiceSender = find(voice);
+    G.mediaSender = find(media);
     if (pc) {
       iceProblem(pc,
         (never) => {
@@ -1721,7 +2103,7 @@
           guestRetry();
         },
         () => note('Connection is shaky. Reconnecting…', 'info'),
-        () => { if (G.call === call) { tuneCam(G.camSender); tell(G.conn, { cam: !!G.cam }); } });
+        () => { if (G.call === call) { tuneCam(G.camSender); tuneVoice(G.voiceSender); tell(G.conn, { cam: !!G.cam }); } });
     }
     call.on('stream', (s) => { if (G.call === call) guestWatch(s, pc); });
     call.on('close', () => { if (G.call === call) guestLost(); });
@@ -1823,6 +2205,14 @@
         if (d.on === false && G.display) { guestUnshare(true); note((cleanName(d.name) || 'Someone') + ' is sharing now, so your sharing stopped.', 'info'); }
         // Say so even if our picture started after the host's message left: otherwise the room keeps a frozen screen.
         if (d.on === false) tell(G.conn, { t: 'share', on: false });
+      } else if (d.t === 'people') {
+        if (!Array.isArray(d.list)) return;
+        G.people = d.list.slice(0, 8).filter((p) => p && typeof p.id === 'string').map((p) => ({
+          id: p.id.slice(0, 80), name: cleanName(p.name), cam: !!p.cam, lane: p.lane === 2 || p.lane === 3 ? p.lane : -1,
+        }));
+        layout();
+      } else if (d.t === 'talk') {
+        setTalk((Array.isArray(d.ids) ? d.ids : []).slice(0, 8).map((x) => String(x).slice(0, 80)));
       } else if (d.t === 'chat') {
         if (typeof d.text !== 'string') return;
         const t = d.text.slice(0, 2000).trim();
@@ -1837,7 +2227,7 @@
       } else if (d.t === 'part') filePart('h:' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
   }
-  function roomReset() { G.hostVer = 0; G.room = null; }
+  function roomReset() { G.hostVer = 0; G.room = null; G.people = []; setTalk([]); }
   function answered(conn) { const pc = conn && conn.peerConnection; return !!(pc && pc.remoteDescription); }
   function notLiveYet() {
     if (app.state === 'watching') return;
@@ -1883,15 +2273,17 @@
     show('watching');
     // An old host never says hello, and it was only live while sharing: its screen lane is the picture.
     if (!G.hostVer && !G.room) G.room = { sharer: hostId, name: theirName };
-    // The sound has its own element, because a video whose picture lane is empty never starts its sound.
+    // The sound has its own elements, because a video whose picture lane is empty never starts its sound:
+    // voices in one, the shared video's sound in the other (an old host mixes both into the voice lane).
     // PeerJS fires 'stream' once per track: only set what changed.
-    const a = stream.getAudioTracks()[0];
-    const vo = $('voice');
-    if (vo && a && (!vo.srcObject || vo.srcObject.getAudioTracks()[0] !== a)) {
-      vo.srcObject = new MediaStream([a]);
-      vo.muted = false;
-      playWithSound(vo);
-    }
+    [['voice', (pc && lane(pc, 0, 'audio')) || stream.getAudioTracks()[0]], ['media', pc && lane(pc, 1, 'audio')]].forEach(([id, a]) => {
+      const el = $(id);
+      if (!el || !a || (el.srcObject && el.srcObject.getAudioTracks()[0] === a)) return;
+      el.srcObject = new MediaStream([a]);
+      el.muted = false;
+      playWithSound(el);
+    });
+    applyVolumes();
     layout();
     tell(G.conn, { cam: !!G.cam });
     clearInterval(G.lagTimer);
@@ -1917,20 +2309,19 @@
     if (app.state !== 'watching') return;
     const v = $('screenVideo');
     if (v && v.srcObject && v.paused) v.play().catch(() => {});
-    const vo = $('voice');
-    if (vo && vo.srcObject && vo.paused) playWithSound(vo);
+    ['voice', 'media'].forEach((id) => { const el = $(id); if (el && el.srcObject && el.paused) playWithSound(el); });
   }
   function tapHide() { const t = $('tapToHear'); if (t) t.hidden = true; }
   function guestLost() {
     if (G.left) return;
     guestUnshare(true);
+    miniClose();
     autoPip(false);
     clearInterval(G.lagTimer);
     app.watching = false;
     const v = $('screenVideo');
     if (v) v.srcObject = null;
-    const vo = $('voice');
-    if (vo) vo.srcObject = null;
+    ['voice', 'media'].forEach((id) => { const el = $(id); if (el) el.srcObject = null; });
     tapHide();
     G.view = G.viewFor = null;
     G.camOn = false;
@@ -1964,23 +2355,27 @@
       if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       let s;
       try {
-        s = await getDisplay(false);
+        s = await getDisplay(true);
       } catch (e) {
         note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
         return;
       }
-      s.getAudioTracks().forEach((t) => t.stop()); // guests send no tab sound
       if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
       const t = s.getVideoTracks()[0];
       if (!t || app.state !== 'watching' || !G.screenSender) { s.getTracks().forEach((x) => x.stop()); return; }
       try { t.contentHint = 'detail'; } catch (e) {}
       try { await G.screenSender.replaceTrack(t); } catch (e) { s.getTracks().forEach((x) => x.stop()); note('Sharing didn’t start. Try again.', 'info'); return; }
       tuneScreen(G.screenSender);
+      // The tab's sound rides its own lane; an old host has none, so it isn't sent.
+      const a = s.getAudioTracks()[0];
+      if (a && G.mediaSender && G.hostVer >= 3) {
+        try { a.contentHint = 'music'; } catch (e) {}
+        G.mediaSender.replaceTrack(a).catch(() => {});
+      } else s.getAudioTracks().forEach((x) => x.stop());
       G.display = s;
       G.screenTrack = t;
       t.addEventListener('ended', () => { if (G.screenTrack === t) guestUnshare(); }); // Stop in the browser's bar
       tell(G.conn, { t: 'share', on: true });
-      autoPip(true);
       V.pin = '';
       setPressed('gScreenBtn', true, 'Stop sharing', 'Share screen');
       layout();
@@ -1992,10 +2387,9 @@
     G.display = null;
     G.screenTrack = null;
     if (G.screenSender && G.screenBlank) G.screenSender.replaceTrack(G.screenBlank).catch(() => {});
+    if (G.mediaSender && G.silentB) G.mediaSender.replaceTrack(G.silentB).catch(() => {});
     d.getTracks().forEach((t) => t.stop());
     if (!quiet) tell(G.conn, { t: 'share', on: false });
-    miniClose();
-    autoPip(false);
     setPressed('gScreenBtn', false, 'Stop sharing', 'Share screen');
     layout();
   }
@@ -2022,7 +2416,7 @@
     const a = G.mic && G.mic.getAudioTracks()[0];
     if (!a || a.readyState !== 'ended') return;
     try {
-      const m = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const m = await navigator.mediaDevices.getUserMedia({ audio: MIC });
       const t = m.getAudioTracks()[0];
       t.enabled = !G.muted;
       const pc = G.call && G.call.peerConnection;
@@ -2040,6 +2434,7 @@
   function guestLeave() {
     G.left = true;
     guestUnshare(true);
+    miniClose();
     autoPip(false);
     clearTimeout(G.retry);
     clearInterval(G.lagTimer);
@@ -2057,8 +2452,7 @@
     setPressed('gCamBtn', false, 'Turn my camera off', 'Turn my camera on');
     const v = $('screenVideo');
     if (v) v.srcObject = null;
-    const vo = $('voice');
-    if (vo) vo.srcObject = null;
+    ['voice', 'media'].forEach((id) => { const el = $(id); if (el) el.srcObject = null; });
     tapHide();
     stayAwake(false);
     ended('You left.', 'Open the link again any time.', 'Join again');
@@ -2091,7 +2485,8 @@
     if (t && !t.hidden) return false;
     if (!isGuest && !watchers().length) return false;
     const ck = document.querySelector('[data-state="check"]');
-    if (moreOpen() || (ck && !ck.hidden) || document.body.classList.contains('chat-open')) return false;
+    const sp = $('soundPop');
+    if (moreOpen() || (sp && !sp.hidden) || (ck && !ck.hidden) || document.body.classList.contains('chat-open')) return false;
     return true;
   }
 
@@ -2330,9 +2725,20 @@
       visualViewport.addEventListener('scroll', kb);
     }
     on('miniBtn', 'click', () => { if (mini.win) miniClose(); else miniOpen(); });
+    const sp = $('soundPop');
+    if (sp) sp.appendChild(soundPanel(document));
+    on('soundBtn', 'click', () => soundOpen(!!sp && sp.hidden));
+    document.addEventListener('pointerdown', (e) => {
+      if (sp && !sp.hidden && !sp.contains(e.target) && !(e.target.closest && e.target.closest('#soundBtn'))) soundOpen(false);
+    }, true);
     on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
     on('moreClose', 'click', closeMore);
-    on('tapToHear', 'click', () => { const vo = $('voice'); if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); } wakeControls(); });
+    on('tapToHear', 'click', () => {
+      const vo = $('voice'), me = $('media');
+      if (me && me.srcObject) { me.muted = false; me.play().catch(() => {}); }
+      if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); }
+      wakeControls();
+    });
     on('checkBtn', 'click', runChecks);
     document.querySelectorAll('[data-check-open]').forEach((b) => b.addEventListener('click', runChecks));
     const sheet = document.querySelector('[data-state="check"]');
@@ -2343,6 +2749,7 @@
       const vw = $('viewer');
       if (vw && !vw.hidden) vw.hidden = true;
       else if (sheet && !sheet.hidden) closeSheet();
+      else if (sp && !sp.hidden) soundOpen(false);
       else if (moreOpen()) closeMore();
       else if (C.open) chatOpen(false);
     });
@@ -2408,7 +2815,7 @@
       if (bc) bc.postMessage('live?');
     }
     if (!window.Peer) peerLibOk();
-    if (LOCAL) app.debug = { H, G, V, C }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
