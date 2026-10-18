@@ -325,7 +325,7 @@
       const ids = [];
       src.forEach(([id, an]) => {
         if (loud(an) > 0.02) T.last.set(id, now);
-        if (now - (T.last.get(id) || 0) < 700) ids.push(id);
+        if (now - (T.last.get(id) || 0) < 1300) ids.push(id);
       });
       if (setTalk(ids)) toGuests({ t: 'talk', ids });
     }, 120);
@@ -333,7 +333,7 @@
   function analyser(node) {
     try {
       const an = H.ctx.createAnalyser();
-      an.fftSize = 512;
+      an.fftSize = 32768; // the last ~0.7 s: a hidden tab only runs timers about once a second
       node.connect(an);
       an.connect(H.sink); // a silent sink keeps it measuring in every browser
       return an;
@@ -634,6 +634,8 @@
   const HAS_MINI = 'documentPictureInPicture' in window;
   const mini = { win: null, els: null, opening: false, sig: '', auto: false, peekTimer: 0, stageTimer: 0, awakeTimer: 0 };
   function inCallWithSomeone() { return isGuest ? app.state === 'watching' : app.state === 'live' && watchers().length > 0; }
+  // Still in the call, maybe waiting for someone to (re)connect: the faces window stays open through a blip.
+  function inCall() { return isGuest ? !G.left && (app.state === 'watching' || app.state === 'waiting') : app.state === 'live'; }
   // Everyone in the call, you first: { pid, name, track (their camera, or null), self }
   function people() {
     const list = [];
@@ -688,6 +690,8 @@
     stage.append(v, dots);
     const peek = div('mini-peek');
     peek.hidden = true;
+    const wait = div('mini-peek fw-wait');
+    wait.hidden = true;
     const snd = soundPanel(d);
     snd.classList.add('fw-sound');
     snd.hidden = true;
@@ -709,7 +713,7 @@
     bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'));
     if (CAN_VOL) bar.append(btn('sound', 'Sound', '#soundBtn'));
     bar.append(stop);
-    root.append(grid, stage, peek, snd, bar);
+    root.append(grid, stage, peek, wait, snd, bar);
     d.body.appendChild(root);
     bar.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
     const awake = () => {
@@ -724,7 +728,7 @@
     ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, () => fitLayer(v, dots)));
     win.addEventListener('pagehide', () => { if (mini.win === win) { mini.win = null; mini.els = null; layout(); } });
     mini.win = win;
-    mini.els = { grid, stage, v, dots, peek, bar, snd, root };
+    mini.els = { grid, stage, v, dots, peek, wait, bar, snd, root };
     mini.sig = '';
     layout();
     soundUi();
@@ -768,10 +772,13 @@
     const want = HAS_MINI && inCallWithSomeone();
     if (want !== mini.auto) autoPip(want);
     const btn = $('miniBtn');
-    if (btn) { btn.hidden = !want; btn.setAttribute('aria-pressed', mini.win ? 'true' : 'false'); }
+    if (btn) { btn.hidden = !want && !mini.win; btn.setAttribute('aria-pressed', mini.win ? 'true' : 'false'); }
     if (!mini.win || !mini.els) return;
-    if (!want) { miniClose(); return; }
-    const { grid, bar } = mini.els;
+    if (!inCall()) { miniClose(); return; }
+    const { grid, bar, wait } = mini.els;
+    const who = isGuest ? hostLabel() || 'them' : '';
+    wait.textContent = want ? '' : isGuest ? 'Waiting for ' + who + '…' : 'Waiting for someone to join…';
+    wait.hidden = want;
     const list = people();
     const sig = list.map((p) => p.pid + ':' + (p.track ? p.track.id : '') + ':' + p.name + ':' + (p.initial || '')).join('|');
     if (sig !== mini.sig) {
@@ -1420,7 +1427,7 @@
       H.blank = blankTrack();
       H.blankScreen = blankTrack(); // more of them: one track can't ride two lanes of a call
       H.blankF = [blankTrack(), blankTrack()];
-      if (!H.blank || !H.blankScreen || !H.silent) {
+      if (!H.blank || !H.blankScreen) {
         hostCleanup();
         show('idle');
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
@@ -1790,7 +1797,7 @@
         if (!s) return;
         const o = others[k];
         const pc = o && o.camOn && o.call && o.call.peerConnection;
-        const t = (pc && lane(pc, 0)) || H.blankF[k];
+        const t = (g.ver >= 3 && pc && lane(pc, 0)) || H.blankF[k]; // an old guest can't show them
         if (t && s.track !== t) s.replaceTrack(t).then(() => tuneCam(s)).catch(() => {});
       });
       if (g.ver < 3) continue;
@@ -2245,6 +2252,7 @@
   function wait(title, status, hint) {
     if (app.state !== 'waiting') G.waitSince = Date.now();
     show('waiting');
+    miniRender();
     text('waitTitle', title);
     text('waitingText', status);
     text('waitHint', hint);
@@ -2315,7 +2323,6 @@
   function guestLost() {
     if (G.left) return;
     guestUnshare(true);
-    miniClose();
     autoPip(false);
     clearInterval(G.lagTimer);
     app.watching = false;
