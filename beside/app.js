@@ -156,14 +156,42 @@
       return (t && t.receiver && t.receiver.track) || null;
     } catch (e) { return null; }
   }
+  // The computer's own mic and camera come first: a Mac can offer a nearby iPhone's (Continuity), and macOS
+  // sometimes makes that the default. Names are only known once the site is allowed, so the first time we look
+  // at what we got and switch if it's a phone. Phones themselves keep their own.
+  const PHONE_DEV = /iphone|ipad|continuity/i;
+  async function ownDevice(kind) {
+    if (IS_IOS || !navigator.mediaDevices.enumerateDevices) return '';
+    try {
+      const list = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === kind && d.label && d.deviceId && !/^(default|communications)$/.test(d.deviceId));
+      const own = list.filter((d) => !PHONE_DEV.test(d.label));
+      const best = own.find((d) => /built-in|macbook|imac|mac mini|mac studio|facetime|internal/i.test(d.label)) || own[0];
+      return best ? best.deviceId : '';
+    } catch (e) { return ''; }
+  }
+  async function getOwn(kind, want) {
+    const md = navigator.mediaDevices;
+    const id = await ownDevice(kind === 'audio' ? 'audioinput' : 'videoinput');
+    let s;
+    if (id) { try { s = await md.getUserMedia({ [kind]: { ...want, deviceId: { exact: id } } }); } catch (e) { s = null; } }
+    if (!s) s = await md.getUserMedia({ [kind]: want });
+    const t = s.getTracks()[0];
+    if (!id && t && PHONE_DEV.test(t.label || '')) {
+      const id2 = await ownDevice(kind === 'audio' ? 'audioinput' : 'videoinput');
+      if (id2) {
+        try { const s2 = await md.getUserMedia({ [kind]: { ...want, deviceId: { exact: id2 } } }); s.getTracks().forEach((x) => x.stop()); s = s2; } catch (e) { /* keep the phone's */ }
+      }
+    }
+    return s;
+  }
   // Ask for a small camera picture; if this camera can't do that (or answers oddly), take any picture it gives:
   // the 300 kbit/s cap on the lane keeps it small either way.
   async function getCam() {
     try {
-      return await navigator.mediaDevices.getUserMedia({ video: CAM });
+      return await getOwn('video', CAM);
     } catch (e) {
       if (!e || !/^(OverconstrainedError|NotFoundError|NotReadableError|AbortError|TypeError)$/.test(e.name)) throw e;
-      const s = await navigator.mediaDevices.getUserMedia({ video: true });
+      const s = await getOwn('video', {});
       const t = s.getVideoTracks()[0];
       if (t) t.applyConstraints({ width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15 } }).catch(() => {});
       return s;
@@ -1387,11 +1415,15 @@
     });
     H.video = track;
   }
-  function setStartBusy(b) { ['startBtn', 'endedAction'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
+  function setStartBusy(b) { ['startBtn', 'videoBtn', 'shareStartBtn', 'endedAction'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
-  async function hostStart() {
+  // Three ways to start: a video call, a voice call, or a call that starts by sharing a tab or window.
+  async function hostStart(mode) {
     if (H.starting || app.state === 'live') return; // double click
     if (!peerLibOk()) return;
+    mode = mode === 'video' || mode === 'share' ? mode : 'voice';
+    if (mode === 'share' && !CAN_SHARE) { note(NO_SHARE, 'info'); return; }
+    store.set('beside.start', mode);
     if (H.otherTabLive) {
       H.otherTabLive = false; // ask again, in case that tab has gone
       if (bc) bc.postMessage('live?');
@@ -1411,10 +1443,22 @@
       H.silent = silentTrack(H.ctx);
       H.micGain = H.ctx.createGain();
       H.micAn = analyser(H.micGain);
+      // Share my screen: pick the tab first, still inside the click (the browser needs that).
+      let display = null;
+      if (mode === 'share') {
+        try {
+          display = await getDisplay(true);
+        } catch (e) {
+          hostCleanup();
+          note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+          return;
+        }
+        if (isWholeScreen(display)) { display.getTracks().forEach((t) => t.stop()); hostCleanup(); note(WHOLE_SCREEN, 'stay'); return; }
+      }
       const wantMic = !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
       if (wantMic) {
         try {
-          H.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+          H.mic = await getOwn('audio', MIC);
           H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
           H.ctx.createMediaStreamSource(H.mic).connect(H.micGain);
         } catch (e) {
@@ -1428,6 +1472,7 @@
       H.blankScreen = blankTrack(); // more of them: one track can't ride two lanes of a call
       H.blankF = [blankTrack(), blankTrack()];
       if (!H.blank || !H.blankScreen) {
+        if (display) display.getTracks().forEach((t) => t.stop());
         hostCleanup();
         show('idle');
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
@@ -1446,6 +1491,8 @@
       H.idRetries = 0;
       openHostPeer();
       hostListen();
+      if (display) useDisplay(display);
+      else if (mode === 'video') hostCam();
     } finally {
       H.starting = false;
       setStartBusy(false);
@@ -1571,7 +1618,7 @@
     }
     conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g) hostData(g, d); });
     tell(conn, { cam: !!H.cam });
-    tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE });
+    tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE, video: !!H.cam });
     tell(conn, roomMsg());
     // A guest on the old Beside never says hello: it can watch and talk, nothing more.
     setTimeout(() => {
@@ -1835,6 +1882,9 @@
     }
     if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
     if (app.state !== 'live') { s.getTracks().forEach((t) => t.stop()); return; }
+    useDisplay(s);
+  }
+  function useDisplay(s) {
     const prev = H.display;
     H.display = s;
     useVideoTrack(s.getVideoTracks()[0]);
@@ -2007,7 +2057,7 @@
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
       if (withMic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
-          G.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+          G.mic = await getOwn('audio', MIC);
           G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
         } catch (e) {
           note(MIC_BLOCKED, 'stay');
@@ -2200,6 +2250,8 @@
       if (d.t === 'hello') {
         G.hostVer = +d.v || 0;
         G.hostName = cleanName(d.name);
+        // A video call: a gentle nudge to turn the camera on (never turned on for you).
+        if (d.video && !G.cam && G.blank) peekLine((hostLabel() || 'They') + ' started a video call. Tap the camera to show your face.');
         if (G.hostName && !theirName) { text('camName', G.hostName); text('tapToHearText', 'Tap to hear ' + G.hostName); }
         layout();
       } else if (d.t === 'room') {
@@ -2423,7 +2475,7 @@
     const a = G.mic && G.mic.getAudioTracks()[0];
     if (!a || a.readyState !== 'ended') return;
     try {
-      const m = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+      const m = await getOwn('audio', MIC);
       const t = m.getAudioTracks()[0];
       t.enabled = !G.muted;
       const pc = G.call && G.call.peerConnection;
@@ -2670,7 +2722,10 @@
     modeLabel();
     const saved = store.get('beside.name');
     if (saved && $('nameInput')) $('nameInput').value = saved;
-    on('startBtn', 'click', hostStart);
+    on('startBtn', 'click', () => hostStart('voice'));
+    on('videoBtn', 'click', () => hostStart('video'));
+    on('shareStartBtn', 'click', () => hostStart('share'));
+    if ($('shareStartBtn')) $('shareStartBtn').hidden = !CAN_SHARE;
     on('micStartToggle', 'click', () => {
       const el = $('micStartToggle');
       const onNow = el.getAttribute('aria-pressed') === 'false';
@@ -2763,7 +2818,7 @@
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
     const more = $('moreSheet');
     if (more) more.addEventListener('click', (e) => { if (e.target === more) closeMore(); });
-    on('endedAction', 'click', () => { if (isGuest) show('join'); else hostStart(); });
+    on('endedAction', 'click', () => { if (isGuest) show('join'); else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
     document.addEventListener('pointerdown', () => {
       if (H.ctx && H.ctx.state === 'suspended') H.ctx.resume().catch(() => {});
       // Safari can refuse to play a guest's voice until a click on the page.
