@@ -2,7 +2,7 @@
 name: Beside call server
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main, claude/screen-share-link-4adodj]
     paths: ['beside-server/**', '.github/workflows/beside-server.yml']
   workflow_dispatch:
 concurrency: beside-server

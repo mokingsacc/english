@@ -2084,7 +2084,7 @@
   // ---------- GUEST ----------
   const G = {
     peer: null, conn: null, spare: null, call: null, mic: null, muted: false, retry: 0, lagTimer: 0, left: true,
-    openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0, free: false, misses: 0,
+    openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0, free: false, misses: 0, netErrs: 0,
     lost: false, dropped: false, joining: false, serverDown: false,
     cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null, hostVer: 0, room: null,
     hostName: '', ctx: null, display: null, screenTrack: null, screenBlank: null, screenSender: null,
@@ -2151,7 +2151,9 @@
     G.peer = peer;
     // 'open' also fires after a call-server blip; an existing link to them must be left alone.
     peer.on('open', () => {
-      if (G.peer !== peer || G.left || (G.conn && G.conn.open) || app.state === 'watching') return;
+      if (G.peer !== peer || G.left) return;
+      G.netErrs = 0;
+      if ((G.conn && G.conn.open) || app.state === 'watching') return;
       if (G.serverDown) { G.serverDown = false; if (G.lost) lostText(); else wait('Connecting…', 'Looking for ' + (theirName || 'them') + '…', ''); }
       guestConnect();
     });
@@ -2177,7 +2179,16 @@
         note('This browser can’t join calls. Try Safari or Chrome.', 'stay');
       } else if (NET_ERR.test(t || '')) {
         if (app.state !== 'watching') {
-          if (NET.own && peer.destroyed) G.free = !G.free; // try the other server next
+          // PeerJS keeps retrying the same server. Switch to the other one: at once after a failed round on
+          // the free server (no message, it was only a look), else after two failures in a row.
+          if (NET.own && (G.free || ++G.netErrs >= 2)) {
+            const wasFree = G.free;
+            G.netErrs = 0;
+            G.free = !G.free;
+            NET.at = 0; // and ask the own server again
+            try { peer.destroy(); } catch (e2) {}
+            if (wasFree) { openGuestPeer(); return; }
+          }
           G.serverDown = true;
           wait('Can’t reach the call server.', 'Trying again…', 'Check your internet connection. On work or hospital Wi-Fi, try mobile data.');
           guestRetry();

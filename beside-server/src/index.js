@@ -8,7 +8,7 @@
    .../peerjs/id    a fresh random id (PeerJS asks for one when it isn't given one)
    .../peerjs?id=   the WebSocket */
 
-const STALE_MS = 30000; // PeerJS sends a heartbeat every 5 s; a socket silent this long is a dead line
+const STALE_MS = 120000; // PeerJS beats every 5 s (up to ~60 s in a hidden, throttled tab); silent longer = a dead line
 const QUEUE_MS = 5000; // like peerjs-server: hold a message for a browser that's reconnecting, then EXPIRE
 const TURN_TTL = 12 * 3600;
 const JSON_H = { 'content-type': 'application/json', 'cache-control': 'no-store' };

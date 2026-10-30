@@ -18,7 +18,9 @@ fi
 W="npx -y wrangler@4.151.0"
 $W deploy
 
-if $W secret list --format json 2>/dev/null | jq -e 'map(.name) | index("TURN_KEY_ID")' >/dev/null; then
+# Stop if the list can't be read: otherwise every run would make a new relay key.
+secrets=$($W secret list --format json)
+if jq -e 'map(.name) | index("TURN_KEY_ID")' >/dev/null <<<"$secrets"; then
   echo "Relay key already set."
 else
   r=$(api -X POST "$CF/accounts/$CLOUDFLARE_ACCOUNT_ID/calls/turn_keys" -d '{"name":"beside"}')
