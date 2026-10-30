@@ -1,0 +1,19 @@
+# Deploys Beside's call server (beside-server/) to Cloudflare whenever it changes.
+name: Beside call server
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['beside-server/**', '.github/workflows/beside-server.yml']
+  workflow_dispatch:
+concurrency: beside-server
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash beside-server/deploy.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

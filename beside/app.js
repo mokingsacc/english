@@ -1,6 +1,8 @@
 /* Beside: a call from a link: talk, see each other, share one tab or window, chat and send files.
-   Audio and video go peer to peer (WebRTC, encrypted). PeerJS's free server
-   (0.peerjs.com) only introduces the two browsers; it never sees the picture or sound. */
+   Audio and video go peer to peer (WebRTC, encrypted). A call server only introduces the browsers and
+   never sees the picture or sound: Beside's own (beside-server/, at sitbeside.pages.dev/peerjs/), with
+   PeerJS's free one (0.peerjs.com) as the spare. Networks that block direct calls go through
+   Cloudflare's relay (TURN), still encrypted end to end. */
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -13,9 +15,37 @@
   // ?srv=host:port points at a local PeerJS server. Only honoured on this computer (automated tests).
   const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const srv = LOCAL ? qs.get('srv') : null;
-  const PEER_OPTS = srv
-    ? { host: srv.split(':')[0], port: +srv.split(':')[1], path: '/', secure: false, config: { iceServers: [] }, debug: 0 }
-    : { config: { iceServers: ICE }, debug: 0 };
+  // ?spare=host:port is a second local server standing in for 0.peerjs.com (tests of the spare).
+  const spare = LOCAL ? qs.get('spare') : null;
+  const at = (hp, path) => ({ host: hp.split(':')[0], port: +hp.split(':')[1], path, secure: false });
+  // On Beside's own site the own call server comes first; elsewhere (and in tests) only the free one.
+  const OWN = srv ? (spare ? at(srv, '/') : null) : (/(^|\.)sitbeside\.pages\.dev$/.test(location.hostname) ? { host: location.hostname, port: 443, path: '/peerjs/', secure: true } : null);
+  const FREE = srv ? at(spare || srv, '/') : {};
+  // NET.own: the own server answered its health check. NET.ice: STUN, plus relay passwords when we got them.
+  const NET = { own: false, ice: srv ? [] : ICE, at: 0, p: null };
+  const opts = (free) => ({ ...(OWN && NET.own && !free ? OWN : FREE), config: { iceServers: NET.ice }, debug: 0 });
+  async function getJSON(u, ms) {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    try { const r = await fetch(u, { cache: 'no-store', signal: c.signal }); return r.ok ? await r.json() : null; } catch (e) { return null; } finally { clearTimeout(t); }
+  }
+  // Checked when the page opens, and again before a call if it's been a while (the passwords last 12 hours).
+  // Returns true when ready; otherwise NET.p resolves once it is.
+  function netReady() {
+    if (!OWN || NET.p) return !OWN;
+    if (NET.at && Date.now() - NET.at < (NET.own ? 6 * 3600e3 : 60e3)) return true;
+    const base = srv ? 'http://' + srv : '';
+    NET.p = Promise.all([getJSON(base + '/peerjs/health', 3000), srv ? null : getJSON('/peerjs/turn', 4000)]).then(([h, t]) => {
+      NET.own = !!(h && h.ok);
+      const relay = t && Array.isArray(t.iceServers) ? t.iceServers.filter((x) => x && x.username && x.credential) : [];
+      if (!srv) NET.ice = ICE.concat(relay);
+      app.net = { own: NET.own, relay: relay.length > 0 };
+      NET.at = Date.now();
+      NET.p = null;
+    });
+    return false;
+  }
+  function whenNet(fn) { if (netReady()) fn(); else NET.p.then(fn); }
   const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
   const NET_ERR = /^(network|server-error|socket-error|socket-closed)$/;
   const IS_CHROMIUM = !!navigator.userAgentData;
@@ -47,6 +77,7 @@
   // ---------- UI helpers ----------
   const app = { state: '', log: [], states: [], guestPeers: 0, hostPeers: 0 };
   window.__beside = app; // for the automated tests
+  netReady(); // ask the own call server early, so it's known by the time someone presses a button
   function show(state) {
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
@@ -1306,7 +1337,7 @@
   // Mo starts a call with one tap; nothing is shared until Share screen. Every lane of the call exists from the
   // first offer ([audio, screen, camera]); a blank track holds a lane while it has nothing to carry.
   const H = {
-    peer: null, code: '', me: '', video: null, display: null, mic: null, ctx: null, sink: null, silent: null,
+    peer: null, spare: null, code: '', me: '', video: null, display: null, mic: null, ctx: null, sink: null, silent: null,
     micGain: null, micAn: null, mediaSrc: null, mediaTrack: null, guests: new Map(), knocks: new Map(), muted: false,
     mode: 'detail', lagTimer: 0, idRetries: 0, stopping: false, starting: false, changing: false, otherTabLive: false,
     blank: null, blankScreen: null, blankF: [], camSlot: null, cam: null, camBusy: false, sharer: '',
@@ -1502,9 +1533,11 @@
   function openHostPeer() {
     if (H.peer && !H.peer.destroyed) { try { H.peer.destroy(); } catch (e) {} }
     H.stopping = false;
-    let wasOpen = false;
     text('liveHint', 'Getting your link ready…');
-    const peer = new Peer(PREFIX + H.code, PEER_OPTS);
+    if (!netReady()) { const code = H.code; NET.p.then(() => { if (H.code === code && !H.stopping && app.state === 'live') openHostPeer(); }); return; }
+    if (NET.own && !H.spare) openSparePeer();
+    let wasOpen = false;
+    const peer = new Peer(PREFIX + H.code, opts());
     app.hostPeers++;
     H.peer = peer;
     peer.on('open', () => {
@@ -1517,17 +1550,7 @@
     });
     peer.on('connection', (conn) => {
       if (H.peer !== peer) { try { conn.close(); } catch (e) {} return; }
-      // A guest whose last knock never opened, knocking again 10 to 40 s later, waited out its 15 s and
-      // couldn't get through: the networks are blocking it. (Someone who just left never knocks again.)
-      const prev = H.knocks.get(conn.peer);
-      const at = Date.now();
-      H.knocks.set(conn.peer, at);
-      if (prev && at - prev >= 10000 && at - prev <= 40000 && ![...H.guests.values()].some((g) => g.conn.peer === conn.peer)) {
-        note((cleanName(conn.metadata && conn.metadata.name) || 'Someone') + KNOCK_FAIL + NET_WHY, 'stay');
-      }
-      conn.on('open', () => { H.knocks.delete(conn.peer); hostAddGuest(conn); });
-      conn.on('close', () => hostDropGuest(conn.connectionId));
-      conn.on('error', () => hostDropGuest(conn.connectionId));
+      hostKnock(conn);
     });
     peer.on('disconnected', () => {
       if (H.peer !== peer || H.stopping || peer.destroyed) return;
@@ -1562,11 +1585,45 @@
     });
   }
 
+  function hostKnock(conn) {
+    // A guest whose last knock never opened, knocking again 10 to 40 s later, waited out its 15 s and
+    // couldn't get through: the networks are blocking it. (Someone who just left never knocks again.)
+    const prev = H.knocks.get(conn.peer);
+    const at = Date.now();
+    H.knocks.set(conn.peer, at);
+    if (prev && at - prev >= 10000 && at - prev <= 40000 && ![...H.guests.values()].some((g) => g.conn.peer === conn.peer)) {
+      note((cleanName(conn.metadata && conn.metadata.name) || 'Someone') + KNOCK_FAIL + NET_WHY, 'stay');
+    }
+    conn.on('open', () => { H.knocks.delete(conn.peer); hostAddGuest(conn); });
+    conn.on('close', () => hostDropGuest(conn.connectionId));
+    conn.on('error', () => hostDropGuest(conn.connectionId));
+  }
+  // The link is also live on the free server, quietly, so a guest still on it finds us: an older copy of
+  // Beside, or a network that can't reach the own server. The own server carries everything else.
+  function openSparePeer() {
+    if (H.spare && !H.spare.destroyed) { try { H.spare.destroy(); } catch (e) {} }
+    const code = H.code;
+    const peer = new Peer(PREFIX + code, opts(true));
+    H.spare = peer;
+    const again = (ms) => setTimeout(() => {
+      if (H.spare === peer && H.code === code && !H.stopping && app.state === 'live' && (peer.destroyed || peer.disconnected)) {
+        if (peer.destroyed) openSparePeer(); else { try { peer.reconnect(); } catch (e) {} }
+      }
+    }, ms);
+    peer.on('connection', (conn) => {
+      if (H.spare !== peer) { try { conn.close(); } catch (e) {} return; }
+      hostKnock(conn);
+    });
+    peer.on('disconnected', () => again(3000));
+    // Never a message about it: a reload still holding the link there frees itself, and it's only the spare.
+    peer.on('error', () => again(10000));
+  }
   function guestById(id) { for (const g of H.guests.values()) if (g.id === id) return g; return null; }
   // What this guest's screen lane carries: the room's screen, except its own (no echo), else blank.
   function screenFor(g) { return (g.id === H.sharer ? null : roomTrack()) || H.blankScreen; }
   function hostAddGuest(conn) {
-    if (!H.peer || H.peer.destroyed || !H.ctx || !H.blankScreen || H.guests.has(conn.connectionId)) return;
+    const via = conn.provider || H.peer; // the server this guest came through: the own one or the spare
+    if (!via || via.destroyed || !H.ctx || !H.blankScreen || H.guests.has(conn.connectionId)) return;
     for (const [k, old] of H.guests) if (old.conn.peer === conn.peer) hostDropGuest(k); // same guest reconnecting
     const g = {
       id: conn.peer, conn, call: null, audio: null, live: false, ver: 0, canShare: false, tile: null,
@@ -1583,7 +1640,7 @@
     const screen = screenFor(g);
     let call = null;
     try {
-      call = H.peer.call(conn.peer, ordered([voice, media, screen, H.camSlot].concat(H.blankF)), { sdpTransform: (sdp) => tuneOpus(preferH264(sdp)) });
+      call = via.call(conn.peer, ordered([voice, media, screen, H.camSlot].concat(H.blankF)), { sdpTransform: (sdp) => tuneOpus(preferH264(sdp)) });
     } catch (e) { call = null; }
     if (!call) { try { H.micGain.disconnect(g.vdest); } catch (e) {} try { conn.close(); } catch (e) {} return; }
     g.call = call;
@@ -1957,7 +2014,8 @@
     clearInterval(H.lagTimer);
     clearInterval(T.timer);
     for (const id of [...H.guests.keys()]) hostDropGuest(id);
-    if (H.peer) { try { H.peer.destroy(); } catch (e) {} H.peer = null; }
+    [H.peer, H.spare].forEach((p) => { if (p) { try { p.destroy(); } catch (e) {} } });
+    H.peer = H.spare = null;
     [H.display, H.mic, H.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
     [H.video, H.blank, H.blankScreen, H.silent].concat(H.blankF).forEach((t) => t && t.stop());
     if (H.ctx) H.ctx.close().catch(() => {});
@@ -2026,7 +2084,7 @@
   // ---------- GUEST ----------
   const G = {
     peer: null, conn: null, spare: null, call: null, mic: null, muted: false, retry: 0, lagTimer: 0, left: true,
-    openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0,
+    openTimer: 0, picTimer: 0, tries: 0, quiet: 0, reopenedAt: 0, waitSince: 0, free: false, misses: 0,
     lost: false, dropped: false, joining: false, serverDown: false,
     cam: null, blank: null, camSender: null, camOn: false, camBusy: false, view: null, viewFor: null, hostVer: 0, room: null,
     hostName: '', ctx: null, display: null, screenTrack: null, screenBlank: null, screenSender: null,
@@ -2086,7 +2144,9 @@
     dropKnocks();
     if (G.call) { const c = G.call; G.call = null; try { c.close(); } catch (e) {} }
     if (G.peer && !G.peer.destroyed) { try { G.peer.destroy(); } catch (e) {} }
-    const peer = new Peer(PEER_OPTS);
+    if (!netReady()) { G.peer = null; NET.p.then(() => { if (!G.left && !G.peer && app.state !== 'watching') openGuestPeer(); }); return; }
+    if (!NET.own) G.free = false;
+    const peer = new Peer(opts(G.free));
     app.guestPeers++;
     G.peer = peer;
     // 'open' also fires after a call-server blip; an existing link to them must be left alone.
@@ -2109,11 +2169,15 @@
         if (app.state === 'watching' || answered(G.conn) || answered(G.spare) || (G.conn && G.conn.open)) return;
         clearTimeout(G.openTimer);
         notLiveYet();
+        // Not there yet. Every third time, one knock on the free server instead, in case the host's Beside
+        // is an older copy that only uses that one (a host on this one is on both), then back.
+        if (G.free || (NET.own && ++G.misses >= 3)) { G.misses = 0; G.free = !G.free; openGuestPeer(); return; }
         guestRetry();
       } else if (t === 'browser-incompatible') {
         note('This browser can’t join calls. Try Safari or Chrome.', 'stay');
       } else if (NET_ERR.test(t || '')) {
         if (app.state !== 'watching') {
+          if (NET.own && peer.destroyed) G.free = !G.free; // try the other server next
           G.serverDown = true;
           wait('Can’t reach the call server.', 'Trying again…', 'Check your internet connection. On work or hospital Wi-Fi, try mobile data.');
           guestRetry();
@@ -2199,8 +2263,9 @@
       if (heard) G.quiet = 0;
       if (!heard && age >= patience) {
         G.tries++;
-        G.quiet++;
         notLiveYet();
+        if (G.free) { G.free = false; openGuestPeer(); return; } // nobody on the free server either: back
+        G.quiet++;
         // Three knocks in a row with no word from the call server: our line to it may have died without
         // saying so (a phone switching networks). Open a fresh one, at most once a minute.
         if (G.quiet >= 3 && Date.now() - G.reopenedAt > 60000) { G.quiet = 0; G.reopenedAt = Date.now(); openGuestPeer(); }
@@ -2641,11 +2706,12 @@
 
     const serverP = (async () => {
       if (!window.Peer) return server.set('bad', 'Part of the page didn’t load. Reload, and check your internet or any ad blocker.');
-      const peer = new Peer(PEER_OPTS);
+      if (!netReady()) await NET.p;
+      const peer = new Peer(opts());
       const t0 = Date.now();
       try {
         await withTimeout(new Promise((res, rej) => { peer.on('open', res); peer.on('error', rej); }), 9000);
-        server.set('ok', '', (Date.now() - t0) + ' ms');
+        server.set('ok', '', (Date.now() - t0) + ' ms' + (OWN && !NET.own ? ' (spare)' : ''));
       } catch (e) {
         server.set('bad', 'Can’t reach the call server. Check your internet. A firewall or blocker on this network may be stopping it.');
       } finally { peer.destroy(); }
@@ -2653,6 +2719,7 @@
 
     const netP = (async () => {
       if (srv) return net.set('ok', '', 'Test mode');
+      if (!netReady()) await NET.p;
       let pc;
       try {
         pc = new RTCPeerConnection({ iceServers: ICE });
@@ -2665,14 +2732,17 @@
         await pc.setLocalDescription(await pc.createOffer());
         await done;
         const srflx = cands.map(parseCand).filter((c) => c && c.typ === 'srflx' && c.proto === 'udp');
-        if (!srflx.length) {
+        const relay = NET.ice.length > ICE.length;
+        if (!srflx.length && relay) {
+          net.set('ok', 'This network blocks direct calls, so yours go through Cloudflare’s relay. They still work, with a little more delay.', 'Relay');
+        } else if (!srflx.length) {
           net.set('bad', 'This network blocks the direct route calls use (common on work, school and hospital Wi-Fi). Try other Wi-Fi or a phone hotspot.', 'Blocked');
         } else {
           // The same public address showing different ports means the network changes ports for every contact ("strict").
           const byIp = {};
           srflx.forEach((c) => { (byIp[c.ip] = byIp[c.ip] || new Set()).add(c.port); });
           const strict = Object.values(byIp).some((ports) => ports.size > 1);
-          if (strict) net.set('warn', 'This network is strict. Calls work with most other networks, but can fail if the other person is on a strict network too. If that happens, one of you should switch to home Wi-Fi.', 'Strict');
+          if (strict && !relay) net.set('warn', 'This network is strict. Calls work with most other networks, but can fail if the other person is on a strict network too. If that happens, one of you should switch to home Wi-Fi.', 'Strict');
           else net.set('ok');
         }
       } catch (e) {
@@ -2847,7 +2917,7 @@
     addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
     addEventListener('beforeunload', (e) => { if (app.state === 'live') { e.preventDefault(); e.returnValue = ''; } });
     addEventListener('pagehide', () => {
-      if (H.peer) { try { H.peer.destroy(); } catch (e) {} }
+      [H.peer, H.spare].forEach((p) => { if (p) { try { p.destroy(); } catch (e) {} } });
       if (G.peer) { try { G.peer.destroy(); } catch (e) {} }
       if (app.state === 'live' && bc) bc.postMessage('off');
     });

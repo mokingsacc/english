@@ -1,0 +1,9 @@
+# Cloudflare Pages settings for Beside (sitbeside.pages.dev): the site is the beside/ folder, and
+# /peerjs/... (functions/peerjs/) reaches Beside's own call server, the beside-signal Worker (beside-server/).
+name = "sitbeside"
+pages_build_output_dir = "beside"
+compatibility_date = "2026-09-01"
+
+[[services]]
+binding = "SIGNAL"
+service = "beside-signal"
