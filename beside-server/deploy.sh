@@ -5,8 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-  echo "::error::Add the CLOUDFLARE_API_TOKEN secret to the repo (Settings, Secrets and variables, Actions)."
-  exit 1
+  # Not set up for automatic deploys (the server can also be deployed from a Mac with wrangler).
+  echo "::notice::No CLOUDFLARE_API_TOKEN secret, so the call server wasn't deployed from here."
+  exit 0
 fi
 CF=https://api.cloudflare.com/client/v4
 api() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' "$@"; }
