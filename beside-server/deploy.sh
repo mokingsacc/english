@@ -33,3 +33,12 @@ else
     echo "::warning::Couldn't make the relay key (the token needs the Calls Edit permission): $(jq -c '.errors' <<<"$r")"
   fi
 fi
+
+# The site's last failed build, if any, so it can be fixed from here without the dashboard.
+pd=$(api "$CF/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/sitbeside/deployments?per_page=8" || true)
+jq -r '.result[]? | [.short_id, .environment, .latest_stage.name, .latest_stage.status, (.deployment_trigger.metadata.commit_hash // "")[0:7]] | @tsv' <<<"$pd" || true
+fid=$(jq -r '[.result[]? | select(.latest_stage.status == "failure")][0].id // empty' <<<"$pd" || true)
+if [ -n "$fid" ]; then
+  echo "--- last failed site build ($fid) ---"
+  api "$CF/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/sitbeside/deployments/$fid/history/logs" | jq -r '.result.data[]?.line' | tail -60 || true
+fi
