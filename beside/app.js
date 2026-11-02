@@ -534,36 +534,64 @@
   // ---------- CLEAR VOICE ----------
   // For quiet talkers (Mo, 2 Nov 2026: "we both have the habit of speaking quietly"). Your mic goes through a small
   // leveller before it's sent: a rumble filter, a gentle lift where words live, and a soft compressor that brings
-  // quiet words up about 12 dB while normal talking barely changes (+4 dB) and loud talking not at all, then a limiter
-  // so a laugh never crackles. In real pauses (600 ms of nothing above the room's own hum) the level eases down by
-  // half, so the lift doesn't raise the room. Only your voice: the shared video's sound never passes through it.
+  // quiet words up while normal talking barely changes and loud talking not at all, then a limiter so a laugh never
+  // crackles. In real pauses (400 ms of nothing above the room's own hum) the level eases down to -20 dB, so the lift
+  // doesn't raise the room's hiss (Mo, 2 Nov 2026: hiss and some crackle). Only your voice: the shared video's sound
+  // never passes through it.
   // The browser's own auto-volume stays on underneath (Safari can't turn it off, and Chrome can't change it mid-call).
   // Off: the plain mic, exactly as before.
-  const IS_WEBKIT = IS_IOS || (/Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Firefox/.test(navigator.userAgent));
   const CLEAR = { on: store.get('beside.clear') !== '0', chains: new Set() };
   // Watching YouTube together (see WATCH YOUTUBE TOGETHER below).
   const W = { id: '', at: 0, play: false, stamp: 0, away: '', p: null, pid: '', ready: false, quiet: 0, api: null, timer: 0, tap: 0 };
   // opts.live(): is the mic meant to be sending (not muted)? opts.change(): the chain stopped or started working
   // (ch.ok), so the caller can send the plain mic instead. Not working = the audio engine's clock stopped (a known
   // iPhone stall), or perfect silence from a live, unmuted mic for 4 s.
+  // Clear voice's settings. The compressor's own make-up gain lifts quiet talkers; in real pauses an expander eases
+  // the sound down to -20 dB over about 150 ms (so the room's hiss is not lifted too) and opens at once on speech;
+  // a gentle limiter and a little headroom keep every peak under 0 dBFS. Soft attacks avoid crackle.
+  const CLEAR_TUNE = {
+    comp: { threshold: -30, knee: 12, ratio: 2.5, attack: 0.01, release: 0.25 },
+    lim: { threshold: -4.5, knee: 0, ratio: 20, attack: 0.003, release: 0.15 },
+    out: 0.8, // about 2 dB of headroom after the limiter (its own make-up gain lifts it a little)
+    pause: 0.1, // -20 dB in pauses
+    fade: 0.05, // time constant: about 150 ms to settle
+    hold: 400, // ms of quiet before it counts as a pause
+  };
+  function clearNodes(ctx, t) {
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90; hp.Q.value = 0.7;
+    const lift = ctx.createBiquadFilter(); lift.type = 'peaking'; lift.frequency.value = 2500; lift.Q.value = 1; lift.gain.value = 3.5;
+    const comp = ctx.createDynamicsCompressor();
+    Object.entries(t.comp).forEach(([k, v]) => { comp[k].value = v; });
+    const gate = ctx.createGain();
+    const lim = ctx.createDynamicsCompressor();
+    Object.entries(t.lim).forEach(([k, v]) => { lim[k].value = v; });
+    const out = ctx.createGain();
+    out.gain.value = t.out;
+    hp.connect(lift); lift.connect(comp); comp.connect(gate); gate.connect(lim); lim.connect(out);
+    return { hp, gate, out };
+  }
+  // The pause rule, every 20 ms, from the raw mic's level: the room's own hum follows quiet moments down at once
+  // and creeps up slowly (about 1 dB a second); anything 10 dB over it, or louder than -45 dBFS, is speech.
+  // Returns [gain, time constant] to move the expander to, or null to leave it. A hidden tab's timers run slowly,
+  // so there it stays open (awake).
+  function clearGate(st, db, now, t, awake) {
+    if (db > -200) st.floor = db < st.floor ? db : st.floor + 0.02;
+    if (awake || db > st.floor + 10 || db > -45) { st.loudAt = now; return [1, 0.005]; }
+    if (now - st.loudAt > t.hold) return [t.pause, t.fade];
+    return null;
+  }
   function clearChain(ctx, stream, opts) {
     opts = opts || {};
     const src = ctx.createMediaStreamSource(stream);
-    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90; hp.Q.value = 0.7;
-    const lift = ctx.createBiquadFilter(); lift.type = 'peaking'; lift.frequency.value = 2500; lift.Q.value = 1; lift.gain.value = 3.5;
-    const comp = ctx.createDynamicsCompressor(); // its own make-up gain gives the lift: -42 dB in → -30 out, -22 → -18
-    comp.threshold.value = -30; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.25;
-    const gate = ctx.createGain();
-    const lim = ctx.createDynamicsCompressor();
-    lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.08;
-    const out = ctx.createGain();
+    const { hp, gate, out } = clearNodes(ctx, CLEAR_TUNE);
+    const ost = out.gain.value;
     // The analyser hangs off the raw mic with nothing after it: browsers keep measuring it, and on iPhone nothing
     // touching the speakers' output lets the engine keep running when the phone locks.
     const an = ctx.createAnalyser(); an.fftSize = 1024;
     src.connect(an);
-    hp.connect(lift); lift.connect(comp); comp.connect(gate); gate.connect(lim); lim.connect(out);
     const buf = new Float32Array(an.fftSize);
-    let loudAt = 0, floor = -60, zero = 0, ct = -1, ctAt = Date.now(), dead = false, stalled = false;
+    const gst = { loudAt: 0, floor: -60 };
+    let zero = 0, ct = -1, ctAt = Date.now(), dead = false, stalled = false;
     const report = () => { const ok = !dead && !stalled; if (ok !== ch.ok) { ch.ok = ok; if (opts.change) opts.change(); } };
     const timer = setInterval(() => {
       const now = Date.now();
@@ -580,11 +608,9 @@
       const live = (!opts.live || opts.live()) && tr && tr.readyState === 'live' && tr.enabled && !tr.muted;
       zero = sum === 0 && live ? zero + 20 : 0;
       if (zero >= 4000 && !dead) { dead = true; report(); }
-      const db = 10 * Math.log10(sum / buf.length + 1e-12);
-      // The room's own hum: follows quiet moments down at once and creeps up slowly (about 1 dB a second).
-      if (sum > 0) floor = db < floor ? db : floor + 0.02;
-      if (document.hidden || db > floor + 10 || db > -45) { loudAt = now; gate.gain.setTargetAtTime(1, ctx.currentTime, 0.005); }
-      else if (now - loudAt > 600) gate.gain.setTargetAtTime(0.5, ctx.currentTime, 0.2);
+      const db = sum > 0 ? 10 * Math.log10(sum / buf.length + 1e-12) : -300;
+      const go = clearGate(gst, db, now, CLEAR_TUNE, document.hidden);
+      if (go) gate.gain.setTargetAtTime(go[0], ctx.currentTime, go[1]);
     }, 20);
     const ch = {
       out, on: null, src, ok: true,
@@ -592,7 +618,8 @@
         if (ch.on === on) return;
         ch.on = on;
         [hp, out].forEach((d) => { try { ch.src.disconnect(d); } catch (e) {} });
-        if (on) ch.src.connect(hp); else { gate.gain.cancelScheduledValues(0); gate.gain.value = 1; ch.src.connect(out); }
+        // Off: the plain mic, at full level (the headroom is only for the chain's own lift).
+        if (on) { out.gain.value = ost; ch.src.connect(hp); } else { gate.gain.cancelScheduledValues(0); gate.gain.value = 1; out.gain.value = 1; ch.src.connect(out); }
         app.clear = on;
       },
       // Same chain, a new mic (an iPhone can end the mic when the camera starts).
@@ -2160,6 +2187,18 @@
   }
   function setStartBusy(b) { ['startBtn', 'videoBtn', 'shareStartBtn', 'endedAction', 'homeRingBtn', 'callVideoBtn', 'callVoiceBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
+  // The host's audio engine: a silent sink that keeps meters measuring, a silent track for empty lanes, and the
+  // mic's level control with its meter.
+  function hostEngine(ctx) {
+    H.ctx = ctx;
+    H.ctx.resume().catch(() => {});
+    H.sink = H.ctx.createGain();
+    H.sink.gain.value = 0;
+    H.sink.connect(H.ctx.destination);
+    H.silent = silentTrack(H.ctx);
+    H.micGain = H.ctx.createGain();
+    H.micAn = analyser(H.micGain);
+  }
   // Three ways to start: a video call, a voice call, or a call that starts by sharing a tab or window.
   async function hostStart(mode) {
     if (H.starting || app.state === 'live') return; // double click
@@ -2180,14 +2219,7 @@
     try {
       // Audio engine first, inside the click, so Safari lets it run. Each guest gets their own voice mix: your
       // mic plus everyone else's voice (never their own). The shared video's sound has a lane of its own.
-      H.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      H.ctx.resume().catch(() => {});
-      H.sink = H.ctx.createGain();
-      H.sink.gain.value = 0;
-      H.sink.connect(H.ctx.destination);
-      H.silent = silentTrack(H.ctx);
-      H.micGain = H.ctx.createGain();
-      H.micAn = analyser(H.micGain);
+      hostEngine(new (window.AudioContext || window.webkitAudioContext)());
       // Share my screen: pick the tab first, still inside the click (the browser needs that).
       let display = null;
       if (mode === 'share') {
@@ -2206,6 +2238,17 @@
           H.mic = await getOwn('audio', MIC);
           H.ctx.resume().catch(() => {}); // allowed now the page uses the mic: a tab opened from a ring has had no click
           H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
+          // The engine runs at the mic's own rate: a mic and an engine at different rates crackle.
+          const rate = trackRate(H.mic);
+          if (rate && rate !== H.ctx.sampleRate) {
+            try {
+              const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: rate });
+              const old = H.ctx;
+              hostEngine(ctx);
+              ctx.resume().catch(() => {});
+              old.close().catch(() => {});
+            } catch (e) {}
+          }
           try { H.clear = clearChain(H.ctx, H.mic, { live: () => !H.muted }); H.clear.out.connect(H.micGain); } catch (e) {
             H.clear = null;
             H.ctx.createMediaStreamSource(H.mic).connect(H.micGain);
@@ -3398,7 +3441,7 @@
   // Clear voice for a guest: the mic goes through the leveller into a track of its own. The plain mic is sent
   // instead whenever the leveller can't run (Clear voice off, the iPhone paused the audio engine for a phone call or
   // Siri, or the engine hears nothing), and Clear voice comes back by itself when the engine runs again.
-  // Safari and iPhones garble sound when the mic and the audio engine run at different rates, so on those the
+  // A mic and an audio engine at different rates crackle (and Safari garbles them), so when they differ the
   // leveller gets an engine of its own at the mic's rate (allowed without a tap while the mic is on).
   function guestVoiceSetup() {
     guestVoiceClose();
@@ -3406,7 +3449,7 @@
     try {
       let ctx = G.ctx;
       const rate = micRate();
-      if (IS_WEBKIT && rate && rate !== G.ctx.sampleRate) {
+      if (rate && rate !== G.ctx.sampleRate) {
         try { ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: rate }); ctx.resume().catch(() => {}); } catch (e) { ctx = G.ctx; }
       }
       G.vctx = ctx;
@@ -3434,12 +3477,13 @@
     if (G.vctx && G.vctx !== G.ctx) G.vctx.close().catch(() => {});
     G.clear = G.clearTrack = G.vctx = null;
   }
-  function micRate() { try { return (G.mic && G.mic.getAudioTracks()[0].getSettings().sampleRate) || 0; } catch (e) { return 0; } }
+  function trackRate(stream) { try { return (stream && stream.getAudioTracks()[0].getSettings().sampleRate) || 0; } catch (e) { return 0; } }
+  function micRate() { return trackRate(G.mic); }
   function guestVoiceTrack() {
     const raw = G.mic && G.mic.getAudioTracks()[0];
     if (!raw) return null;
     // If the mic's rate changes mid-call (AirPods' call mic runs slower), Safari would garble it: plain mic then.
-    const r = IS_WEBKIT ? micRate() : 0;
+    const r = micRate();
     const rate = !r || !G.vctx || r === G.vctx.sampleRate;
     const ok = CLEAR.on && rate && G.clear && G.clear.ok && G.clearTrack && G.clearTrack.readyState === 'live' && !G.clearDead && G.vctx && G.vctx.state === 'running';
     app.voiceSent = ok ? 'clear' : 'plain';
@@ -3987,7 +4031,7 @@
     if (window.Peer) whenNet(() => setTimeout(() => moveProbe(moveFound), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, W, ytWatch, ytClose }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, clearNodes, clearGate, CLEAR_TUNE, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
