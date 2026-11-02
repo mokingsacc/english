@@ -467,6 +467,17 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound input[type=range]{width:100%;height:28px;accent-color:var(--clay);cursor:pointer}
 .sound input[type=range]:disabled{cursor:default}
 .sound-hint{font-size:12.5px;line-height:1.35;color:rgba(240,231,216,.62)}
+/* watching YouTube together: the video in the middle, faces float beside it */
+.ytbox{position:absolute;z-index:2;top:calc(max(14px,env(safe-area-inset-top)) + 58px);bottom:calc(max(18px,env(safe-area-inset-bottom)) + 78px);left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:8px;transition:right .25s ease}
+.ytwrap{flex:1;min-height:0;container-type:size;display:grid;place-items:center}
+.ytframe{width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#000;box-shadow:0 18px 44px -18px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.1)}
+.ytframe iframe,.ytframe > div{display:block;width:100%;height:100%;border:0}
+.ytbar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;min-height:40px;color:#F0E7D8;font-size:14px;font-weight:600}
+.ytbar #ytNote:empty{display:none}
+.ytbar .btn{min-height:36px;padding:0 14px;font-size:14px}
+#watchRoot[data-faces="1"] .ytbox{right:calc(max(14px,env(safe-area-inset-right)) + clamp(112px,22vw,224px) + 14px)}
+@media (max-aspect-ratio:1/1){#watchRoot[data-faces="1"] .ytbox{right:max(14px,env(safe-area-inset-right));top:calc(max(14px,env(safe-area-inset-top)) + 70px + 27vw)}}
+.msg .ytgo{display:flex;margin-top:8px;min-height:34px;padding:0 12px;font-size:14px}
 .sound-clear{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;cursor:pointer;padding:2px 0 4px}
 .sound-clear input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--clay);cursor:pointer}
 .sound-clear b{display:block;font-size:14px;font-weight:600}
@@ -512,6 +523,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
     </div>
     <div class="foot">
       <button data-check-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Check my setup</button>
+      <button id="mineIdleBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Use my room on my iPad or iPhone</button>
     </div>
   </div>
 </section>
@@ -558,6 +570,10 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
   <div class="viewport" id="watchRoot">
     <div class="bigslot" id="bigSlot"></div>
     <div class="bubbles" id="bubbles"></div>
+    <div class="ytbox" id="ytBox" hidden>
+      <div class="ytwrap"><div class="ytframe" id="ytFrame"></div></div>
+      <div class="ytbar"><span id="ytNote"></span><button class="btn quiet" id="ytKeep" hidden>Keep playing</button><button class="btn quiet" id="ytStop" title="Stop watching for everyone">Stop watching</button></div>
+    </div>
     <div id="parking" hidden>
       <div class="tile screen" id="screenTile" data-key="screen"><video id="screenVideo" muted playsinline autoplay></video><div class="dots" id="dots"></div><span class="label" id="shareLabel"></span></div>
       <div class="tile avatar" id="avatarTile" data-key="avatar"><div class="who-face"><b id="avatarInitial"></b><span id="avatarName"></span><small id="avatarSub">Camera off</small></div></div>
@@ -658,6 +674,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
           <button class="btn quiet" id="moreCopyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span class="label-t">Copy</span></button>
           <button class="btn quiet" id="moreShareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Send link…</button>
         </div>
+        <button class="btn quiet wide" id="mineBtn" style="margin-top:10px">Use this room on my iPad or iPhone</button>
       </div>
       <button class="btn quiet wide" id="changeBtn" data-role="host" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11l-3-3M20 17H9l3 3"/></svg>Share a different tab</button>
       <div data-role="host">
@@ -679,6 +696,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

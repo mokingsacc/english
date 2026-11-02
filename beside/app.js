@@ -71,6 +71,17 @@
   const guestCode = hashM ? hashM[1] : '';
   const isGuest = !!guestCode;
   function cleanName(n) { return String(n || '').replace(/[^\p{L}\p{N} .'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20); }
+  // Your own other devices (iPad, iPhone) host the same room: open  .../?room=k7m2abcd  once there, or add that to the
+  // Home Screen. Your partner keeps the usual link.
+  try {
+    const q = new URLSearchParams(location.search);
+    const rq = (q.get('room') || '').toLowerCase();
+    if (!isGuest && /^[a-z0-9]{8}$/.test(rq)) {
+      store.set('beside.room', rq);
+      const nq = cleanName(q.get('name'));
+      if (nq && !store.get('beside.name.host')) store.set('beside.name.host', nq);
+    }
+  } catch (e) { /* an odd address just opens Beside as usual */ }
   let theirName = '';
   try { theirName = cleanName(decodeURIComponent((hashM && hashM[2]) || '')); } catch (e) { theirName = ''; }
 
@@ -305,6 +316,8 @@
   // Off: the plain mic, exactly as before.
   const IS_WEBKIT = IS_IOS || (/Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Firefox/.test(navigator.userAgent));
   const CLEAR = { on: store.get('beside.clear') !== '0', chains: new Set() };
+  // Watching YouTube together (see WATCH YOUTUBE TOGETHER below).
+  const W = { id: '', at: 0, play: false, stamp: 0, away: '', p: null, pid: '', ready: false, quiet: 0, api: null, timer: 0, tap: 0 };
   // opts.live(): is the mic meant to be sending (not muted)? opts.change(): the chain stopped or started working
   // (ch.ok), so the caller can send the plain mic instead. Not working = the audio engine's clock stopped (a known
   // iPhone stall), or perfect silence from a live, unmuted mic for 4 s.
@@ -580,8 +593,12 @@
       const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
       if (p) big = p; else V.pin = '';
     }
+    // Watching YouTube together: the video takes the middle, everyone's faces float beside it.
+    const ytOn = !!W.id && !!$('ytBox') && !$('ytBox').hidden;
+    if (ytOn) big = null;
     // The faces window is open: the faces are there, so the shared screen here stays clear.
     const smalls = mini.win && big === screen ? [] : visible.filter((el) => el !== big);
+    root.dataset.faces = ytOn && smalls.length ? '1' : '';
     root.querySelectorAll('.tile').forEach((el) => {
       if (el === big || smalls.includes(el)) return;
       el.hidden = true;
@@ -1155,7 +1172,16 @@
   }
   function chatAdd(mine, name, t) {
     trimChat();
-    linkify(chatRow(mine, name), t);
+    const body = chatRow(mine, name);
+    linkify(body, t);
+    if (ytId(t)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn quiet ytgo';
+      b.textContent = '▶ Watch together';
+      b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 699px)').matches) chatOpen(false); });
+      body.appendChild(b);
+    }
     if (!mine) incoming(name, ': ' + t);
   }
   // Something arrived: count it while the chat is closed, and show one line above the dock for 4 s.
@@ -1188,6 +1214,7 @@
     if (isGuest) tell(G.conn, msg);
     else toGuests({ ...msg, from: H.me, name: myName() });
     chatAdd(true, '', t);
+    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 699px)').matches) chatOpen(false);
   }
   function chatReset() {
     if (C.open) chatOpen(false);
@@ -1206,6 +1233,155 @@
     C.urls = [];
     const vw = $('viewer');
     if (vw) vw.hidden = true;
+  }
+
+  // ---------- WATCH YOUTUBE TOGETHER ----------
+  // Paste a YouTube link in the chat (or press Watch together under one): it opens for everyone in the call, and
+  // play, pause and jumps follow on every screen within about a second. Each screen plays YouTube itself, so it's
+  // full quality and nothing is re-streamed. If someone leaves the call or leaves Beside (locks the phone, switches
+  // app or tab), it pauses for everyone and says who; anyone still here can tap Keep playing. Whoever comes back
+  // lands where it is now. The host passes the state on, and tells newcomers.
+  const YT_RE = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([\w-]{11})/;
+  function ytId(t) { const m = String(t || '').match(YT_RE); return m ? m[1] : ''; }
+  function ytStartAt(t) {
+    const m = String(t || '').match(/[?&#](?:t|start)=(\d+h)?(\d+m)?(\d+)?s?(?=[&#\s]|$)/);
+    if (!m) return 0;
+    return (parseInt(m[1] || 0, 10) * 3600) + (parseInt(m[2] || 0, 10) * 60) + parseInt(m[3] || 0, 10);
+  }
+  function meName() { return isGuest ? cleanName(store.get('beside.name') || '') : myName(); }
+  function ytWant() { return Math.max(0, W.at + (W.play ? (performance.now() - W.stamp) / 1000 : 0)); }
+  function ytNow() { try { return W.p && W.ready ? W.p.getCurrentTime() || 0 : ytWant(); } catch (e) { return ytWant(); } }
+  function ytMsg() { return { t: 'yt', id: W.id, at: Math.round(ytWant() * 10) / 10, play: W.play, away: W.away }; }
+  function ytApi() {
+    if (W.api) return W.api;
+    W.api = new Promise((res, rej) => {
+      if (window.YT && window.YT.Player) { res(); return; }
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { try { if (prev) prev(); } catch (e) {} res(); };
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = () => { W.api = null; rej(new Error('yt')); };
+      document.head.appendChild(s);
+      setTimeout(() => { if (!(window.YT && window.YT.Player)) { W.api = null; rej(new Error('yt')); } }, 15000);
+    });
+    return W.api;
+  }
+  // Anyone in the call: start, change or stop. Everyone else follows.
+  function ytSend(s) {
+    if (!inCallWithSomeone() && !W.id && s.id) { note('Start a call first, then share a YouTube link.', 'info'); return; }
+    W.id = s.id; W.at = Math.max(0, +s.at || 0); W.play = !!s.play; W.stamp = performance.now(); W.away = s.away || '';
+    const msg = { ...ytMsg(), by: meName() };
+    if (isGuest) tell(G.conn, msg); else toGuests(msg);
+    ytShow();
+  }
+  function ytWatch(text) {
+    const id = ytId(text);
+    if (!id) return false;
+    ytSend({ id, at: ytStartAt(text), play: true });
+    return true;
+  }
+  // A state from someone else (guest: from the host; host: from a guest, then passed on).
+  function ytApply(d) {
+    const id = typeof d.id === 'string' && /^[\w-]{11}$/.test(d.id) ? d.id : '';
+    if (!id) { ytClose(true); return; }
+    W.id = id; W.at = Math.max(0, Math.min(+d.at || 0, 864000)); W.play = !!d.play; W.stamp = performance.now();
+    W.away = cleanName(d.away);
+    ytShow();
+  }
+  function ytShow() {
+    const box = $('ytBox');
+    if (!box) return;
+    if (!W.id) { ytClose(true); return; }
+    if (box.hidden) { box.hidden = false; layout(); }
+    clearInterval(W.timer);
+    W.timer = setInterval(() => ytSync(false), 2000);
+    ytBar();
+    if (W.p && W.pid === W.id) { ytSync(true); return; }
+    ytLoad();
+  }
+  async function ytLoad() {
+    const id = W.id;
+    try { await ytApi(); } catch (e) { if (W.id === id) note('YouTube didn’t load. Check the internet connection, then share the link again.', 'info'); return; }
+    if (W.id !== id || (W.p && W.pid === id)) return;
+    if (W.p) { try { W.p.destroy(); } catch (e) {} W.p = null; }
+    const spot = $('ytFrame');
+    if (!spot) return;
+    spot.textContent = '';
+    const el = document.createElement('div');
+    spot.appendChild(el);
+    W.ready = false;
+    W.pid = id;
+    W.quiet = performance.now() + 4000;
+    W.p = new window.YT.Player(el, {
+      videoId: id,
+      width: '100%', height: '100%',
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, start: Math.floor(ytWant()), autoplay: W.play ? 1 : 0 },
+      events: {
+        onReady: () => { if (W.pid !== id) return; W.ready = true; ytSync(true); },
+        onStateChange: (e) => ytState(e.data),
+        onError: (e) => { if (W.pid === id) ytBar(e && (e.data === 101 || e.data === 150) ? 'This video can’t play here: its owner only allows it on YouTube.' : 'YouTube couldn’t play this video.'); },
+      },
+    });
+  }
+  // Bring this screen to the shared state. Small differences (under 1.5 s) are left alone, so it never stutters.
+  function ytSync(force) {
+    const p = W.p;
+    if (!p || !W.ready || !W.id) return;
+    let st = -1, cur = 0;
+    try { st = p.getPlayerState(); cur = p.getCurrentTime() || 0; } catch (e) { return; }
+    const want = ytWant();
+    if (force || Math.abs(cur - want) > 1.5) { W.quiet = performance.now() + 1500; try { p.seekTo(want, true); } catch (e) {} }
+    if (W.play && st !== 1 && st !== 3) {
+      W.quiet = performance.now() + 1500;
+      try { p.playVideo(); } catch (e) {}
+      // iPhone and iPad only let a video start after a tap on it, the first time.
+      clearTimeout(W.tap);
+      W.tap = setTimeout(() => { try { if (W.play && W.p && W.p.getPlayerState() !== 1 && W.p.getPlayerState() !== 3) ytBar('Tap the video once to join in.'); } catch (e) {} }, 2500);
+    } else if (!W.play && (st === 1 || st === 3)) { W.quiet = performance.now() + 1500; try { p.pauseVideo(); } catch (e) {} }
+  }
+  // Someone on this screen pressed play, pause, or jumped: tell everyone. Our own syncing matches the shared state,
+  // so it's never sent back. Right after our own start or jump, a lag behind it or a refused start (iPhone) isn't
+  // a choice, so it isn't sent either: this screen catches up instead.
+  function ytState(st) {
+    if (!W.p || !W.ready) return;
+    if (st === 1) { clearTimeout(W.tap); ytBar(); }
+    if (document.hidden) return;
+    const cur = ytNow(), off = cur - ytWant(), settling = performance.now() < W.quiet;
+    if (st === 1) {
+      if (!W.play) ytSend({ id: W.id, at: cur, play: true });
+      else if (Math.abs(off) > 1.5) { if (off < 0 && settling) ytSync(false); else ytSend({ id: W.id, at: cur, play: true }); }
+    } else if (st === 2 || st === 0) {
+      if (W.play ? !settling : Math.abs(off) > 1.5) ytSend({ id: W.id, at: cur, play: false });
+    }
+  }
+  // Leaving pauses it for everyone, unless they choose to keep playing.
+  function ytAway(who) {
+    if (!W.id || !W.play) return;
+    W.at = ytNow(); W.play = false; W.stamp = performance.now(); W.away = cleanName(who) || 'Someone';
+    ytSync(false);
+    ytBar();
+  }
+  function ytBar(msg) {
+    const n = $('ytNote'), k = $('ytKeep');
+    if (!n || !k) return;
+    const away = !W.play && W.away && W.away !== meName();
+    n.textContent = msg || (away ? 'Paused: ' + W.away + ' left.' : '');
+    k.hidden = !away || !!msg;
+  }
+  function ytClose(remote) {
+    const had = !!W.id;
+    W.id = ''; W.play = false; W.away = '';
+    clearInterval(W.timer); clearTimeout(W.tap);
+    if (W.p) { try { W.p.destroy(); } catch (e) {} }
+    W.p = null; W.pid = ''; W.ready = false;
+    const f = $('ytFrame');
+    if (f) f.textContent = '';
+    const box = $('ytBox');
+    if (box && !box.hidden) { box.hidden = true; layout(); }
+    if (had && !remote) {
+      const msg = { t: 'yt', id: '', by: meName() };
+      if (isGuest) tell(G.conn, msg); else toGuests(msg);
+    }
   }
 
   // ----- files: 16 000-byte parts, one file at a time per link, paced so the screen keeps priority -----
@@ -1826,6 +2002,7 @@
         g.ver = +d.v || 0;
         g.canShare = !!d.share;
         tell(g.conn, roomMsg()); // the sharer may have changed since we said hello
+        if (W.id) tell(g.conn, ytMsg()); // they join the video where it is now
         g.peopleSig = '';
         rewire();
         guestStatus();
@@ -1849,6 +2026,10 @@
         showDot(xy[0], xy[1], g.id, name);
         toGuests({ t: 'ping', x: xy[0], y: xy[1], from: g.id, name }, g);
         maybeTick();
+      } else if (d.t === 'yt') {
+        if (!rate(g, 'ytT', 20)) return;
+        ytApply(d);
+        toGuests({ ...ytMsg(), id: W.id, by: g.name || '' }, g);
       } else if (d.t === 'file') hostFile(g, d);
       else if (d.t === 'part') filePart(g.id + ':' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
@@ -1866,6 +2047,7 @@
     g.vsrc = g.an = g.vdest = null;
     T.last.delete(g.id);
     rewire();
+    if (g.live && !H.stopping) ytAway(g.name || 'Your guest');
     if (H.sharer && H.sharer === g.id) { H.sharer = ''; V.pin = ''; roomScreen(); }
     guestStatus();
   }
@@ -2113,6 +2295,7 @@
   function hostCleanup() {
     const wasLive = app.state === 'live';
     H.stopping = true;
+    ytClose(true);
     clearInterval(H.lagTimer);
     clearInterval(T.timer);
     for (const id of [...H.guests.keys()]) hostDropGuest(id);
@@ -2161,6 +2344,17 @@
     }
     const lab = btn && btn.querySelector('.label-t');
     if (lab) { lab.textContent = 'Copied'; setTimeout(() => { lab.textContent = 'Copy'; }, 1500); }
+  }
+  // The link for your own other devices: same room, you host there too.
+  async function copyMine(btn) {
+    const n = myName();
+    const link = location.origin + location.pathname + '?room=' + (H.code || hostCode()) + (n ? '&name=' + encodeURIComponent(n) : '');
+    let done = false;
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try { await navigator.share({ title: 'Beside (my room)', url: link }); done = true; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    if (!done) { try { await navigator.clipboard.writeText(link); } catch (e) { prompt('Copy this link, then open it on your other device:', link); return; } }
+    if (!done) note('Copied. Open it on your iPad or iPhone (paste it into Safari), then add it to the Home Screen.', 'info');
   }
   async function shareLink(btn) {
     const link = hostLink();
@@ -2463,6 +2657,8 @@
         if (!xy) return;
         showDot(xy[0], xy[1], String(d.from || hostId), cleanName(d.name));
         maybeTick();
+      } else if (d.t === 'yt') {
+        ytApply(d);
       } else if (d.t === 'file') {
         fileStart('h:' + String(d.id).slice(0, 12), d, cleanName(d.name) || (d.from === hostId ? hostLabel() : '') || 'Someone');
       } else if (d.t === 'part') filePart('h:' + String(d.id).slice(0, 12), d);
@@ -2556,6 +2752,7 @@
   function tapHide() { const t = $('tapToHear'); if (t) t.hidden = true; }
   function guestLost() {
     if (G.left) return;
+    ytClose(true); // the host paused it for everyone; joining again brings it back where it is
     guestUnshare(true);
     autoPip(false);
     clearInterval(G.lagTimer);
@@ -2735,6 +2932,7 @@
   }
   function guestLeave() {
     G.left = true;
+    ytClose(true);
     guestUnshare(true);
     miniClose();
     autoPip(false);
@@ -2986,6 +3184,7 @@
     });
     ['copyBtn', 'moreCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
     ['shareBtn', 'moreShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
+    ['mineBtn', 'mineIdleBtn'].forEach((id) => on(id, 'click', () => copyMine($(id))));
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
@@ -3040,6 +3239,8 @@
     const sp = $('soundPop');
     if (sp) sp.appendChild(soundPanel(document));
     on('soundBtn', 'click', () => soundOpen(!!sp && sp.hidden));
+    on('ytKeep', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytWant(), play: true }); });
+    on('ytStop', 'click', () => ytClose(false));
     document.addEventListener('pointerdown', (e) => {
       if (sp && !sp.hidden && !sp.contains(e.target) && !(e.target.closest && e.target.closest('#soundBtn'))) soundOpen(false);
     }, true);
@@ -3087,7 +3288,12 @@
       wokeAt = 0;
     }, true);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') {
+        // Leaving Beside (lock, another app or tab) pauses the video for everyone.
+        if (W.id && W.play && inCallWithSomeone()) ytSend({ id: W.id, at: ytNow(), play: false, away: meName() || (isGuest ? 'Your guest' : 'Your host') });
+        return;
+      }
+      if (W.id) setTimeout(() => { ytSync(true); ytBar(); }, 300);
       if (inCall() || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
       resumeMedia();
     });
@@ -3127,7 +3333,7 @@
       if (bc) bc.postMessage('live?');
     }
     if (!window.Peer) peerLibOk();
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
