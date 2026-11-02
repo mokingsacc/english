@@ -725,7 +725,32 @@
   // ---------- VIEW (one call stage for both roles) ----------
   // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
   // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
-  const V = { pin: '' };
+  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false };
+  // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
+  // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
+  const LAYOUT_ICON = {
+    split: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg>',
+    focus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="13" y="13" width="6" height="5" rx="1.2" fill="currentColor"/></svg>',
+  };
+  function setLayout(mode, focus) {
+    V.mode = mode === 'focus' ? 'focus' : 'split';
+    if (focus) V.focus = focus;
+    store.set('beside.layout', V.mode);
+    layout();
+  }
+  function layoutButton() {
+    const b = $('layoutBtn');
+    if (!b) return;
+    b.hidden = !V.pair;
+    const toFocus = V.mode === 'split';
+    const lab = toFocus ? 'Focus: show one of you big' : 'Split: show you both, half and half';
+    if (b.dataset.to !== (toFocus ? 'focus' : 'split')) {
+      b.dataset.to = toFocus ? 'focus' : 'split';
+      b.innerHTML = LAYOUT_ICON[toFocus ? 'focus' : 'split'];
+      b.setAttribute('aria-label', lab);
+      b.title = toFocus ? 'Focus' : 'Split';
+    }
+  }
   const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
   function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
   function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
@@ -813,7 +838,15 @@
     const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
     V.auto = auto ? auto.dataset.key : '';
     let big = auto;
-    if (!alone && V.pin) {
+    // Just the two of you, your camera on, nothing shared: Split or Focus. More people, a shared screen, a video
+    // together or a voice call keep the usual view.
+    const them = others[0] || $('avatarTile');
+    V.pair = !alone && !screen && !!self && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1) && !(!!W.id && !!$('ytBox') && !$('ytBox').hidden);
+    let halves = null;
+    if (V.pair) {
+      if (V.mode === 'split') { halves = [them, self]; big = null; }
+      else big = V.focus === 'self' ? self : them;
+    } else if (!alone && V.pin) {
       const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
       if (p) big = p; else V.pin = '';
     }
@@ -821,17 +854,19 @@
     const ytOn = !!W.id && !!$('ytBox') && !$('ytBox').hidden;
     if (ytOn) big = null;
     // The faces window is open: the faces are there, so the shared screen here stays clear.
-    const smalls = mini.win && big === screen ? [] : visible.filter((el) => el !== big);
+    const smalls = halves ? [] : V.pair ? [big === self ? them : self] : mini.win && big === screen ? [] : visible.filter((el) => el !== big);
     root.dataset.faces = ytOn && smalls.length ? '1' : '';
+    root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
     root.querySelectorAll('.tile').forEach((el) => {
-      if (el === big || smalls.includes(el)) return;
+      if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
       el.hidden = true;
-      el.classList.remove('big', 'small');
+      el.classList.remove('big', 'small', 'half');
       if (el.parentNode !== park) park.appendChild(el);
     });
-    const put = (el, box, i) => {
+    const put = (el, box, i, half) => {
       el.hidden = false;
-      el.classList.toggle('big', box === bigSlot);
+      el.classList.toggle('half', !!half);
+      el.classList.toggle('big', !half && box === bigSlot);
       el.classList.toggle('small', box !== bigSlot);
       if (box.children[i] !== el) {
         box.insertBefore(el, box.children[i] || null);
@@ -839,8 +874,10 @@
         if (v && v.srcObject) v.play().catch(() => {}); // iPhone can pause a moved video
       }
     };
-    if (big) put(big, bigSlot, 0);
+    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, true));
+    else if (big) put(big, bigSlot, 0);
     smalls.forEach((el, i) => put(el, bub, i));
+    layoutButton();
     // their initial (or a plain figure) while their camera is off
     const ini = $('avatarInitial');
     if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
@@ -863,6 +900,14 @@
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
   function swapTap(e) {
+    // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
+    if (V.pair) {
+      const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
+      if (!p) return;
+      if (p.classList.contains('half')) setLayout('focus', p.dataset.key === 'self' ? 'self' : 'them');
+      else setLayout('split');
+      return;
+    }
     const t = e.target && e.target.closest && e.target.closest('.tile.small');
     if (!t) return;
     const k = t.dataset.key;
@@ -3606,6 +3651,7 @@
     on('boardSheet', 'click', (e) => { if (e.target === $('boardSheet')) boardSheet(false); });
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
+    on('layoutBtn', 'click', () => setLayout(V.mode === 'split' ? 'focus' : 'split'));
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
     on('gCamBtn', 'click', guestCam);
     on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else guestShare(); });
@@ -3702,7 +3748,7 @@
     ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (inCall()) wakeControls(e); }, { passive: true, capture: true }));
     // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
-      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles');
+      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #bigSlot .tile.half');
       if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); }
       wokeAt = 0;
     }, true);
