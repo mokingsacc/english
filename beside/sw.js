@@ -29,10 +29,11 @@ self.addEventListener('notificationclick', (e) => {
   } catch (x) { url = new URL('./', self.location.href).href; }
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    // Beside already open: bring it forward and tell it to answer (reloading it could end a call).
+    // Beside already open: bring it forward and tell it to answer (reloading it could end a call). The page itself
+    // opens the rung link instead when it shows another room.
     for (const c of all) {
       if (new URL(c.url).origin === self.location.origin) {
-        try { await c.focus(); c.postMessage({ beside: 'answer', fresh: url.includes('answer=1') }); return; } catch (x) { /* open a new one */ }
+        try { await c.focus(); c.postMessage({ beside: 'answer', fresh: url.includes('answer=1'), url }); return; } catch (x) { /* open a new one */ }
       }
     }
     await self.clients.openWindow(url);

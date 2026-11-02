@@ -166,6 +166,10 @@ p{color:var(--ink-2)}
 .ticket .actions{display:flex;gap:10px;padding:0 20px 18px}
 .ticket .actions .btn{flex:1;min-height:52px}
 .ticket .actions{flex-wrap:wrap}
+.linkask{background:var(--paper-2);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:0 0 18px;text-align:left}
+.linkask p{margin:0 0 10px;font-size:15px;color:var(--ink)}
+.linkask-row{display:flex;gap:8px}
+.linkask-row input{flex:1;min-width:0;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;font-size:16px;background:var(--paper);color:var(--ink)}
 .ticket .actions .btn svg{width:18px;height:18px}
 .ring-me[aria-pressed="true"]{text-decoration:none}
 .ring-me[aria-pressed="true"] svg{color:var(--moss)}
@@ -510,6 +514,10 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
         <div class="pane"><i></i><i></i><i></i><i></i></div>
         <div class="friend"></div>
       </div>
+      <div class="linkask" id="linkAsk" hidden>
+        <p><b>First, paste your Beside link.</b> Use the link you were sent, or your own room link (on your Mac: More, then Use this room on my iPad or iPhone).</p>
+        <div class="linkask-row"><input id="linkAskInput" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://sitbeside.pages.dev/#…"><button class="btn primary" id="linkAskGo">Open</button></div>
+      </div>
       <h1 class="display">Sit beside someone, from anywhere.</h1>
       <p>Start a call and send your link. Share one tab or window whenever you like, or start by sharing. Nothing to install.</p>
       <div class="starts">
@@ -720,6 +728,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="board.js?v=1"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
