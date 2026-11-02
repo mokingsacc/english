@@ -442,7 +442,8 @@
     }
 
     ui.status = h('p', { class: 'bb-status', role: 'status' });
-    root.replaceChildren(ui.note,
+    ui.clocks = h('div', { class: 'bb-clocks', 'aria-label': 'Your times and weather' });
+    root.replaceChildren(ui.note, ui.clocks,
       h('div', { class: 'bb-grid' },
         h('div', { class: 'bb-col' }, secs.countdown.sec, secs.think.sec),
         h('div', { class: 'bb-col' }, secs.todo.sec, secs.cal.sec)),
@@ -460,12 +461,53 @@
     document.body.append(v);
   }
 
+  // ---------- both your times and weather ----------
+  // Weather from Open-Meteo (free, no key, no personal data: two fixed places), asked at most every 30 minutes.
+  const PLACES = [
+    { z: LONDON, label: 'London', lat: 51.51, lon: -0.13, unit: 'C' },
+    { z: LA, label: 'Los Angeles', lat: 34.05, lon: -118.24, unit: 'F' },
+  ];
+  const WX = { at: 0, busy: false, now: {} };
+  const SKY = [[0, 'Clear'], [1, 'Mostly clear'], [2, 'Partly cloudy'], [3, 'Cloudy'], [48, 'Fog'], [57, 'Drizzle'], [65, 'Rain'],
+    [67, 'Freezing rain'], [77, 'Snow'], [82, 'Showers'], [86, 'Snow showers'], [99, 'Thunderstorms']];
+  const sky = (c) => { for (const [max, w] of SKY) if (c <= max) return w; return ''; };
+  function weather() {
+    if (WX.busy || Date.now() - WX.at < 30 * 60000) return;
+    WX.busy = true;
+    const q = 'latitude=' + PLACES.map((p) => p.lat).join(',') + '&longitude=' + PLACES.map((p) => p.lon).join(',') + '&current=temperature_2m,weather_code,is_day&timezone=auto';
+    fetch('https://api.open-meteo.com/v1/forecast?' + q, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const list = Array.isArray(j) ? j : j ? [j] : [];
+      list.forEach((x, i) => { if (x && x.current && PLACES[i]) WX.now[PLACES[i].z] = x.current; });
+      if (list.length) { WX.at = Date.now(); render(); }
+    }).catch(() => {}).finally(() => { WX.busy = false; });
+  }
+  function partOfDay(hr) { return hr < 5 ? 'night' : hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : hr < 21 ? 'evening' : 'night'; }
+  function drawClocks(now) {
+    const el = S.ui.clocks;
+    if (!el) return;
+    el.replaceChildren(...PLACES.map((p) => {
+      const t = parts(now, p.z);
+      const w = WX.now[p.z];
+      let wx = '';
+      if (w && typeof w.temperature_2m === 'number') {
+        const deg = p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
+        wx = (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + p.unit;
+      }
+      return h('div', { class: 'bb-clock' + (p.z === HERE ? ' bb-mine' : '') },
+        h('span', { class: 'bb-clock-place', text: p.label }),
+        h('b', { class: 'bb-clock-time', text: fmt(p.z, { hour: 'numeric', minute: '2-digit' }).format(now) }),
+        h('span', { class: 'bb-clock-sub', text: [partOfDay(t.h), wx].filter(Boolean).join(' · ') }));
+    }));
+  }
+
   // ---------- drawing ----------
   function render() {
     if (!S || !S.ui) return;
     const b = view();
     const ui = S.ui;
     const now = Date.now();
+    drawClocks(now);
+    weather();
 
     // Countdown
     {
@@ -476,8 +518,8 @@
         ui.cdShow.hidden = false;
         if (!c) {
           sec.sum.textContent = '';
-          ui.cdShow.append(h('div', { class: 'bb-empty' }, h('p', { text: S.loaded ? 'Counting down to something? Pick the day.' : 'Opening the board…' })),
-            S.loaded ? h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: ui.cdOpen }, 'Set a countdown') : null);
+          ui.cdShow.append(h('div', { class: 'bb-empty' }, h('p', { text: S.loaded ? 'Counting down to something? Pick the day.' : 'Opening the board…' })));
+          if (S.loaded) ui.cdShow.append(h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: ui.cdOpen }, 'Set a countdown'));
         } else {
           const left = c.at - now;
           const big = h('div', { class: 'bb-big' });
@@ -612,6 +654,12 @@
 .bboard .bb-grid{display:grid;gap:14px;min-width:0}
 .bboard .bb-col{display:grid;gap:14px;align-content:start;min-width:0}
 @container (min-width:700px){.bboard .bb-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.bboard .bb-col{gap:16px}}
+.bboard .bb-clocks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+.bboard .bb-clock{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-radius:var(--bb-r);background:var(--bb-paper-2);box-shadow:inset 0 0 0 1px var(--bb-line);min-width:0}
+.bboard .bb-clock.bb-mine{background:var(--bb-paper)}
+.bboard .bb-clock-place{font-size:13px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--bb-ink-2)}
+.bboard .bb-clock-time{font-family:var(--bb-display);font-size:30px;font-weight:500;line-height:1.1;color:var(--bb-ink)}
+.bboard .bb-clock-sub{font-size:14px;color:var(--bb-ink-2);overflow-wrap:anywhere}
 .bboard .bb-sec{background:var(--bb-paper-2);border-radius:var(--bb-r);box-shadow:inset 0 0 0 1px var(--bb-line);min-width:0;overflow:hidden}
 .bboard .bb-head{width:100%;display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 16px 6px 18px;text-align:left}
 .bboard .bb-head:focus-visible,.bboard .bb-fold-btn:focus-visible,.bboard .bb-link:focus-visible{outline:2px solid var(--bb-clay);outline-offset:-2px;border-radius:14px}
