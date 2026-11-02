@@ -97,11 +97,43 @@
       if (el.dataset.state === 'check') return; // the check panel is an overlay
       el.hidden = !el.dataset.state.split(' ').includes(state);
     });
+    boardPlace(state);
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
     else { closeMore(); soundOpen(false); document.body.classList.remove('idle'); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
+  // ---------- OUR BOARD ----------
+  // The countdown, Thinking of you, to-dos and calendar (board.js) belong to the room: the host's room code, which
+  // the guest's link carries. Shown under the start and join screens, and from More during a call.
+  let boardOn = false;
+  function boardRoom() { return isGuest ? guestCode : hostCode(); }
+  function boardName() { return (isGuest ? cleanName(store.get('beside.name') || ($('nameInput') && $('nameInput').value) || '') : myName()) || (isGuest ? 'Guest' : 'Host'); }
+  function boardPlace(state) {
+    const z = $('boardZone'), m = $('boardMount');
+    if (!z || !m || !window.BesideBoard) return;
+    const home = state === 'idle' || state === 'join' || state === 'ended';
+    z.hidden = !home;
+    document.body.classList.toggle('has-board', home);
+    if (home) {
+      if (m.parentNode !== z) z.appendChild(m);
+      try { window.BesideBoard.mount(m, { room: boardRoom(), name: boardName() }); boardOn = true; } catch (e) { boardOn = false; }
+    }
+    if (!home && state !== 'live' && state !== 'watching') boardSheet(false);
+  }
+  function boardSheet(on) {
+    const sh = $('boardSheet'), body = $('boardSheetBody'), m = $('boardMount'), z = $('boardZone');
+    if (!sh || !body || !m || !window.BesideBoard) return;
+    if (on) {
+      closeMore();
+      body.appendChild(m);
+      try { window.BesideBoard.mount(m, { room: boardRoom(), name: boardName() }); window.BesideBoard.refresh(); } catch (e) {}
+      sh.hidden = false;
+    } else {
+      sh.hidden = true;
+      if (z && m.parentNode !== z) z.appendChild(m);
+    }
+  }
   function on(id, ev, fn) { const el = $(id); if (el) el.addEventListener(ev, fn); }
   let noteTimer = 0;
   function note(msg, kind) {
@@ -3185,6 +3217,10 @@
     ['copyBtn', 'moreCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
     ['shareBtn', 'moreShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
     ['mineBtn', 'mineIdleBtn'].forEach((id) => on(id, 'click', () => copyMine($(id))));
+    on('boardBtn', 'click', () => boardSheet(true));
+    on('nameInput', 'change', () => { if (boardOn && app.state === 'join') boardPlace('join'); });
+    on('boardClose', 'click', () => boardSheet(false));
+    on('boardSheet', 'click', (e) => { if (e.target === $('boardSheet')) boardSheet(false); });
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });

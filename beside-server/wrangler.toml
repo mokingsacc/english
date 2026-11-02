@@ -10,8 +10,17 @@ preview_urls = false
 name = "LOBBY"
 class_name = "Lobby"
 
+# The Together board: one per room (the host's room code), kept in the Durable Object's own storage.
+[[durable_objects.bindings]]
+name = "BOARD"
+class_name = "Board"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Lobby"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Board"]
 
 # Secrets (set once by deploy.sh): TURN_KEY_ID, TURN_KEY_TOKEN
