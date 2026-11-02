@@ -97,7 +97,7 @@
     const into = SHELL.includes(prev) && !SHELL.includes(state);
     const back = !!prev && !SHELL.includes(prev) && SHELL.includes(state);
     const snap = into ? tvSnap() : null; // before the tabs go
-    if (into) { const inv = $('inviteSheet'); if (inv) inv.hidden = true; }
+    if (into) { ['inviteSheet', 'soundSheet'].forEach((id) => { const sh = $(id); if (sh) sh.hidden = true; }); }
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
@@ -527,8 +527,9 @@
 
   // ---------- SOUND ----------
   // Voices and the shared video's sound travel in two lanes, so neither squashes the other and each has its own
-  // volume. The voice lane asks for clear speech (64 kbit/s, repairs lost packets); the video lane for stereo
-  // music quality (128 kbit/s). Each side's own description says how it wants to be sent to.
+  // volume. The voice lane repairs lost packets and may carry stereo up to 128 kbit/s; the sender holds a voice to
+  // 64 kbit/s and lets Music use the full 128 (tuneVoice). The video lane is stereo at 128 kbit/s. Each side's
+  // own description says how it wants to be sent to.
   const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
   // ---------- CLEAR VOICE ----------
@@ -537,12 +538,40 @@
   // quiet words up while normal talking barely changes and loud talking not at all, then a limiter so a laugh never
   // crackles. In real pauses (400 ms of nothing above the room's own hum) the level eases down to -20 dB, so the lift
   // doesn't raise the room's hiss (Mo, 2 Nov 2026: hiss and some crackle). Only your voice: the shared video's sound
-  // never passes through it.
-  // The browser's own auto-volume stays on underneath (Safari can't turn it off, and Chrome can't change it mid-call).
-  // Off: the plain mic, exactly as before.
-  const CLEAR = { on: store.get('beside.clear') !== '0', chains: new Set() };
+  // never passes through it. The browser's own auto-volume stays on underneath (Safari can't turn it off).
+  // Your mic, four ways (Mo, 2 Nov 2026: "full sound control"), kept on each device: Natural (the browser's own
+  // clean-up only), Clear voice (the leveller, the default), Voice focus (for a noisy room: a narrower band, deeper
+  // pauses and softer s sounds) and Music (nothing changed at all, in stereo, for playing or singing).
+  const MODES = ['natural', 'clear', 'focus', 'music'];
+  const MODE_TEXT = {
+    natural: ['Natural', 'Your mic as the browser gives it, with nothing added.'],
+    clear: ['Clear voice', 'Lifts a quiet voice and keeps the room quiet in pauses.'],
+    focus: ['Voice focus', 'For a noisy room. Keeps your voice and pushes other sounds back.'],
+    music: ['Music', 'Every sound as it is, in stereo, for playing or singing. Use headphones.'],
+  };
+  function savedMode() {
+    const m = store.get('beside.micmode');
+    if (MODES.includes(m)) return m;
+    return store.get('beside.clear') === '0' ? 'natural' : 'clear';
+  }
+  const CLEAR = { mode: savedMode(), on: false, chains: new Set(), q: Promise.resolve() };
+  CLEAR.on = CLEAR.mode === 'clear' || CLEAR.mode === 'focus';
   // Watching YouTube together (see WATCH YOUTUBE TOGETHER below).
-  const W = { id: '', at: 0, play: false, stamp: 0, away: '', p: null, pid: '', ready: false, quiet: 0, api: null, timer: 0, tap: 0 };
+  const W = { id: '', at: 0, play: false, stamp: 0, away: '', p: null, pid: '', ready: false, quiet: 0, api: null, timer: 0, tap: 0, vol: -1 };
+  // What the browser is asked for. Music turns every clean-up off and asks for stereo; Voice focus asks for the
+  // browser's voice isolation where it has one.
+  function micWant(mode) {
+    let sup = {};
+    try { sup = navigator.mediaDevices.getSupportedConstraints() || {}; } catch (e) {}
+    if (mode === 'music') {
+      const c = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } };
+      if (sup.voiceIsolation) c.voiceIsolation = false;
+      return c;
+    }
+    const c = { ...MIC };
+    if (sup.voiceIsolation) c.voiceIsolation = mode === 'focus';
+    return c;
+  }
   // opts.live(): is the mic meant to be sending (not muted)? opts.change(): the chain stopped or started working
   // (ch.ok), so the caller can send the plain mic instead. Not working = the audio engine's clock stopped (a known
   // iPhone stall), or perfect silence from a live, unmuted mic for 4 s.
@@ -550,6 +579,7 @@
   // the sound down to -20 dB over about 150 ms (so the room's hiss is not lifted too) and opens at once on speech;
   // a gentle limiter and a little headroom keep every peak under 0 dBFS. Soft attacks avoid crackle.
   const CLEAR_TUNE = {
+    hp: 90, lp: 0, ess: false,
     comp: { threshold: -30, knee: 12, ratio: 2.5, attack: 0.01, release: 0.25 },
     lim: { threshold: -4.5, knee: 0, ratio: 20, attack: 0.003, release: 0.15 },
     out: 0.8, // about 2 dB of headroom after the limiter (its own make-up gain lifts it a little)
@@ -557,9 +587,18 @@
     fade: 0.05, // time constant: about 150 ms to settle
     hold: 400, // ms of quiet before it counts as a pause
   };
+  // Voice focus: only 100 Hz to 7 kHz, pauses down to about -30 dB, and a gentle de-esser that softens a sharp s.
+  const FOCUS_TUNE = { ...CLEAR_TUNE, hp: 100, lp: 7000, ess: true, pause: 0.0316 };
+  const ESS_HZ = 4500; // the de-esser listens above this
+  function tuneFor(mode) { return mode === 'focus' ? FOCUS_TUNE : mode === 'clear' ? CLEAR_TUNE : null; }
   function clearNodes(ctx, t) {
-    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90; hp.Q.value = 0.7;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = t.hp || 90; hp.Q.value = 0.7;
+    let last = hp;
+    if (t.lp) { const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = t.lp; lp.Q.value = 0.7; last.connect(lp); last = lp; }
     const lift = ctx.createBiquadFilter(); lift.type = 'peaking'; lift.frequency.value = 2500; lift.Q.value = 1; lift.gain.value = 3.5;
+    last.connect(lift); last = lift;
+    let ess = null;
+    if (t.ess) { ess = ctx.createBiquadFilter(); ess.type = 'peaking'; ess.frequency.value = 6500; ess.Q.value = 1.4; ess.gain.value = 0; last.connect(ess); last = ess; }
     const comp = ctx.createDynamicsCompressor();
     Object.entries(t.comp).forEach(([k, v]) => { comp[k].value = v; });
     const gate = ctx.createGain();
@@ -567,8 +606,8 @@
     Object.entries(t.lim).forEach(([k, v]) => { lim[k].value = v; });
     const out = ctx.createGain();
     out.gain.value = t.out;
-    hp.connect(lift); lift.connect(comp); comp.connect(gate); gate.connect(lim); lim.connect(out);
-    return { hp, gate, out };
+    last.connect(comp); comp.connect(gate); gate.connect(lim); lim.connect(out);
+    return { hp, gate, out, ess };
   }
   // The pause rule, every 20 ms, from the raw mic's level: the room's own hum follows quiet moments down at once
   // and creeps up slowly (about 1 dB a second); anything 10 dB over it, or louder than -45 dBFS, is speech.
@@ -580,19 +619,24 @@
     if (now - st.loudAt > t.hold) return [t.pause, t.fade];
     return null;
   }
+  // The de-esser's rule: a sharp s puts most of the sound above 4.5 kHz; then 6.5 kHz comes down 6 dB, briefly.
+  function clearEss(db, hi) { return hi > -45 && hi > db - 6 ? [-6, 0.003] : [0, 0.03]; }
   function clearChain(ctx, stream, opts) {
     opts = opts || {};
-    const src = ctx.createMediaStreamSource(stream);
-    const { hp, gate, out } = clearNodes(ctx, CLEAR_TUNE);
-    const ost = out.gain.value;
-    // The analyser hangs off the raw mic with nothing after it: browsers keep measuring it, and on iPhone nothing
-    // touching the speakers' output lets the engine keep running when the phone locks.
+    // tail: what the caller connects. It stays the same when the mode changes; only what feeds it is rebuilt.
+    const tail = ctx.createGain();
+    let n = null, t = null;
+    // The analysers hang off the raw mic with nothing after them: browsers keep measuring them, and on iPhone
+    // nothing touching the speakers' output lets the engine keep running when the phone locks.
     const an = ctx.createAnalyser(); an.fftSize = 1024;
-    src.connect(an);
+    const hiF = ctx.createBiquadFilter(); hiF.type = 'highpass'; hiF.frequency.value = ESS_HZ; hiF.Q.value = 0.7;
+    const hiA = ctx.createAnalyser(); hiA.fftSize = 1024;
+    hiF.connect(hiA);
     const buf = new Float32Array(an.fftSize);
     const gst = { loudAt: 0, floor: -60 };
     let zero = 0, ct = -1, ctAt = Date.now(), dead = false, stalled = false;
     const report = () => { const ok = !dead && !stalled; if (ok !== ch.ok) { ch.ok = ok; if (opts.change) opts.change(); } };
+    const power = (a) => { a.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]; return s; };
     const timer = setInterval(() => {
       const now = Date.now();
       // The engine's clock must move while it says it's running; if it hasn't for 1.5 s, it's stalled.
@@ -600,50 +644,149 @@
         if (ctx.currentTime !== ct) { ct = ctx.currentTime; ctAt = now; if (stalled) { stalled = false; report(); } }
         else if (now - ctAt > 1500 && !stalled) { stalled = true; report(); ctx.suspend().then(() => ctx.resume()).catch(() => {}); ctAt = now; }
       } else ctAt = now;
-      if (!ch.on || ctx.state !== 'running') return;
-      an.getFloatTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      if (!n || ctx.state !== 'running') return;
+      const sum = power(an);
       const tr = ch.src.mediaStream && ch.src.mediaStream.getAudioTracks()[0];
       const live = (!opts.live || opts.live()) && tr && tr.readyState === 'live' && tr.enabled && !tr.muted;
       zero = sum === 0 && live ? zero + 20 : 0;
       if (zero >= 4000 && !dead) { dead = true; report(); }
       const db = sum > 0 ? 10 * Math.log10(sum / buf.length + 1e-12) : -300;
-      const go = clearGate(gst, db, now, CLEAR_TUNE, document.hidden);
-      if (go) gate.gain.setTargetAtTime(go[0], ctx.currentTime, go[1]);
+      const go = clearGate(gst, db, now, t, document.hidden);
+      if (go) n.gate.gain.setTargetAtTime(go[0], ctx.currentTime, go[1]);
+      if (n.ess) {
+        const hs = power(hiA);
+        const e = clearEss(db, hs > 0 ? 10 * Math.log10(hs / buf.length + 1e-12) : -300);
+        n.ess.gain.setTargetAtTime(e[0], ctx.currentTime, e[1]);
+      }
     }, 20);
+    const wire = () => {
+      try { ch.src.disconnect(); } catch (e) {}
+      ch.src.connect(an); ch.src.connect(hiF);
+      if (n) ch.src.connect(n.hp); else ch.src.connect(tail);
+    };
     const ch = {
-      out, on: null, src, ok: true,
-      set(on) {
-        if (ch.on === on) return;
-        ch.on = on;
-        [hp, out].forEach((d) => { try { ch.src.disconnect(d); } catch (e) {} });
-        // Off: the plain mic, at full level (the headroom is only for the chain's own lift).
-        if (on) { out.gain.value = ost; ch.src.connect(hp); } else { gate.gain.cancelScheduledValues(0); gate.gain.value = 1; out.gain.value = 1; ch.src.connect(out); }
-        app.clear = on;
+      out: tail, on: null, mode: '', src: ctx.createMediaStreamSource(stream), ok: true,
+      // Natural and Music: the plain mic, at full level. Clear voice and Voice focus: their own processing.
+      use(mode) {
+        const nt = tuneFor(mode);
+        ch.mode = mode;
+        if (nt === t && ch.on !== null) return;
+        if (n) { try { n.out.disconnect(); } catch (e) {} }
+        t = nt;
+        n = t ? clearNodes(ctx, t) : null;
+        if (n) n.out.connect(tail);
+        ch.on = !!n;
+        wire();
+        app.clear = ch.on;
       },
-      // Same chain, a new mic (an iPhone can end the mic when the camera starts).
+      set(on) { ch.use(on ? 'clear' : 'natural'); },
+      // Same chain, a new mic (an iPhone can end the mic when the camera starts; a new mode can need a new mic).
       swap(stream2) {
         try { ch.src.disconnect(); } catch (e) {}
         ch.src = ctx.createMediaStreamSource(stream2);
-        ch.src.connect(an);
         zero = 0;
-        const was = ch.on;
-        ch.on = null;
-        ch.set(was);
+        wire();
       },
-      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, out].forEach((n) => { try { n.disconnect(); } catch (e) {} }); },
+      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail].forEach((x) => { try { x.disconnect(); } catch (e) {} }); if (n) { try { n.out.disconnect(); } catch (e) {} } },
     };
     CLEAR.chains.add(ch);
-    ch.set(CLEAR.on);
+    ch.use(CLEAR.mode);
     return ch;
   }
-  function setClear(on) {
-    CLEAR.on = on;
-    store.set('beside.clear', on ? '1' : '0');
-    CLEAR.chains.forEach((c) => c.set(on));
-    guestVoicePick();
+  // The same processing, offline, on a recording: for "Hear myself" and for the tests. The pause rule and the
+  // de-esser step every 20 ms from the recording's own level, as the live timer does.
+  async function renderVoice(x, sr, mode) {
+    const t = tuneFor(mode);
+    if (!t) return x;
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const n = x.length;
+    const mk = () => new OAC(1, n, sr);
+    const bufOf = (ctx) => { const b = ctx.createBuffer(1, n, sr); b.getChannelData(0).set(x); return b; };
+    let hi = null;
+    if (t.ess) {
+      const c1 = mk();
+      const s1 = c1.createBufferSource(); s1.buffer = bufOf(c1);
+      const f = c1.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = ESS_HZ; f.Q.value = 0.7;
+      s1.connect(f); f.connect(c1.destination); s1.start();
+      hi = (await c1.startRendering()).getChannelData(0);
+    }
+    const ctx = mk();
+    const src = ctx.createBufferSource(); src.buffer = bufOf(ctx);
+    const nd = clearNodes(ctx, t);
+    src.connect(nd.hp); nd.out.connect(ctx.destination);
+    const st = { loudAt: 0, floor: -60 };
+    const step = Math.round(0.02 * sr);
+    const lvl = (a, i) => { let s = 0; for (let k = Math.max(0, i - 1024); k < i; k++) s += a[k] * a[k]; return s > 0 ? 10 * Math.log10(s / 1024 + 1e-12) : -300; };
+    for (let i = step; i < n; i += step) {
+      const db = lvl(x, i);
+      const go = clearGate(st, db, i / sr * 1000, t, false);
+      if (go) nd.gate.gain.setTargetAtTime(go[0], i / sr, go[1]);
+      if (nd.ess) { const e = clearEss(db, lvl(hi, i)); nd.ess.gain.setTargetAtTime(e[0], i / sr, e[1]); }
+    }
+    src.start();
+    return (await ctx.startRendering()).getChannelData(0);
+  }
+  // Pick how your mic is sent. Mid-call it changes in place: the browser is asked to change the mic's own
+  // clean-up, and if it can't, a fresh mic replaces the old one in the same lane, so the call carries on.
+  function setMicMode(mode) {
+    if (!MODES.includes(mode) || mode === CLEAR.mode) return CLEAR.q;
+    CLEAR.mode = mode;
+    CLEAR.on = !!tuneFor(mode);
+    store.set('beside.micmode', mode);
+    store.set('beside.clear', CLEAR.on ? '1' : '0');
     soundUi();
+    CLEAR.q = CLEAR.q.then(() => micRefit(mode)).catch(() => {}).then(() => {
+      if (CLEAR.mode !== mode) return;
+      CLEAR.chains.forEach((c) => c.use(mode));
+      if (isGuest) guestVoicePick();
+      voiceRates();
+      soundUi();
+    });
+    return CLEAR.q;
+  }
+  function setClear(on) { return setMicMode(on ? 'clear' : 'natural'); }
+  const MIC_KEYS = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation'];
+  function micFits(tr, want) {
+    let s = {};
+    try { s = tr.getSettings() || {}; } catch (e) {}
+    return MIC_KEYS.every((k) => !(k in want) || !(k in s) || s[k] === want[k]);
+  }
+  async function micRefit(mode) {
+    const stream = isGuest ? G.mic : H.mic;
+    const tr = stream && stream.getAudioTracks()[0];
+    if (!tr || tr.readyState !== 'live') return;
+    const want = micWant(mode);
+    const hint = mode === 'music' ? 'music' : 'speech';
+    if (micFits(tr, want) && !(mode === 'music' && (tr.getSettings().channelCount || 1) < 2 && tr.getCapabilities && ((tr.getCapabilities().channelCount || {}).max || 1) > 1)) { try { tr.contentHint = hint; } catch (e) {} return; }
+    try { await tr.applyConstraints(want); } catch (e) {}
+    if (micFits(tr, want)) { try { tr.contentHint = hint; } catch (e) {} app.micSwap = 'constraints'; return; }
+    const fresh = await getOwn('audio', want);
+    const nt = fresh.getAudioTracks()[0];
+    if (!nt) return;
+    try { nt.contentHint = hint; } catch (e) {}
+    app.micSwap = 'track';
+    if (isGuest) {
+      nt.enabled = !G.muted;
+      const old = G.mic;
+      G.mic = fresh;
+      const pc = G.call && G.call.peerConnection;
+      const snd = pc && pc.getSenders().find((x) => x.track === tr);
+      guestVoiceSetup(); // a new leveller for the new mic (its rate can differ)
+      if (snd && snd !== G.voiceSender) await snd.replaceTrack(nt).catch(() => {});
+      guestVoicePick();
+      old.getTracks().forEach((x) => x.stop());
+    } else {
+      const old = H.mic;
+      H.mic = fresh;
+      if (H.clear) H.clear.swap(fresh);
+      else if (H.rawSrc) { try { H.rawSrc.disconnect(); } catch (e) {} H.rawSrc = H.ctx.createMediaStreamSource(fresh); H.rawSrc.connect(H.micGain); }
+      old.getTracks().forEach((x) => x.stop());
+    }
+  }
+  // Voices go at 64 kbit/s; Music at 128 kbit/s. The lane allows stereo, and only a stereo mic fills it.
+  function voiceRates() {
+    if (isGuest) tuneVoice(G.voiceSender);
+    else for (const g of H.guests.values()) tuneVoice(g.voiceSender);
   }
   function tuneOpus(sdp) {
     const nl = /\r\n/.test(sdp) ? '\r\n' : '\n';
@@ -654,7 +797,7 @@
       const m = sec.match(/^a=rtpmap:(\d+) opus\/48000/im);
       if (!m || a > 1) return sec;
       const want = a === 0
-        ? { useinbandfec: '1', usedtx: '0', maxaveragebitrate: '64000' }
+        ? { stereo: '1', 'sprop-stereo': '1', useinbandfec: '1', usedtx: '0', maxaveragebitrate: '128000' }
         : { stereo: '1', 'sprop-stereo': '1', useinbandfec: '1', usedtx: '0', maxaveragebitrate: '128000' };
       const re = new RegExp('^a=fmtp:' + m[1] + ' (.*)$', 'm');
       const fm = sec.match(re);
@@ -672,23 +815,126 @@
       if (!p || !p.encodings || !p.encodings.length) return;
       p.encodings[0].priority = 'high';
       p.encodings[0].networkPriority = 'high';
+      p.encodings[0].maxBitrate = CLEAR.mode === 'music' ? 128000 : 64000;
       s.setParameters(p).catch(() => {});
     } catch (e) { /* defaults are fine */ }
   }
-  // Your own volumes for voices and for the shared video. iPhone ignores page volumes: its side buttons do it.
-  const CAN_VOL = !IS_IOS;
-  function savedVol(k) { const v = parseFloat(store.get(k)); return v >= 0 && v <= 1 ? v : 1; }
-  const SND = { voice: savedVol('beside.vol.voice'), media: savedVol('beside.vol.media') };
+  // What you hear, on this device: their voice (0 to 150%), the video's sound (0 to 100%), and the video's sound
+  // ducking under a voice (Mo, 2 Nov 2026). iPhones and iPads ignore a page's volume, so on Safari, iPhone, iPad
+  // and the Beside app every sound you hear plays through the audio engine, where each lane has its own volume.
+  // Other browsers play through the page (their echo cancelling hears that best), and use the engine only to go
+  // above 100%. If the engine stops (an iPhone phone call, or its clock stalls), the page plays it again at once.
+  const CAN_VOL = true;
+  const UA = navigator.userAgent;
+  const ENGINE_OUT = IS_IOS || (/AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|Android|OPR/.test(UA));
+  const DUCK = 0.25; // about -12 dB under a voice
+  function savedVol(k, max) { const v = parseFloat(store.get(k)); return v >= 0 && v <= max ? v : 1; }
+  const SND = { voice: savedVol('beside.vol.voice', 1.5), media: savedVol('beside.vol.media', 1), duck: store.get('beside.duck') !== '0' };
+  const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0 };
   function voiceEls() { return isGuest ? [$('voice')] : [...H.guests.values()].map((g) => g.audio); }
-  function applyVolumes() {
-    voiceEls().forEach((el) => { if (el) el.volume = SND.voice; });
+  function outEls() {
+    const els = voiceEls().filter(Boolean).map((el) => [el, 'voice']);
     const me = $('media');
-    if (me) me.volume = SND.media;
+    if (me) els.push([me, 'media']);
+    return els;
+  }
+  function outCtx() { return isGuest ? G.ctx : H.ctx; }
+  // The engine is fit to play when it runs and its clock moves.
+  function engineOk(ctx) {
+    if (!ctx || ctx.state !== 'running') return false;
+    const c = OUT.clocks.get(ctx), now = Date.now();
+    if (!c || c.t !== ctx.currentTime) { OUT.clocks.set(ctx, { t: ctx.currentTime, at: now }); return true; }
+    return now - c.at < 1500;
+  }
+  function outLane(el, kind) {
+    const ctx = outCtx();
+    const tr = el.srcObject && el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks()[0] || null : null;
+    let l = OUT.map.get(el);
+    if (l && (l.ctx !== ctx || l.track !== tr)) { outDrop(l); l = null; }
+    if (!l) {
+      l = { el, kind, ctx, track: tr, src: null, gain: null, on: false, route: 'page' };
+      if (ctx && tr && ctx.state !== 'closed') {
+        try { l.src = ctx.createMediaStreamSource(new MediaStream([tr])); l.gain = ctx.createGain(); l.src.connect(l.gain); } catch (e) { l.src = l.gain = null; }
+      }
+      OUT.map.set(el, l);
+    }
+    return l;
+  }
+  function outDrop(l) {
+    [l.src, l.gain].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} });
+    OUT.map.delete(l.el);
+  }
+  function outLevel(l, now) { return l.kind === 'voice' ? SND.voice : SND.media * (now ? OUT.duckT : OUT.duck); }
+  function outApply(l, smooth) {
+    const eng = !!l.gain && engineOk(l.ctx) && (ENGINE_OUT || (l.kind === 'voice' && SND.voice > 1));
+    if (eng) {
+      if (!l.on) { l.gain.connect(l.ctx.destination); l.on = true; }
+      const g = l.gain.gain, t = l.ctx.currentTime, v = outLevel(l, true);
+      g.cancelScheduledValues(t);
+      if (smooth) { g.setValueAtTime(g.value, t); g.setTargetAtTime(v, t, v < g.value ? 0.05 : 0.25); } else g.setValueAtTime(v, t);
+      if (!l.el.muted) l.el.muted = true;
+    } else {
+      if (l.on) { try { l.gain.disconnect(); } catch (e) {} l.on = false; }
+      if (l.el.muted && l.el.srcObject) l.el.muted = false;
+      const v = Math.min(1, outLevel(l, false));
+      if (Math.abs(l.el.volume - v) > 0.001) l.el.volume = v;
+    }
+    l.route = eng ? 'engine' : 'page';
+  }
+  // Should this element be muted (its sound plays through the engine instead)?
+  function outMuted(el) { const l = OUT.map.get(el); return !!l && l.route === 'engine'; }
+  function applyVolumes() {
+    const live = new Set();
+    outEls().forEach(([el, kind]) => { live.add(el); outApply(outLane(el, kind)); });
+    [...OUT.map.values()].forEach((l) => { if (!live.has(l.el)) outDrop(l); });
+    ytVolume();
+    outWatch();
     soundUi();
   }
+  // Every 50 ms in a call: the duck follows who is talking (in fast, out slowly), and a lane whose engine stopped
+  // goes back to the page.
+  function outWatch() {
+    if (OUT.timer) return;
+    OUT.timer = setInterval(() => {
+      if (app.state !== 'live' && app.state !== 'watching' && !W.p) { clearInterval(OUT.timer); OUT.timer = 0; return; }
+      const want = SND.duck && T.ids.size > 0 ? DUCK : 1;
+      const smooth = want !== OUT.duckT;
+      OUT.duckT = want;
+      if (OUT.duck !== want) {
+        OUT.duck += (want - OUT.duck) * (want < OUT.duck ? 0.35 : 0.08);
+        if (Math.abs(OUT.duck - want) < 0.01) OUT.duck = want;
+      }
+      app.duck = OUT.duck;
+      OUT.map.forEach((l) => {
+        const was = l.route;
+        const eng = !!l.gain && engineOk(l.ctx) && (ENGINE_OUT || (l.kind === 'voice' && SND.voice > 1));
+        if (eng !== (was === 'engine')) outApply(l);
+        else if (l.kind === 'media' && (smooth || l.route === 'page')) outApply(l, true);
+      });
+      ytVolume();
+    }, 50);
+  }
+  // YouTube plays in its own frame: its player sets the video's sound (and the duck).
+  function ytVolume() {
+    const p = W.p;
+    if (!p || !W.ready || typeof p.setVolume !== 'function') return;
+    const v = Math.round(100 * SND.media * OUT.duck);
+    if (v === W.vol) return;
+    try {
+      p.setVolume(v);
+      if (v === 0 && typeof p.mute === 'function') p.mute();
+      else if (W.vol <= 0 && typeof p.unMute === 'function') p.unMute();
+    } catch (e) {}
+    W.vol = v;
+  }
   function setVol(k, v) {
-    SND[k] = Math.max(0, Math.min(1, v));
+    SND[k] = Math.max(0, Math.min(k === 'voice' ? 1.5 : 1, v));
     store.set('beside.vol.' + k, String(SND[k]));
+    applyVolumes();
+  }
+  function setDuck(on) {
+    SND.duck = !!on;
+    store.set('beside.duck', on ? '1' : '0');
     applyVolumes();
   }
   // A sound lane that holds its place in the call and sends silence.
@@ -699,7 +945,7 @@
     if (!el) return;
     if (!track) { if (el.srcObject) el.srcObject = null; return; }
     if (!el.srcObject || el.srcObject.getAudioTracks()[0] !== track) el.srcObject = new MediaStream([track]);
-    el.muted = false;
+    el.muted = outMuted(el);
     if (el.paused) el.play().catch(() => {});
   }
 
@@ -1151,7 +1397,7 @@
     peek.hidden = true;
     const wait = div('mini-peek fw-wait');
     wait.hidden = true;
-    const snd = soundPanel(d);
+    const snd = soundPanel(d, { noTest: true });
     snd.classList.add('fw-sound');
     snd.hidden = true;
     const bar = div('fw-bar');
@@ -1311,22 +1557,15 @@
     mini.auto = !!on;
     try { navigator.mediaSession.setActionHandler('enterpictureinpicture', on && HAS_MINI ? () => { miniOpen(); } : null); } catch (e) { /* not offered here */ }
   }
-  // Voices and Shared video sliders: one set in the page, one in the faces window, always showing the same.
-  function soundPanel(doc) {
+  // The Sound panel: what you hear, and how your mic is sent. One in the call, one in the faces window and one in
+  // the Sound and mic sheet outside a call; all show the same.
+  function soundPanel(doc, opts) {
+    opts = opts || {};
     const box = doc.createElement('div');
     box.className = 'sound';
-    const cv = doc.createElement('label');
-    cv.className = 'sound-clear';
-    const cb = doc.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = CLEAR.on;
-    cb.addEventListener('change', () => setClear(cb.checked));
-    const cvt = doc.createElement('span');
-    cvt.innerHTML = '<b>Clear voice</b><small>Makes your voice louder and clearer for them. Doesn’t change the video’s sound.</small>';
-    cv.append(cb, cvt);
-    box.appendChild(cv);
-    if (!CAN_VOL) return box; // iPhone sets volume with its own buttons
-    [['voice', 'Voices'], ['media', 'Shared video']].forEach(([k, label]) => {
+    const head = (txt) => { const h = doc.createElement('h3'); h.className = 'sound-h'; h.textContent = txt; return h; };
+    box.appendChild(head('What you hear'));
+    [['voice', 'Their voice', 150], ['media', 'Video sound', 100]].forEach(([k, label, max]) => {
       const row = doc.createElement('label');
       row.className = 'sound-row';
       row.dataset.k = k;
@@ -1334,36 +1573,88 @@
       name.className = 'sound-name';
       name.textContent = label;
       const r = doc.createElement('input');
-      r.type = 'range'; r.min = '0'; r.max = '100'; r.step = '1';
+      r.type = 'range'; r.min = '0'; r.max = String(max); r.step = '1';
       r.value = String(Math.round(SND[k] * 100));
-      r.setAttribute('aria-label', label + ' volume');
+      r.setAttribute('aria-label', label);
       r.addEventListener('input', () => setVol(k, r.value / 100));
       const pct = doc.createElement('span');
       pct.className = 'sound-pct';
       row.append(name, r, pct);
       box.appendChild(row);
     });
+    const dk = doc.createElement('label');
+    dk.className = 'sound-tog';
+    const dcb = doc.createElement('input');
+    dcb.type = 'checkbox';
+    dcb.checked = SND.duck;
+    dcb.addEventListener('change', () => setDuck(dcb.checked));
+    const dt = doc.createElement('span');
+    dt.textContent = 'Lower the video when someone talks';
+    dk.append(dcb, dt);
+    box.appendChild(dk);
     const hint = doc.createElement('p');
     hint.className = 'sound-hint';
     box.appendChild(hint);
+    box.appendChild(head('Your mic'));
+    const modes = doc.createElement('div');
+    modes.className = 'sound-modes';
+    modes.setAttribute('role', 'radiogroup');
+    modes.setAttribute('aria-label', 'How your mic is sent');
+    MODES.forEach((m) => {
+      const b = doc.createElement('button');
+      b.type = 'button';
+      b.className = 'sound-mode';
+      b.dataset.mode = m;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', m === CLEAR.mode ? 'true' : 'false');
+      b.tabIndex = m === CLEAR.mode ? 0 : -1;
+      b.textContent = MODE_TEXT[m][0];
+      b.addEventListener('click', () => setMicMode(m));
+      modes.appendChild(b);
+    });
+    box.appendChild(modes);
+    const say = doc.createElement('p');
+    say.className = 'sound-say';
+    box.appendChild(say);
+    if (!opts.noTest) {
+      const tb = doc.createElement('button');
+      tb.type = 'button';
+      tb.className = 'btn quiet sound-test';
+      tb.textContent = 'Hear myself';
+      const ts = doc.createElement('span');
+      ts.className = 'sound-test-say';
+      ts.setAttribute('aria-live', 'polite');
+      tb.addEventListener('click', () => hearMyself(tb, ts));
+      const tr = doc.createElement('div');
+      tr.className = 'sound-testrow';
+      tr.append(tb, ts);
+      box.appendChild(tr);
+    }
     return box;
   }
   function soundUi() {
     const disp = isGuest ? G.display : H.display;
     const mine = amSharing() && !!disp && disp.getAudioTracks().some((t) => t.readyState === 'live');
-    [$('soundPop'), mini.els && mini.els.snd].filter(Boolean).forEach((b) => {
-      const cb = b.querySelector('.sound-clear input');
-      if (cb && cb.checked !== CLEAR.on) cb.checked = CLEAR.on;
+    [$('soundPop'), $('soundSheetBody'), mini.els && mini.els.snd].filter(Boolean).forEach((b) => {
       b.querySelectorAll('.sound-row').forEach((row) => {
         const k = row.dataset.k;
         const r = row.querySelector('input');
         const n = Math.round(SND[k] * 100);
         if (+r.value !== n) r.value = String(n);
         row.querySelector('.sound-pct').textContent = n + '%';
-        const off = k === 'media' && amSharing();
+        const off = k === 'media' && amSharing() && !W.id;
         r.disabled = off;
         row.classList.toggle('off', off);
       });
+      const dcb = b.querySelector('.sound-tog input');
+      if (dcb && dcb.checked !== SND.duck) dcb.checked = SND.duck;
+      b.querySelectorAll('.sound-mode').forEach((m) => {
+        const on = m.dataset.mode === CLEAR.mode;
+        m.setAttribute('aria-checked', on ? 'true' : 'false');
+        m.tabIndex = on ? 0 : -1;
+      });
+      const say = b.querySelector('.sound-say');
+      if (say) say.textContent = MODE_TEXT[CLEAR.mode][1];
       const h = b.querySelector('.sound-hint');
       if (h) {
         h.textContent = !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
@@ -1372,6 +1663,68 @@
       }
     });
   }
+  // Hear myself: 3 seconds of your mic, played back the way the chosen mode sends it. Works without a call.
+  const HM = { busy: false };
+  async function hearMyself(btn, say) {
+    if (HM.busy) return;
+    HM.busy = true;
+    const mode = CLEAR.mode;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = new AC(); // made inside the tap so it may play
+    ctx.resume().catch(() => {});
+    let own = null;
+    const all = [...document.querySelectorAll('.sound-test')];
+    all.forEach((b) => { b.disabled = true; });
+    const tell2 = (t) => document.querySelectorAll('.sound-test-say').forEach((x) => { x.textContent = t; });
+    try {
+      const live = isGuest ? G.mic : H.mic;
+      const lt = live && live.getAudioTracks()[0];
+      let stream = live;
+      if (!lt || lt.readyState !== 'live') { own = await getOwn('audio', micWant(mode)); stream = own; }
+      // The engine runs at the mic's own rate, as in a call.
+      const rate = trackRate(stream);
+      if (rate && rate !== ctx.sampleRate) { try { const c2 = new AC({ sampleRate: rate }); ctx.close().catch(() => {}); ctx = c2; ctx.resume().catch(() => {}); } catch (e) {} }
+      tell2('Speak now, for 3 seconds.');
+      const src = ctx.createMediaStreamSource(stream);
+      const sp = ctx.createScriptProcessor(4096, 1, 1);
+      const zero = ctx.createGain(); zero.gain.value = 0;
+      const want = Math.round(ctx.sampleRate * 3);
+      const rec = new Float32Array(want);
+      let got = 0;
+      await new Promise((done) => {
+        sp.onaudioprocess = (e) => {
+          const d = e.inputBuffer.getChannelData(0);
+          const k = Math.min(d.length, want - got);
+          rec.set(d.subarray(0, k), got);
+          got += k;
+          if (got >= want) { sp.onaudioprocess = null; done(); }
+        };
+        src.connect(sp); sp.connect(zero); zero.connect(ctx.destination);
+        setTimeout(done, 5000); // an engine that never runs
+      });
+      try { src.disconnect(); sp.disconnect(); } catch (e) {}
+      if (own) { own.getTracks().forEach((t) => t.stop()); own = null; }
+      if (got < want / 2) throw new Error('no sound');
+      tell2('Playing it back.');
+      const y = await renderVoice(rec.subarray(0, got), ctx.sampleRate, mode);
+      const b = ctx.createBuffer(1, y.length, ctx.sampleRate);
+      b.getChannelData(0).set(y);
+      const p = ctx.createBufferSource();
+      p.buffer = b;
+      p.connect(ctx.destination);
+      app.heard = { mode, n: y.length, rate: ctx.sampleRate };
+      await new Promise((done) => { p.onended = done; p.start(); setTimeout(done, 4500); });
+      tell2('That is how you sound with ' + MODE_TEXT[mode][0] + '.');
+    } catch (e) {
+      tell2(e && e.message === 'no sound' ? 'Your mic gave no sound. Try again.' : 'The microphone is blocked. Allow it for this site, then try again.');
+    } finally {
+      if (own) own.getTracks().forEach((t) => t.stop());
+      ctx.close().catch(() => {});
+      all.forEach((b) => { b.disabled = false; });
+      HM.busy = false;
+    }
+  }
+
 
   // ---------- CHAT AND FILES ----------
   // Messages and files ride the call's data link, straight between the browsers; the host passes them on to
@@ -1781,7 +2134,7 @@
       width: '100%', height: '100%',
       playerVars: { playsinline: 1, rel: 0, modestbranding: 1, start: Math.floor(ytWant()), autoplay: W.play ? 1 : 0 },
       events: {
-        onReady: () => { if (W.pid !== id) return; W.ready = true; ytSync(true); },
+        onReady: () => { if (W.pid !== id) return; W.ready = true; W.vol = -1; ytVolume(); outWatch(); ytSync(true); },
         onStateChange: (e) => ytState(e.data),
         onError: (e) => { if (W.pid === id) ytBar(e && (e.data === 101 || e.data === 150) ? 'This video can’t play here: its owner only allows it on YouTube.' : 'YouTube couldn’t play this video.'); },
       },
@@ -2235,9 +2588,9 @@
       const wantMic = !!H.moveTo || !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
       if (wantMic) {
         try {
-          H.mic = await getOwn('audio', MIC);
+          H.mic = await getOwn('audio', micWant(CLEAR.mode));
           H.ctx.resume().catch(() => {}); // allowed now the page uses the mic: a tab opened from a ring has had no click
-          H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
+          H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {} });
           // The engine runs at the mic's own rate: a mic and an engine at different rates crackle.
           const rate = trackRate(H.mic);
           if (rate && rate !== H.ctx.sampleRate) {
@@ -2251,7 +2604,8 @@
           }
           try { H.clear = clearChain(H.ctx, H.mic, { live: () => !H.muted }); H.clear.out.connect(H.micGain); } catch (e) {
             H.clear = null;
-            H.ctx.createMediaStreamSource(H.mic).connect(H.micGain);
+            H.rawSrc = H.ctx.createMediaStreamSource(H.mic);
+            H.rawSrc.connect(H.micGain);
           }
         } catch (e) {
           note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
@@ -2491,11 +2845,11 @@
       if (a && a !== g.voice) {
         g.voice = a;
         g.audio.srcObject = new MediaStream([a]);
-        g.audio.volume = SND.voice;
         if (g.vsrc) { try { g.vsrc.disconnect(); } catch (e) {} }
         try { g.vsrc = H.ctx.createMediaStreamSource(new MediaStream([a])); g.an = analyser(g.vsrc); } catch (e) { g.vsrc = g.an = null; }
         rewire();
       }
+      applyVolumes(); // your volume for their voice (through the engine on iPhone, iPad and Safari)
       if (g.audio.paused) g.audio.play().catch(() => note('Click anywhere on this page to hear ' + (g.name || 'them') + '.', 'stay'));
       hostFace(g);
       if (H.sharer === g.id) roomSound(); // their shared video's sound may have just arrived
@@ -2551,7 +2905,7 @@
     H.guests.delete(id);
     try { if (g.call) g.call.close(); } catch (e) {}
     try { g.conn.close(); } catch (e) {}
-    if (g.audio) { g.audio.srcObject = null; g.audio.remove(); }
+    if (g.audio) { g.audio.srcObject = null; g.audio.remove(); g.audio = null; applyVolumes(); }
     if (g.tile) { const v = g.tile.querySelector('video'); if (v) v.srcObject = null; g.tile.remove(); g.tile = null; }
     [g.vsrc, g.an].forEach((nd) => { if (nd) { try { nd.disconnect(); } catch (e) {} } });
     if (g.vdest && H.micGain) { try { H.micGain.disconnect(g.vdest); } catch (e) {} }
@@ -2816,6 +3170,7 @@
     [H.display, H.mic, H.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
     [H.video, H.blank, H.blankScreen, H.silent].concat(H.blankF).forEach((t) => t && t.stop());
     if (H.clear) { H.clear.close(); H.clear = null; }
+    H.rawSrc = null;
     if (H.ctx) H.ctx.close().catch(() => {});
     H.display = H.mic = H.video = H.ctx = H.sink = H.silent = H.micGain = H.micAn = H.mediaSrc = H.mediaTrack = null;
     H.cam = H.camSlot = H.blank = H.blankScreen = null;
@@ -3048,11 +3403,12 @@
       G.lost = G.dropped = false;
       G.tries = G.quiet = G.reopenedAt = 0;
       // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
-      ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = false; el.play().catch(() => {}); } });
+      ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = outMuted(el); el.play().catch(() => {}); } });
       // Computers that can share back hold two silent sound lanes ready: the mic's (if joining without it) and the
       // shared tab's. The audio engine starts inside the tap, so it is allowed to run.
       // Clear voice needs the engine too, so anyone joining with a mic starts it here.
-      if ((CAN_SHARE || withMic) && !G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
+      // Everyone gets it: your volumes for their voice and the video play through it on iPhone and iPad.
+      if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       if (G.ctx) {
         G.ctx.resume().catch(() => {});
         if (CAN_SHARE && !G.silentA) G.silentA = silentTrack(G.ctx);
@@ -3062,8 +3418,8 @@
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
       if (withMic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
-          G.mic = await getOwn('audio', MIC);
-          G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
+          G.mic = await getOwn('audio', micWant(CLEAR.mode));
+          G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {} });
         } catch (e) {
           note(MIC_BLOCKED, 'stay');
         }
@@ -3371,7 +3727,7 @@
       const el = $(id);
       if (!el || !a || (el.srcObject && el.srcObject.getAudioTracks()[0] === a)) return;
       el.srcObject = new MediaStream([a]);
-      el.muted = false;
+      el.muted = outMuted(el);
       playWithSound(el);
     });
     applyVolumes();
@@ -3458,7 +3814,7 @@
       ch.out.connect(dest);
       G.clear = ch;
       G.clearTrack = dest.stream.getAudioTracks()[0];
-      try { G.clearTrack.contentHint = 'speech'; } catch (e) {}
+      try { G.clearTrack.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {}
       G.clearTrack.enabled = !G.muted;
       G.clearDead = false;
       if (!ctx.besideWatch) {
@@ -3568,10 +3924,10 @@
     const a = G.mic && G.mic.getAudioTracks()[0];
     if (!a || a.readyState !== 'ended') return;
     try {
-      const m = await getOwn('audio', MIC);
+      const m = await getOwn('audio', micWant(CLEAR.mode));
       const t = m.getAudioTracks()[0];
       t.enabled = !G.muted;
-      try { t.contentHint = 'speech'; } catch (e) {}
+      try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {}
       G.mic = m;
       if (G.clear) { G.clear.swap(m); G.clearDead = true; } // a restarted iPhone mic can feed the engine silence
       const pc = G.call && G.call.peerConnection;
@@ -3872,6 +4228,26 @@
       inv.addEventListener('click', (e) => { if (e.target === inv) invite(false); });
       inv.addEventListener('keydown', (e) => { if (e.key === 'Escape') invite(false); });
     }
+    // Calls: "Sound and mic" opens the Sound panel outside a call, to set it up and try Hear myself.
+    const ss = $('soundSheet');
+    let ssFrom = null;
+    const soundSheet = (open, from) => {
+      if (!ss) return;
+      ss.hidden = !open;
+      if (open) {
+        ssFrom = from || null;
+        const body = $('soundSheetBody');
+        if (body && !body.firstChild) body.appendChild(soundPanel(document));
+        soundUi();
+        const x = $('soundClose'); if (x) x.focus();
+      } else if (ssFrom && ssFrom.focus) ssFrom.focus();
+    };
+    document.querySelectorAll('[data-sound-open]').forEach((b) => b.addEventListener('click', () => soundSheet(true, b)));
+    on('soundClose', 'click', () => soundSheet(false));
+    if (ss) {
+      ss.addEventListener('click', (e) => { if (e.target === ss) soundSheet(false); });
+      ss.addEventListener('keydown', (e) => { if (e.key === 'Escape') soundSheet(false); });
+    }
     on('boardBtn', 'click', () => boardSheet(true));
     on('nameInput', 'change', () => { if (boardOn && app.state === 'join') boardPlace('join'); });
     on('boardClose', 'click', () => boardSheet(false));
@@ -3940,8 +4316,9 @@
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => {
       const vo = $('voice'), me = $('media');
-      if (me && me.srcObject) { me.muted = false; me.play().catch(() => {}); }
-      if (vo) { vo.muted = false; vo.play().then(tapHide, () => {}); }
+      if (me && me.srcObject) { me.muted = outMuted(me); me.play().catch(() => {}); }
+      if (vo) { vo.muted = outMuted(vo); vo.play().then(tapHide, () => {}); }
+      if (G.ctx && G.ctx.state === 'suspended') G.ctx.resume().catch(() => {});
       wakeControls();
     });
     on('checkBtn', 'click', runChecks);
@@ -4031,7 +4408,7 @@
     if (window.Peer) whenNet(() => setTimeout(() => moveProbe(moveFound), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, clearNodes, clearGate, CLEAR_TUNE, W, ytWatch, ytClose }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearEss, CLEAR_TUNE, FOCUS_TUNE, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
