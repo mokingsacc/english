@@ -87,7 +87,7 @@
   try { theirName = cleanName(decodeURIComponent((hashM && hashM[2]) || '')); } catch (e) { theirName = ''; }
 
   // ---------- UI helpers ----------
-  const app = { state: '', log: [], states: [], guestPeers: 0, hostPeers: 0 };
+  const app = { state: '', log: [], states: [], guestPeers: 0, hostPeers: 0, mv: [] };
   window.__beside = app; // for the automated tests
   netReady(); // ask the own call server early, so it's known by the time someone presses a button
   // Not in a call (start, join, ended): the tabs. In a call (waiting, live, watching): the call, full screen.
@@ -2569,6 +2569,11 @@
       return;
     }
     H.starting = true;
+    H.gen = (H.gen || 0) + 1; // this start: an answer meant for an earlier start is ignored
+    H.probeAgain = false;
+    H.checked = false;
+    H.liveSince = 0;
+    H.ownDown = false;
     setStartBusy(true);
     try {
       // Audio engine first, inside the click, so Safari lets it run. Each guest gets their own voice mix: your
@@ -2652,7 +2657,20 @@
     text('liveHint', 'Getting your link ready…');
     if (!netReady()) { const code = H.code; NET.p.then(() => { if (H.code === code && !H.stopping && app.state === 'live') openHostPeer(); }); return; }
     if (H.moveTo && !H.moveTo.sent) { H.moveTo.sent = true; H.fast = 40; text('liveHint', 'Moving the call here…'); moveAsk(); }
-    if (NET.own && !H.spare) openSparePeer();
+    // Another of my devices was live a moment ago: ask it first, before claiming the link, so this one never
+    // takes the call from it (a blip on that device's line would otherwise free the link for a second or two).
+    // A live device answers in well under a second; a device that has ended never answers, so wait 2 s at most.
+    if (!H.moveTo && !H.checked && MV.liveAt && Date.now() - MV.liveAt < 5 * 60000) {
+      H.checked = true;
+      const gen = H.gen, t0 = Date.now();
+      moveProbe((r) => {
+        app.mv.push({ at: t0, ms: Date.now() - t0, live: r ? !!r.live : null, first: true });
+        if (H.gen !== gen || app.hostReady || app.state !== 'live' || H.stopping) return;
+        if (r && r.live) { hostCleanup(); show('idle'); MV.dismissed = false; moveFound(r); return; }
+        openHostPeer();
+      }, 2000);
+      return;
+    }
     let wasOpen = false;
     const peer = new Peer(PREFIX + H.code, opts());
     app.hostPeers++;
@@ -2660,10 +2678,16 @@
     peer.on('open', () => {
       if (H.peer !== peer) return;
       wasOpen = true;
+      H.ownDown = false;
+      MV.liveAt = 0; // the link is ours now: what was live elsewhere has ended or moved here
+      if (!H.liveSince) H.liveSince = Date.now();
       H.idRetries = 0;
       H.fast = 0;
       H.moveTo = null;
       app.hostReady = true;
+      // The spare link on the free server opens once the own server gave us the link (or can't be reached):
+      // before that another of my devices may hold it, and a spare must never take guests for a call that isn't ours.
+      if (NET.own && !H.spare) openSparePeer();
       text('liveHint', '');
       if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) {
         // Ring them: if they are already waiting in the room, they come straight in, so give them a moment and
@@ -2678,18 +2702,23 @@
       if (moveConn(conn)) return;
       hostKnock(conn);
     });
+    // Back on the line quickly (the link is free for anyone while we're off it), then every 1.5 s.
+    let lostAt = 0;
     peer.on('disconnected', () => {
       if (H.peer !== peer || H.stopping || peer.destroyed) return;
+      const quick = Date.now() - lostAt > 10000;
+      lostAt = Date.now();
       setTimeout(() => {
         if (H.peer === peer && !H.stopping && !peer.destroyed && peer.disconnected) { try { peer.reconnect(); } catch (e) {} }
-      }, 1500);
+      }, quick ? 250 : 1500);
     });
     peer.on('error', (e) => {
       if (H.peer !== peer || H.stopping) return;
       const t = e && e.type;
       if (t === 'unavailable-id') {
-        // Our own session after a Wi-Fi blip: PeerJS keeps the calls and 'disconnected' retries.
-        if (wasOpen) { text('liveHint', 'Reconnecting to the call server…'); return; }
+        // Our own session after a Wi-Fi blip: PeerJS keeps the calls and 'disconnected' retries. If another of
+        // my devices took the link during the blip, the call that started first keeps it: ask that one to step back.
+        if (wasOpen) { text('liveHint', 'Reconnecting to the call server…'); askYield(); return; }
         // Moving the call here: the other device is letting go of the link right now.
         if (H.fast > 0) {
           H.fast--;
@@ -2698,10 +2727,17 @@
           return;
         }
         if (H.otherTabLive) { note(OTHER_TAB, 'stay'); hostStop(); return; }
-        // The first time: is it live on another of my devices? Then offer to move it here instead of waiting.
-        if (!H.idRetries) {
+        // Is it live on another of my devices? Then offer to move it here instead of waiting. The answer can
+        // take longer than one claim attempt (2.5 s), so it belongs to this start, not to this attempt; with no
+        // answer at all it asks again on the next attempt.
+        if (!H.idRetries || H.probeAgain) {
+          H.probeAgain = false;
+          const gen = H.gen, t0 = Date.now();
           moveProbe((r) => {
-            if (!r || !r.live || H.peer !== peer || app.hostReady || app.state !== 'live') return;
+            app.mv.push({ at: t0, ms: Date.now() - t0, live: r ? !!r.live : null, gen, now: H.gen, ready: !!app.hostReady, state: app.state });
+            if (H.gen !== gen || app.hostReady || app.state !== 'live' || H.stopping) return;
+            if (!r) { H.probeAgain = true; return; }
+            if (!r.live) return;
             hostCleanup();
             show('idle');
             MV.dismissed = false;
@@ -2722,6 +2758,10 @@
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
       } else if (NET_ERR.test(t || '')) {
         text('liveHint', 'Can’t reach the call server. Trying again… Anyone already in the call stays connected.');
+        // The own server is down: the spare on the free server carries the call meanwhile (there, too, the link
+        // is only ours if no other device holds it).
+        if (!wasOpen) H.ownDown = true;
+        if (NET.own && !H.spare) openSparePeer();
         // A server that never answered leaves PeerJS destroyed: start a fresh one.
         setTimeout(() => { if (H.peer === peer && !H.stopping && app.state === 'live' && peer.destroyed) openHostPeer(); }, 3000);
       }
@@ -2754,7 +2794,7 @@
       }
     }, ms);
     peer.on('connection', (conn) => {
-      if (H.spare !== peer) { try { conn.close(); } catch (e) {} return; }
+      if (H.spare !== peer || (!app.hostReady && !H.ownDown)) { try { conn.close(); } catch (e) {} return; }
       if (moveConn(conn)) return;
       hostKnock(conn);
     });
@@ -3206,11 +3246,12 @@
   //        is coming, stops hosting (which ends any screen share it was running) and frees the link; the new one
   //        claims it with quick retries; the guests knock again by themselves.
   //  guest: the new device joins first (with {move:1}); once it is in, the host tells the old device to leave.
-  const MV = { probing: false, dismissed: false, cam: false, away: false };
-  function moveProbe(then) {
-    if (MV.probing || !window.Peer || !roomy()) return;
+  const MV = { probing: false, waiting: [], dismissed: false, cam: false, away: false, liveAt: 0, yieldAt: 0 };
+  function moveProbe(then, ms) {
+    if (MV.probing) { if (then) MV.waiting.push(then); return; } // one probe at a time: share its answer
+    if (!window.Peer || !roomy()) { if (then) then(null); return; }
     const nm = isGuest ? cleanName(store.get('beside.name') || '') : '';
-    if (isGuest && !nm) return; // no name yet: nothing to match a guest's other device by
+    if (isGuest && !nm) { if (then) then(null); return; } // no name yet: nothing to match a guest's other device by
     const target = isGuest ? hostId : PREFIX + (H.code || hostCode());
     MV.probing = true;
     let p = null;
@@ -3219,19 +3260,26 @@
       MV.probing = false;
       clearTimeout(t);
       setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 200);
-      if (then) then(r);
+      const all = [then].concat(MV.waiting.splice(0));
+      all.forEach((f) => { if (f) f(r); });
     };
-    const t = setTimeout(() => done(null), 5000);
+    const t = setTimeout(() => done(null), ms || 5000);
+    const t0 = Date.now(), tr = { at: t0 };
+    MV.trace = tr;
     try { p = new Peer(opts()); } catch (e) { done(null); return; }
     p.on('open', () => {
+      tr.open = Date.now() - t0;
       const c = p.connect(target, { reliable: true, metadata: { beside: 'probe', as: isGuest ? 'guest' : 'host', name: nm } });
-      c.on('data', (d) => { if (d && d.t === 'probe') done(d); });
-      c.on('error', () => done(null));
+      c.on('open', () => { tr.conn = Date.now() - t0; });
+      c.on('data', (d) => { tr.data = Date.now() - t0; if (d && d.t === 'probe') done(d); });
+      c.on('error', (e) => { tr.cerr = (e && e.type) || 'x'; done(null); });
     });
-    p.on('error', () => done(null));
+    p.on('error', (e) => { tr.perr = (e && e.type) || 'x'; done(null); });
   }
   function roomy() { return isGuest ? !!guestCode : true; }
   function moveFound(r) {
+    // Seen live elsewhere: a Start here asks it first. (Not while this device holds the call: then it was us.)
+    if (r && r.live && !isGuest && ['idle', 'ended'].includes(app.state) && !app.hostReady) MV.liveAt = Date.now();
     if (!r || !r.live || MV.dismissed) return;
     if (isGuest ? !r.here || !['join', 'ended'].includes(app.state) : !['idle', 'ended'].includes(app.state)) return;
     MV.cam = !!r.cam;
@@ -3243,13 +3291,28 @@
   // The live device: a probe or a move request on its link (never counted as a guest).
   function moveConn(conn) {
     const m = conn.metadata;
-    if (!m || (m.beside !== 'probe' && m.beside !== 'move')) return false;
+    if (!m || (m.beside !== 'probe' && m.beside !== 'move' && m.beside !== 'yield')) return false;
     conn.on('open', () => {
       if (m.beside === 'probe') {
         const nm = cleanName(m.name || '').toLowerCase();
         const same = m.as === 'guest' && nm ? [...H.guests.values()].find((g) => g.live && (g.name || '').toLowerCase() === nm) : null;
         tell(conn, { t: 'probe', live: app.state === 'live' && !!app.hostReady, here: m.as === 'host' || !!same, cam: m.as === 'host' ? !!H.cam : !!(same && same.camOn) });
         setTimeout(() => { try { conn.close(); } catch (e) {} }, 1500);
+      } else if (m.beside === 'yield') {
+        // My other device has had this call since before this one took the link (its line blipped): step back.
+        const mine = H.liveSince || Date.now();
+        const back = m.as === 'host' && app.state === 'live' && +m.since > 0 && +m.since < mine;
+        tell(conn, { t: 'yield', ok: back });
+        if (back) {
+          app.mv.push({ yielded: Date.now(), since: +m.since, mine });
+          setTimeout(() => {
+            if (app.state !== 'live') return;
+            hostCleanup();
+            show('idle');
+            MV.dismissed = false;
+            moveFound({ live: true, here: true, cam: !!m.cam });
+          }, 50);
+        }
       } else if (m.as === 'host' && app.state === 'live') {
         // Only another host device of this room asks this; a guest's other device joins instead (see guestConnect).
         tell(conn, { t: 'moving' });
@@ -3268,6 +3331,23 @@
       MV.away = true;
       ended('Moved to your other device.', 'The call carries on there.', 'Bring it back');
     }, 60);
+  }
+  // The live device, whose link another of my devices took while its line blipped: ask that one to step back
+  // (at most once every 3 s); its own reconnect then gets the link again.
+  function askYield() {
+    if (!H.liveSince || Date.now() - (MV.yieldAt || 0) < 3000) return;
+    MV.yieldAt = Date.now();
+    let p = null;
+    const bye = () => setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 300);
+    try { p = new Peer(opts()); } catch (e) { return; }
+    p.on('open', () => {
+      const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'yield', as: 'host', since: H.liveSince, cam: !!H.cam } });
+      c.on('data', bye);
+      c.on('close', bye);
+      c.on('error', bye);
+    });
+    p.on('error', bye);
+    setTimeout(bye, 4000);
   }
   // The new device: ask the live one to hand over, then claim the link (openHostPeer retries quickly).
   function moveAsk() {
@@ -4406,10 +4486,13 @@
       if (bc) bc.postMessage('live?');
     }
     // Already in this call on another device? Offer to move it here.
-    if (window.Peer) whenNet(() => setTimeout(() => moveProbe(moveFound), 400));
+    // Is the call live on another of my devices? A probe that got no answer (now and then the first one doesn't)
+    // asks again, twice.
+    const bootProbe = (n) => moveProbe((r) => { if (!r && n < 2 && ['idle', 'join', 'ended'].includes(app.state)) setTimeout(() => bootProbe(n + 1), 1500); else moveFound(r); });
+    if (window.Peer) whenNet(() => setTimeout(() => bootProbe(0), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearEss, CLEAR_TUNE, FOCUS_TUNE, W, ytWatch, ytClose }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearEss, CLEAR_TUNE, FOCUS_TUNE, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
