@@ -123,7 +123,7 @@
   // Plans (Say it, calendar, to-dos), Hearts (send one, history).
   function boardMountNow() {
     window.BesideBoard.mount($('boardMount'), {
-      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', go: (t) => setTab(t), onRender: boardRendered,
+      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered,
       targets: { hello: $('bHello'), skies: $('bSkies'), homeThink: $('bHomeThink'), countdown: $('bHomeCount'), next: $('bHomeNext'), plans: $('boardMount'), hearts: $('bHearts'), note: $('bNote'), shared: $('bShared') },
     });
   }
@@ -193,6 +193,8 @@
       p.classList.remove('tab-in');
       void p.offsetWidth;
       p.classList.add('tab-in');
+      // Once it has slid in, drop the class, so a later copy of this tab (the TV opening) never replays it.
+      p.addEventListener('animationend', function done(e) { if (e.target !== p) return; p.classList.remove('tab-in'); p.removeEventListener('animationend', done); });
     }
     if (prev !== name) window.scrollTo(0, tabScroll[name] || 0);
   }
@@ -224,7 +226,9 @@
     [c, ...c.querySelectorAll('*')].forEach((x) => {
       if (x.tagName === 'pattern') return;
       ['id', 'data-state', 'data-shell', 'data-check-open', 'data-go', 'for', 'name'].forEach((a) => x.removeAttribute(a));
-      if (x.classList) x.classList.remove('ring-me');
+      if (x.classList) x.classList.remove('ring-me', 'tab-in');
+      // A copy of a busy button would show greyed out; the picture should look like the page did.
+      if ('disabled' in x) x.disabled = false;
     });
     c.setAttribute('aria-hidden', 'true');
     c.inert = true;
@@ -240,10 +244,16 @@
       const bar = document.querySelector('.tabbar');
       return { panel: quietCopy(panel), panelRect: rectOf(pr), bar: bar ? quietCopy(bar) : null, screen: rectOf(scr.getBoundingClientRect()), tv: true };
     }
+    // Safari does not focus a tapped button, so the button's place is noted when the finger goes down.
     const a = document.activeElement;
-    const r = a && a !== document.body && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
+    const r = lastTap && Date.now() - lastTap.at < 4000 ? lastTap.r : a && a !== document.body && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
     return { screen: r && r.width ? rectOf(r) : { left: innerWidth / 2 - 60, top: innerHeight / 2 - 40, width: 120, height: 80 } };
   }
+  let lastTap = null;
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('button') : null;
+    lastTap = b ? { r: b.getBoundingClientRect(), at: Date.now() } : null;
+  }, true);
   const clip = (r) => 'inset(' + Math.max(0, r.top).toFixed(1) + 'px ' + Math.max(0, innerWidth - r.left - r.width).toFixed(1) + 'px ' + Math.max(0, innerHeight - r.top - r.height).toFixed(1) + 'px ' + Math.max(0, r.left).toFixed(1) + 'px round ' + (r.round || 6) + 'px)';
   const FULL = () => ({ left: 0, top: 0, width: innerWidth, height: innerHeight, round: 0.01 });
   let tvFx = null;
@@ -715,7 +725,32 @@
   // ---------- VIEW (one call stage for both roles) ----------
   // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
   // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
-  const V = { pin: '' };
+  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false };
+  // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
+  // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
+  const LAYOUT_ICON = {
+    split: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg>',
+    focus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="13" y="13" width="6" height="5" rx="1.2" fill="currentColor"/></svg>',
+  };
+  function setLayout(mode, focus) {
+    V.mode = mode === 'focus' ? 'focus' : 'split';
+    if (focus) V.focus = focus;
+    store.set('beside.layout', V.mode);
+    layout();
+  }
+  function layoutButton() {
+    const b = $('layoutBtn');
+    if (!b) return;
+    b.hidden = !V.pair;
+    const toFocus = V.mode === 'split';
+    const lab = toFocus ? 'Focus: show one of you big' : 'Split: show you both, half and half';
+    if (b.dataset.to !== (toFocus ? 'focus' : 'split')) {
+      b.dataset.to = toFocus ? 'focus' : 'split';
+      b.innerHTML = LAYOUT_ICON[toFocus ? 'focus' : 'split'];
+      b.setAttribute('aria-label', lab);
+      b.title = toFocus ? 'Focus' : 'Split';
+    }
+  }
   const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
   function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
   function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
@@ -803,7 +838,15 @@
     const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
     V.auto = auto ? auto.dataset.key : '';
     let big = auto;
-    if (!alone && V.pin) {
+    // Just the two of you, your camera on, nothing shared: Split or Focus. More people, a shared screen, a video
+    // together or a voice call keep the usual view.
+    const them = others[0] || $('avatarTile');
+    V.pair = !alone && !screen && !!self && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1) && !(!!W.id && !!$('ytBox') && !$('ytBox').hidden);
+    let halves = null;
+    if (V.pair) {
+      if (V.mode === 'split') { halves = [them, self]; big = null; }
+      else big = V.focus === 'self' ? self : them;
+    } else if (!alone && V.pin) {
       const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
       if (p) big = p; else V.pin = '';
     }
@@ -811,17 +854,19 @@
     const ytOn = !!W.id && !!$('ytBox') && !$('ytBox').hidden;
     if (ytOn) big = null;
     // The faces window is open: the faces are there, so the shared screen here stays clear.
-    const smalls = mini.win && big === screen ? [] : visible.filter((el) => el !== big);
+    const smalls = halves ? [] : V.pair ? [big === self ? them : self] : mini.win && big === screen ? [] : visible.filter((el) => el !== big);
     root.dataset.faces = ytOn && smalls.length ? '1' : '';
+    root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
     root.querySelectorAll('.tile').forEach((el) => {
-      if (el === big || smalls.includes(el)) return;
+      if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
       el.hidden = true;
-      el.classList.remove('big', 'small');
+      el.classList.remove('big', 'small', 'half');
       if (el.parentNode !== park) park.appendChild(el);
     });
-    const put = (el, box, i) => {
+    const put = (el, box, i, half) => {
       el.hidden = false;
-      el.classList.toggle('big', box === bigSlot);
+      el.classList.toggle('half', !!half);
+      el.classList.toggle('big', !half && box === bigSlot);
       el.classList.toggle('small', box !== bigSlot);
       if (box.children[i] !== el) {
         box.insertBefore(el, box.children[i] || null);
@@ -829,8 +874,10 @@
         if (v && v.srcObject) v.play().catch(() => {}); // iPhone can pause a moved video
       }
     };
-    if (big) put(big, bigSlot, 0);
+    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, true));
+    else if (big) put(big, bigSlot, 0);
     smalls.forEach((el, i) => put(el, bub, i));
+    layoutButton();
     // their initial (or a plain figure) while their camera is off
     const ini = $('avatarInitial');
     if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
@@ -853,6 +900,14 @@
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
   function swapTap(e) {
+    // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
+    if (V.pair) {
+      const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
+      if (!p) return;
+      if (p.classList.contains('half')) setLayout('focus', p.dataset.key === 'self' ? 'self' : 'them');
+      else setLayout('split');
+      return;
+    }
     const t = e.target && e.target.closest && e.target.closest('.tile.small');
     if (!t) return;
     const k = t.dataset.key;
@@ -2206,7 +2261,12 @@
       H.idRetries = 0;
       app.hostReady = true;
       text('liveHint', '');
-      if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) { H.ringOnReady = 0; ringThem($('ringBtn')); }
+      if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) {
+        // Ring them: if they are already waiting in the room, they come straight in, so give them a moment and
+        // only ring when nobody has arrived.
+        H.ringOnReady = 0;
+        setTimeout(() => { if (H.peer === peer && !H.guests.size && app.state === 'live') ringThem($('ringBtn')); }, 2500);
+      }
       if (bc) bc.postMessage('live!');
     });
     peer.on('connection', (conn) => {
@@ -2722,9 +2782,17 @@
     try {
       await navigator.clipboard.writeText(link);
     } catch (e) {
-      const el = $('linkText');
-      if (el) { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+      // Older browsers: copy from a box of our own, so it works whichever screen is showing.
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.setAttribute('readonly', '');
+      ta.setAttribute('aria-hidden', 'true');
+      Object.assign(ta.style, { position: 'fixed', top: '0', left: '0', width: '1px', height: '1px', opacity: '0', fontSize: '16px' });
+      document.body.append(ta);
+      ta.select();
+      try { ta.setSelectionRange(0, link.length); } catch (e3) {}
       try { document.execCommand('copy'); } catch (e2) {}
+      ta.remove();
     }
     const lab = btn && btn.querySelector('.label-t');
     if (lab) { lab.textContent = 'Copied'; setTimeout(() => { lab.textContent = 'Copy'; }, 1500); }
@@ -3583,6 +3651,7 @@
     on('boardSheet', 'click', (e) => { if (e.target === $('boardSheet')) boardSheet(false); });
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
+    on('layoutBtn', 'click', () => setLayout(V.mode === 'split' ? 'focus' : 'split'));
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
     on('gCamBtn', 'click', guestCam);
     on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else guestShare(); });
@@ -3679,7 +3748,7 @@
     ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (inCall()) wakeControls(e); }, { passive: true, capture: true }));
     // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
-      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles');
+      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #bigSlot .tile.half');
       if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); }
       wokeAt = 0;
     }, true);

@@ -475,9 +475,18 @@
 
   // ---------- the app's tabs: each part goes where the app asks (Home, Plans, Hearts) ----------
   const FIG = () => window.BesideFigures || null;
-  const whoMe = () => (myZone() === LA ? 'semal' : 'mo');
+  // Who is who comes from the app: the room's host is Mo, the guest is Semal. Only with no role (the board's own
+  // page) does the clock decide.
+  const whoMe = () => (S && S.role === 'host' ? 'mo' : S && S.role === 'guest' ? 'semal' : myZone() === LA ? 'semal' : 'mo');
   const whoThem = () => (whoMe() === 'mo' ? 'semal' : 'mo');
   const zoneOf = (who) => (who === 'semal' ? LA : LONDON);
+  // The figure for whoever sent something, picked by their name.
+  const whoOf = (from) => {
+    const n = String(from || '').trim().toLowerCase();
+    const F = FIG();
+    if (F) { const hit = Object.keys(F.NAME).find((k) => F.NAME[k].toLowerCase() === n); if (hit) return hit; }
+    return isMe(from) ? whoMe() : whoThem();
+  };
   const placeholderName = (n) => !n || /^(host|guest|someone)$/i.test(n.trim());
   // Their name: from the app, else the latest name on the board that isn't mine, else the figure's own name.
   function theirName(b) {
@@ -625,12 +634,14 @@
   // The two skies (tabs): built once, then only words, colours and the weather's little picture change, so the
   // figures keep moving smoothly.
   const wxKind = (c) => (typeof c !== 'number' ? '' : c <= 1 ? 'clear' : c <= 3 ? 'cloud' : c <= 48 ? 'fog' : c <= 67 || (c >= 80 && c <= 82) || c >= 95 ? 'rain' : 'snow');
+  let decoSeq = 0;
   const DECO = {
     sun: '<svg class="bb-deco bb-sun" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="34" fill="#EDBE7A"/></svg>',
     moon: '<svg class="bb-deco bb-moon" viewBox="0 0 80 80" aria-hidden="true"><path d="M52 10 A30 30 0 1 0 70 52 A24 24 0 1 1 52 10 Z" fill="#F1E6C8"/></svg><svg class="bb-deco bb-stars" viewBox="0 0 160 60" aria-hidden="true"><circle cx="20" cy="14" r="1.6" fill="#F1E6C8"/><circle cx="64" cy="30" r="1.2" fill="#F1E6C8"/><circle cx="110" cy="10" r="1.4" fill="#F1E6C8"/><circle cx="138" cy="40" r="1.1" fill="#F1E6C8"/><circle cx="40" cy="48" r="1" fill="#F1E6C8"/></svg>',
     cloud: '<svg class="bb-deco bb-cloud" viewBox="0 0 120 50" aria-hidden="true"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z" fill="currentColor"/></svg>',
-    rain: '<svg class="bb-deco bb-rain" viewBox="0 0 171 60" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 10l-4 9M44 24l-4 9M70 6l-4 9M100 20l-4 9M128 8l-4 9M152 26l-4 9M32 42l-4 9M140 44l-4 9"/></svg>',
-    snow: '<svg class="bb-deco bb-snow" viewBox="0 0 171 60" aria-hidden="true" fill="currentColor"><circle cx="20" cy="12" r="2"/><circle cx="54" cy="30" r="1.6"/><circle cx="88" cy="8" r="2"/><circle cx="120" cy="26" r="1.8"/><circle cx="150" cy="10" r="1.6"/><circle cx="36" cy="48" r="1.8"/><circle cx="132" cy="50" r="2"/></svg>',
+    // Rain and snow fill the whole card at any size: a tile of drops repeated, never stretched.
+    rain: () => { const id = 'bbrain' + (++decoSeq); return '<svg class="bb-deco bb-rain" aria-hidden="true"><defs><pattern id="' + id + '" width="58" height="46" patternUnits="userSpaceOnUse"><path d="M12 4l-4 9M40 18l-4 9M26 32l-4 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></pattern></defs><rect width="100%" height="100%" fill="url(#' + id + ')"/></svg>'; },
+    snow: () => { const id = 'bbsnow' + (++decoSeq); return '<svg class="bb-deco bb-snow" aria-hidden="true"><defs><pattern id="' + id + '" width="56" height="50" patternUnits="userSpaceOnUse"><g fill="currentColor"><circle cx="10" cy="8" r="2"/><circle cx="38" cy="20" r="1.6"/><circle cx="22" cy="38" r="1.8"/></g></pattern></defs><rect width="100%" height="100%" fill="url(#' + id + ')"/></svg>'; },
   };
   const WX_ICON = {
     clear: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -692,8 +703,8 @@
         const deco = [];
         if (night) deco.push(DECO.moon); else if (!grey) deco.push(DECO.sun);
         if (kind === 'cloud' || kind === 'fog') deco.push(DECO.cloud);
-        if (kind === 'rain') deco.push(DECO.rain);
-        if (kind === 'snow') deco.push(DECO.snow);
+        if (kind === 'rain') deco.push(DECO.rain());
+        if (kind === 'snow') deco.push(DECO.snow());
         r.deco.innerHTML = deco.join('');
       }
     });
@@ -922,7 +933,9 @@
       const dn = fmt('UTC', { day: 'numeric' }).format(noon);
       const long = fmt('UTC', { weekday: 'long', day: 'numeric', month: 'long' }).format(noon);
       days.push(h('button', { type: 'button', class: 'bb-wday' + (i === 0 ? ' bb-today' : '') + (has.has(k) ? ' bb-has' : ''), 'aria-label': long + (has.has(k) ? ', has plans' : ''), onclick: () => {
-        const g = ui.calList.querySelector('[data-day="' + k + '"]');
+        let g = ui.calList.querySelector('[data-day="' + k + '"]');
+        // Plans on that day sit in the "Show more days" fold: open it, then go to them.
+        if (!g && has.has(k) && !S.folds.calMore) { S.folds.calMore = true; render(); g = ui.calList.querySelector('[data-day="' + k + '"]'); }
         if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
         else ui.calAddOn(zoned(y, mo, d + i, 12, 0, myZone()));
       } }, h('span', { class: 'bb-wd', text: wd }), h('span', { class: 'bb-dn', text: dn }), h('i', { class: 'bb-wdot' })));
@@ -933,6 +946,9 @@
     const ui = S.ui;
     const f = FIG();
     ui.thHistBody.replaceChildren();
+    // One heart so far: it is already on show above, so there is nothing earlier to list.
+    const card = ui.thHistBody.closest('.bb-card');
+    if (card) card.hidden = !rest.length && b.thinks.length > 0;
     if (!rest.length) {
       ui.thHistBody.append(h('div', { class: 'bb-empty bb-empty-sofa' }, h('div', { class: 'bb-sofa', html: f ? f.sofa() : '' }),
         h('p', { class: 'bb-empty-h', text: S.loaded ? 'No hearts yet' : 'Opening the board…' }), S.loaded ? h('p', { text: 'Send the first one. It takes one tap.' }) : null));
@@ -940,8 +956,8 @@
     }
     ui.thHistBody.append(h('div', { class: 'bb-list' }, rest.map((t) => h('div', { class: 'bb-row bb-th-row' },
       t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' }))
-        : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + (isMe(t.from) ? whoMe() : whoThem()), html: f ? f.figure(isMe(t.from) ? whoMe() : whoThem(), { pose: 'head', label: '' }) : I.heart }),
-      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ' · ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)))));
+        : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + whoOf(t.from), html: f ? f.figure(whoOf(t.from), { pose: 'head', label: '' }) : I.heart }),
+      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ', ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)))));
   }
   function homeSplit(b, now) {
     const ui = S.ui;
@@ -953,9 +969,10 @@
     ui.hello.lastChild.textContent = hi + (placeholderName(S.name) ? '' : ', ' + S.name);
     // The latest heart from them, with a quick one back
     const top = b.thinks.filter((t) => !isMe(t.from))[0];
-    const them = whoThem();
-    const nm = theirName(b) || (f ? f.NAME[them] : 'They');
-    const key = (top ? top.id + ago(top.at) : '-') + nm + S.loaded;
+    const them = top ? whoOf(top.from) : whoThem();
+    const nm = theirName(b) || (f ? f.NAME[whoThem()] : 'They');
+    const from = top ? top.from : nm;
+    const key = (top ? top.id + ago(top.at) : '-') + nm + them + S.loaded;
     if (ui.hThink.dataset.k !== key) {
       ui.hThink.dataset.k = key;
       const quick = h('button', { type: 'button', class: 'bb-heart-btn', 'aria-label': 'Send a heart', html: I.heart, onclick: () => {
@@ -967,10 +984,10 @@
         setTimeout(() => { quick.disabled = false; quick.innerHTML = I.heart; quick.setAttribute('aria-label', 'Send a heart'); }, 2500);
       } });
       ui.hThink.replaceChildren(
-        h('button', { type: 'button', class: 'bb-hthink-open', onclick: () => go('hearts'), 'aria-label': top ? nm + ' is thinking of you, ' + ago(top.at) + '. Open Hearts' : 'Open Hearts' },
+        h('button', { type: 'button', class: 'bb-hthink-open', onclick: () => go('hearts'), 'aria-label': top ? from + ' is thinking of you, ' + ago(top.at) + '. Open Hearts' : 'Open Hearts' },
           h('span', { class: 'bb-hthink-fig bb-fig-' + them, html: f ? f.figure(them, { pose: 'head', label: '' }) : I.heart }),
           h('span', { class: 'bb-hthink-words' },
-            h('b', { text: top ? nm + ' is thinking of you' : S.loaded ? 'Send a heart' : 'Thinking of you' }),
+            h('b', { text: top ? from + ' is thinking of you' : S.loaded ? 'Send a heart' : 'Thinking of you' }),
             h('span', { class: 'bb-sub', text: top ? ago(top.at) : 'Let ' + nm + ' know you’re thinking of them.' }),
             top && top.note ? h('span', { class: 'bb-hthink-note', text: top.note }) : null)),
         quick);
@@ -982,7 +999,8 @@
       ...(up ? [h('b', { class: 'bb-hnext-title', text: up.title + ', ' + fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short', day: 'numeric', month: 'short' }).format(up.at) }),
         h('span', { class: 'bb-hnext-times' }, ...(up.allDay ? [h('span', { text: 'All day' })] : ZONES.map(({ z, label }) => h('span', { text: timeIn(up.at, z) + ' ' + label }))))]
         : [h('b', { class: 'bb-hnext-title', text: S.loaded ? 'Nothing planned yet' : 'Opening the board…' }), h('span', { class: 'bb-hnext-times' }, h('span', { text: 'Say it on Plans to add one.' }))]));
-    ui.hNext.setAttribute('aria-label', 'Next plan: ' + ui.hNext.textContent.replace(/^Next plan/, '') + '. Open Plans');
+    const said = [...ui.hNext.querySelectorAll('.bb-hnext-title, .bb-hnext-times > span')].map((x) => x.textContent.trim().replace(/[.]$/, '')).filter(Boolean);
+    ui.hNext.setAttribute('aria-label', 'Next plan: ' + said.join(', ') + '. Open Plans');
     if (S.t.shared) S.t.shared.textContent = 'Shared with ' + nm;
   }
 
@@ -1043,6 +1061,8 @@
 .bboard .bb-seg{display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:999px;background:var(--bb-paper-3);box-shadow:inset 0 0 0 1px var(--bb-line)}
 .bboard .bb-seg button{min-height:40px;border-radius:999px;font-size:15px;font-weight:600;color:var(--bb-ink-2)}
 .bboard .bb-seg button[aria-pressed="true"]{background:var(--bb-paper);color:var(--bb-ink);box-shadow:0 2px 8px -4px rgba(0,0,0,.4)}
+.bboard.bb-tabs .bb-seg button{min-height:44px}
+@media (max-width:360px){.bboard.bb-tabs .bb-when-row{grid-template-columns:1fr}}
 /* countdown */
 .bboard .bb-cd{display:grid;gap:6px;text-align:center;padding-top:2px}
 .bboard .bb-cd-title{font-family:var(--bb-display);font-variation-settings:"opsz" 40,"SOFT" 50;font-size:24px;line-height:1.15;overflow-wrap:anywhere;text-wrap:balance}
@@ -1157,16 +1177,17 @@
 .bboard.bb-tabs .bb-sky-fig svg{width:100%;height:auto}
 .bboard.bb-tabs .bb-meet-h svg,.bboard.bb-tabs .bb-hthink-fig svg,.bboard.bb-tabs .bb-tz-fig svg,.bboard.bb-tabs .bb-th-row .bb-dot.bb-dot-fig svg{width:100%;height:100%}
 .bboard.bb-tabs .bb-meet-heart svg{width:14px;height:14px}
-.bboard.bb-tabs .bb-deco{width:auto;height:auto}
 @media (min-width:900px){.bboard.bb-tabs .bb-sky{height:340px}.bb-tabs .bb-sky-fig{width:84px;bottom:-36px}}
 .bb-tabs .bb-sky-deco{position:absolute;inset:0;z-index:0;pointer-events:none}
-.bb-tabs .bb-deco{position:absolute;width:auto;height:auto}
-.bb-tabs .bb-sun{right:-20px;top:96px;width:80px;animation:bb-glow 7s ease-in-out infinite}
-.bb-tabs .bb-moon{right:14px;top:92px;width:42px}
-.bb-tabs .bb-stars{left:0;top:76px;width:100%;animation:bb-twinkle 5s ease-in-out infinite}
-.bb-tabs .bb-cloud{right:-14px;top:104px;width:96px;color:rgba(255,255,255,.42);animation:bb-drift 14s ease-in-out infinite}
-.bb-tabs .bb-rain{left:0;bottom:40px;width:100%;color:#8C9BA7;animation:bb-rain 1.9s linear infinite}
-.bb-tabs .bb-snow{left:0;bottom:40px;width:100%;color:rgba(255,255,255,.8);animation:bb-snow 4s linear infinite}
+/* the weather pictures: .bboard.bb-tabs beats the board's small-icon size (.bboard svg) */
+.bboard.bb-tabs .bb-deco{position:absolute;height:auto}
+.bboard.bb-tabs .bb-sun{right:-22px;top:112px;width:80px;height:80px;animation:bb-glow 7s ease-in-out infinite}
+.bboard.bb-tabs .bb-moon{right:14px;top:112px;width:42px;height:42px}
+.bboard.bb-tabs .bb-stars{left:0;top:96px;width:100%;height:auto;animation:bb-twinkle 5s ease-in-out infinite}
+.bboard.bb-tabs .bb-cloud{right:-14px;top:124px;width:96px;height:40px;color:rgba(255,255,255,.42);animation:bb-drift 14s ease-in-out infinite}
+.bboard.bb-tabs .bb-rain,.bboard.bb-tabs .bb-snow{left:0;top:-12px;width:100%;height:calc(100% + 24px)}
+.bboard.bb-tabs .bb-rain{color:#8C9BA7;animation:bb-rain 1.9s linear infinite}
+.bboard.bb-tabs .bb-snow{color:rgba(255,255,255,.8);animation:bb-snow 4s linear infinite}
 @keyframes bb-glow{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 @keyframes bb-twinkle{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes bb-drift{0%,100%{transform:translateX(0)}50%{transform:translateX(-10px)}}
@@ -1223,9 +1244,11 @@
 .bboard.bb-tabs .bb-talk .bb-add-btn{grid-area:b;width:48px;height:48px;min-height:48px;padding:0;border-radius:24px}
 .bb-tabs .bb-talk .bb-add-word{display:none}
 .bb-tabs .bb-talk .bb-add-btn svg{width:22px;height:22px}
-.bb-tabs .bb-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.bb-tabs .bb-week{display:grid;grid-template-columns:repeat(7,minmax(44px,1fr));gap:6px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
+.bb-tabs .bb-week::-webkit-scrollbar{display:none}
+/* small phones: closer together and out to the card's edge; the very smallest scroll the week sideways, inside the card */
 @media (max-width:400px){.bb-tabs .bb-week{gap:2px;margin:0 -8px}}
-.bb-tabs .bb-wday{position:relative;height:58px;border-radius:16px;background:var(--bb-paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:0;transition:transform .2s var(--bb-ease)}
+.bb-tabs .bb-wday{position:relative;height:58px;min-width:44px;border-radius:16px;background:var(--bb-paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:transform .2s var(--bb-ease)}
 .bb-tabs .bb-wday:active{transform:scale(.95)}
 .bb-tabs .bb-wd{font-size:11px;color:var(--bb-ink-2)}
 .bb-tabs .bb-dn{font-size:16px;font-weight:600}
@@ -1267,12 +1290,13 @@
 .bb-tabs .bb-th-line .bb-ago{flex-basis:100%;padding-left:28px}
 .bb-tabs [data-sec=think] .bb-head-static .bb-sum{display:none}
 /* notes sit above the tab bar */
-.bb-notewrap .bb-note{position:fixed;z-index:62;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(calc(100% - 32px),520px);margin:0;border-radius:18px;padding:6px 4px 6px 16px;min-height:52px;animation:bb-up .4s var(--bb-ease)}
+.bboard.bb-notewrap,.bb-notewrap{container-type:normal}
+.bb-notewrap .bb-note{position:fixed;z-index:62;left:50%;top:auto;bottom:max(calc(86px + env(safe-area-inset-bottom)),calc(var(--kb,0px) + 12px));transform:translateX(-50%);width:min(calc(100% - 32px),520px);margin:0;border-radius:18px;padding:6px 4px 6px 16px;min-height:52px;animation:bb-up .4s var(--bb-ease)}
 .bb-notewrap .bb-note .bb-note-act{color:#F3C98F;box-shadow:none;min-height:44px}
 @keyframes bb-up{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 .bb-fly{position:fixed;left:0;top:0;z-index:95;width:28px;height:28px;pointer-events:none;filter:drop-shadow(0 0 6px rgba(232,144,122,.55))}
 .bb-fly svg{width:100%;height:100%;display:block}
-@media (prefers-reduced-motion:reduce){.bboard *,.bb-fly{animation:none !important;transition:none !important}}
+@media (prefers-reduced-motion:reduce){.bboard *,.bboard *::before,.bboard *::after,.bb-fly{animation:none !important;transition:none !important}}
 `;
 
   function mount(el, opts) {
@@ -1280,11 +1304,11 @@
     const o = opts || {};
     const room = String(o.room || '');
     const name = String(o.name || '').trim().slice(0, 40) || 'Someone';
-    if (S && S.el === el && S.room === room) { S.name = name; if (o.them != null) S.them = String(o.them).trim().slice(0, 40); render(); return; }
+    if (S && S.el === el && S.room === room) { S.name = name; if (o.them != null) S.them = String(o.them).trim().slice(0, 40); if (o.role) S.role = o.role; render(); return; }
     if (S) { clearTimeout(S.timer); S.el.classList.remove('bboard'); }
     if (!document.getElementById('bboard-css')) document.head.append(h('style', { id: 'bboard-css', text: CSS }));
     S = { el, room, name, server: empty(), pending: [], chain: Promise.resolve(), folds: {}, fails: 0, loaded: false, offline: false, timer: 0,
-      split: !!o.targets, t: o.targets || {}, opts: o, them: String(o.them || '').trim().slice(0, 40) };
+      split: !!o.targets, t: o.targets || {}, opts: o, them: String(o.them || '').trim().slice(0, 40), role: o.role === 'host' || o.role === 'guest' ? o.role : '' };
     if (!ROOM_RE.test(room)) {
       el.classList.add('bboard');
       el.replaceChildren(h('p', { class: 'bb-empty', text: 'The board opens once you’re on a Beside link.' }));
@@ -1305,7 +1329,7 @@
     mount,
     refresh() { if (S) { poll(); schedule(); } },
     // Which figure is this person's (Mo's home is London, Semal's is LA), and the other one's name if known.
-    people() { return { me: myZone() === LA ? 'semal' : 'mo', them: S ? theirName(S.lastView) : '' }; },
+    people() { return { me: whoMe(), them: S ? theirName(S.lastView) : '' }; },
     celebrate() { if (S) celebrate(); },
   };
 })();
