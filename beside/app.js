@@ -539,14 +539,17 @@
   // crackles. In real pauses (400 ms of nothing above the room's own hum) the level eases down to -20 dB, so the lift
   // doesn't raise the room's hiss (Mo, 2 Nov 2026: hiss and some crackle). Only your voice: the shared video's sound
   // never passes through it. The browser's own auto-volume stays on underneath (Safari can't turn it off).
-  // Your mic, four ways (Mo, 2 Nov 2026: "full sound control"), kept on each device: Natural (the browser's own
+  // Your mic, five ways (Mo, 2 Nov 2026: "full sound control"), kept on each device: Natural (the browser's own
   // clean-up only), Clear voice (the leveller, the default), Voice focus (for a noisy room: a narrower band, deeper
-  // pauses and softer s sounds) and Music (nothing changed at all, in stereo, for playing or singing).
-  const MODES = ['natural', 'clear', 'focus', 'music'];
+  // pauses and softer s sounds), Far away (Mo, 2 Nov 2026: "if the mic is far away or coved under pillow bedsheet
+  // ... it will still hear that": a much stronger lift, with the muffled top end brought back) and Music (nothing
+  // changed at all, in stereo, for playing or singing).
+  const MODES = ['natural', 'clear', 'focus', 'far', 'music'];
   const MODE_TEXT = {
     natural: ['Natural', 'Your mic as the browser gives it, with nothing added.'],
     clear: ['Clear voice', 'Lifts a quiet voice and keeps the room quiet in pauses.'],
     focus: ['Voice focus', 'For a noisy room. Keeps your voice and pushes other sounds back.'],
+    far: ['Far away', 'For a phone across the room or under the covers. Lifts a soft, muffled voice a lot.'],
     music: ['Music', 'Every sound as it is, in stereo, for playing or singing. Use headphones.'],
   };
   function savedMode() {
@@ -554,8 +557,17 @@
     if (MODES.includes(m)) return m;
     return store.get('beside.clear') === '0' ? 'natural' : 'clear';
   }
-  const CLEAR = { mode: savedMode(), on: false, chains: new Set(), q: Promise.resolve() };
-  CLEAR.on = CLEAR.mode === 'clear' || CLEAR.mode === 'focus';
+  // iPhone and iPad send the mic as it comes, in every mode (Mo, 2 Nov 2026: "the voice still crackles a tiny bit
+  // when im talking on the phone but it doesnt when on the mac"). Their audio engine runs on its own clock, not
+  // the mic's, and a voice passed through it clicks now and then; in Natural mode, which skips it, the crackle
+  // went away. So there Clear voice, Voice focus and Far away use Apple's own voice processing (echo cancel,
+  // noise suppression, auto volume, and voice isolation for Voice focus only: it can cut a distant voice), and
+  // the listener lifts the voice (LIFT).
+  const SEND_RAW = IS_IOS;
+  // CLEAR.pre: the slot for a node that goes first in a chain whose tuning has pre (Voice focus), for its noise
+  // remover: a function (ctx, mode) giving an AudioNode, or null. Set it, then clearRebuild(), to put it in.
+  const CLEAR = { mode: savedMode(), on: false, chains: new Set(), q: Promise.resolve(), pre: null };
+  CLEAR.on = ['clear', 'focus', 'far'].includes(CLEAR.mode); // the modes tuneFor gives a chain (its tunings come below)
   // Watching YouTube together (see WATCH YOUTUBE TOGETHER below).
   const W = { id: '', at: 0, play: false, stamp: 0, away: '', p: null, pid: '', ready: false, quiet: 0, api: null, timer: 0, tap: 0, vol: -1 };
   // What the browser is asked for. Music turns every clean-up off and asks for stereo; Voice focus asks for the
@@ -588,15 +600,27 @@
     hold: 400, // ms of quiet before it counts as a pause
   };
   // Voice focus: only 100 Hz to 7 kHz, pauses down to about -30 dB, and a gentle de-esser that softens a sharp s.
-  const FOCUS_TUNE = { ...CLEAR_TUNE, hp: 100, lp: 7000, ess: true, pause: 0.0316 };
+  const FOCUS_TUNE = { ...CLEAR_TUNE, hp: 100, lp: 7000, ess: true, pause: 0.0316, pre: true };
+  // Far away: a phone across the room or under a pillow. Fabric takes the top off a voice, so 3 kHz comes up 6 dB
+  // and everything above 4.5 kHz 5 dB; the compressor starts at -50 dBFS (ratio 4) with about 10 dB more make-up,
+  // so a soft voice comes out near normal talking level; pauses go down to about -35 dB so the lifted hiss stays
+  // down, and the limiter keeps a voice close to the phone from clipping.
+  const FAR_TUNE = {
+    ...CLEAR_TUNE, hp: 100, lift: { f: 3000, g: 6 }, shelf: { f: 4500, g: 5 },
+    comp: { threshold: -50, knee: 10, ratio: 4, attack: 0.01, release: 0.25 },
+    makeup: 3, pause: 0.0178,
+  };
   const ESS_HZ = 4500; // the de-esser listens above this
-  function tuneFor(mode) { return mode === 'focus' ? FOCUS_TUNE : mode === 'clear' ? CLEAR_TUNE : null; }
-  function clearNodes(ctx, t) {
+  function tuneFor(mode) { return mode === 'focus' ? FOCUS_TUNE : mode === 'clear' ? CLEAR_TUNE : mode === 'far' ? FAR_TUNE : null; }
+  function clearNodes(ctx, t, pre) {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = t.hp || 90; hp.Q.value = 0.7;
+    if (pre) pre.connect(hp);
     let last = hp;
     if (t.lp) { const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = t.lp; lp.Q.value = 0.7; last.connect(lp); last = lp; }
-    const lift = ctx.createBiquadFilter(); lift.type = 'peaking'; lift.frequency.value = 2500; lift.Q.value = 1; lift.gain.value = 3.5;
+    const lt = t.lift || { f: 2500, g: 3.5 };
+    const lift = ctx.createBiquadFilter(); lift.type = 'peaking'; lift.frequency.value = lt.f; lift.Q.value = 1; lift.gain.value = lt.g;
     last.connect(lift); last = lift;
+    if (t.shelf) { const sh = ctx.createBiquadFilter(); sh.type = 'highshelf'; sh.frequency.value = t.shelf.f; sh.gain.value = t.shelf.g; last.connect(sh); last = sh; }
     let ess = null;
     if (t.ess) { ess = ctx.createBiquadFilter(); ess.type = 'peaking'; ess.frequency.value = 6500; ess.Q.value = 1.4; ess.gain.value = 0; last.connect(ess); last = ess; }
     const comp = ctx.createDynamicsCompressor();
@@ -606,8 +630,10 @@
     Object.entries(t.lim).forEach(([k, v]) => { lim[k].value = v; });
     const out = ctx.createGain();
     out.gain.value = t.out;
-    last.connect(comp); comp.connect(gate); gate.connect(lim); lim.connect(out);
-    return { hp, gate, out, ess };
+    last.connect(comp);
+    if (t.makeup && t.makeup !== 1) { const mk = ctx.createGain(); mk.gain.value = t.makeup; comp.connect(mk); mk.connect(gate); } else comp.connect(gate);
+    gate.connect(lim); lim.connect(out);
+    return { in: pre || hp, pre: pre || null, hp, gate, out, ess };
   }
   // The pause rule, every 20 ms, from the raw mic's level: the room's own hum follows quiet moments down at once
   // and creeps up slowly (about 1 dB a second); anything 10 dB over it, or louder than -45 dBFS, is speech.
@@ -621,8 +647,10 @@
   }
   // The de-esser's rule: a sharp s puts most of the sound above 4.5 kHz; then 6.5 kHz comes down 6 dB, briefly.
   function clearEss(db, hi) { return hi > -45 && hi > db - 6 ? [-6, 0.003] : [0, 0.03]; }
+  // opts.mode: a fixed mode, for lifting a voice you hear (LIFT); such a chain ignores your own mic mode.
   function clearChain(ctx, stream, opts) {
     opts = opts || {};
+    const fixed = opts.mode || '';
     // tail: what the caller connects. It stays the same when the mode changes; only what feeds it is rebuilt.
     const tail = ctx.createGain();
     let n = null, t = null;
@@ -662,22 +690,24 @@
     const wire = () => {
       try { ch.src.disconnect(); } catch (e) {}
       ch.src.connect(an); ch.src.connect(hiF);
-      if (n) ch.src.connect(n.hp); else ch.src.connect(tail);
+      if (n) ch.src.connect(n.in); else ch.src.connect(tail);
     };
     const ch = {
       out: tail, on: null, mode: '', src: ctx.createMediaStreamSource(stream), ok: true,
-      // Natural and Music: the plain mic, at full level. Clear voice and Voice focus: their own processing.
-      use(mode) {
-        const nt = tuneFor(mode);
-        ch.mode = mode;
-        if (nt === t && ch.on !== null) return;
-        if (n) { try { n.out.disconnect(); } catch (e) {} }
+      // Natural and Music: the plain mic, at full level. Clear voice, Voice focus and Far away: their own processing.
+      use(mode, again) {
+        const nt = fixed ? tuneFor(fixed) : SEND_RAW ? null : tuneFor(mode); // an iPhone's own mic: no processing
+        ch.mode = fixed || mode;
+        if (nt === t && ch.on !== null && !again) return;
+        if (n) [n.out, n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} });
         t = nt;
-        n = t ? clearNodes(ctx, t) : null;
+        let pre = null;
+        if (t && t.pre && CLEAR.pre) { try { pre = CLEAR.pre(ctx, ch.mode) || null; } catch (e) { pre = null; } }
+        n = t ? clearNodes(ctx, t, pre) : null;
         if (n) n.out.connect(tail);
         ch.on = !!n;
         wire();
-        app.clear = ch.on;
+        if (!fixed) app.clear = ch.on;
       },
       set(on) { ch.use(on ? 'clear' : 'natural'); },
       // Same chain, a new mic (an iPhone can end the mic when the camera starts; a new mode can need a new mic).
@@ -687,11 +717,16 @@
         zero = 0;
         wire();
       },
-      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail].forEach((x) => { try { x.disconnect(); } catch (e) {} }); if (n) { try { n.out.disconnect(); } catch (e) {} } },
+      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail, n && n.out, n && n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} }); },
     };
-    CLEAR.chains.add(ch);
-    ch.use(CLEAR.mode);
+    if (!fixed) CLEAR.chains.add(ch);
+    ch.use(fixed || CLEAR.mode);
     return ch;
+  }
+  // Builds every chain again, yours and the ones lifting a voice you hear: after CLEAR.pre changes.
+  function clearRebuild() {
+    CLEAR.chains.forEach((c) => c.use(c.mode, true));
+    OUT.map.forEach((l) => { if (l.chain) l.chain.use(l.lift, true); });
   }
   // The same processing, offline, on a recording: for "Hear myself" and for the tests. The pause rule and the
   // de-esser step every 20 ms from the recording's own level, as the live timer does.
@@ -713,7 +748,7 @@
     const ctx = mk();
     const src = ctx.createBufferSource(); src.buffer = bufOf(ctx);
     const nd = clearNodes(ctx, t);
-    src.connect(nd.hp); nd.out.connect(ctx.destination);
+    src.connect(nd.in); nd.out.connect(ctx.destination);
     const st = { loudAt: 0, floor: -60 };
     const step = Math.round(0.02 * sr);
     const lvl = (a, i) => { let s = 0; for (let k = Math.max(0, i - 1024); k < i; k++) s += a[k] * a[k]; return s > 0 ? 10 * Math.log10(s / 1024 + 1e-12) : -300; };
@@ -740,6 +775,7 @@
       CLEAR.chains.forEach((c) => c.use(mode));
       if (isGuest) guestVoicePick();
       voiceRates();
+      liftTell();
       soundUi();
     });
     return CLEAR.q;
@@ -778,11 +814,23 @@
     } else {
       const old = H.mic;
       H.mic = fresh;
+      nt.enabled = !(SEND_RAW && H.muted);
       if (H.clear) H.clear.swap(fresh);
       else if (H.rawSrc) { try { H.rawSrc.disconnect(); } catch (e) {} H.rawSrc = H.ctx.createMediaStreamSource(fresh); H.rawSrc.connect(H.micGain); }
+      hostVoicePick();
       old.getTracks().forEach((x) => x.stop());
     }
   }
+  // LIFT: an iPhone sending its mic as it comes in Clear voice, Voice focus or Far away asks the other side to run
+  // the same processing on its voice before playing it, on any device, an iPhone too (Mo, 2 Nov 2026: "and it will
+  // lift hers for mine?"). What you hear already passes through the engine there, with no crackle. Old copies of
+  // Beside ignore the message and hear Apple's levelled voice.
+  function liftMsg() { return { t: 'lift', mode: SEND_RAW && tuneFor(CLEAR.mode) ? CLEAR.mode : '' }; }
+  function liftTell(g) {
+    if (!SEND_RAW) return;
+    if (isGuest) { if (G.conn) tell(G.conn, liftMsg()); } else if (g) tell(g.conn, liftMsg()); else toGuests(liftMsg());
+  }
+  function liftMode(m) { return MODES.includes(m) && tuneFor(m) ? m : ''; }
   // Voices go at 64 kbit/s; Music at 128 kbit/s. The lane allows stereo, and only a stereo mic fills it.
   function voiceRates() {
     if (isGuest) tuneVoice(G.voiceSender);
@@ -823,7 +871,8 @@
   // ducking under a voice (Mo, 2 Nov 2026). iPhones and iPads ignore a page's volume, so on Safari, iPhone, iPad
   // and the Beside app every sound you hear plays through the audio engine, where each lane has its own volume.
   // Other browsers play through the page (their echo cancelling hears that best), and use the engine only to go
-  // above 100%. If the engine stops (an iPhone phone call, or its clock stalls), the page plays it again at once.
+  // above 100% or to lift an iPhone's voice (LIFT). If the engine stops (an iPhone phone call, or its clock
+  // stalls), the page plays it again at once.
   const CAN_VOL = true;
   const UA = navigator.userAgent;
   const ENGINE_OUT = IS_IOS || (/AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|Android|OPR/.test(UA));
@@ -833,10 +882,10 @@
   const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0 };
   function voiceEls() { return isGuest ? [$('voice')] : [...H.guests.values()].map((g) => g.audio); }
   function outEls() {
-    const els = voiceEls().filter(Boolean).map((el) => [el, 'voice']);
+    const els = isGuest ? [[$('voice'), 'voice', G.lift]] : [...H.guests.values()].map((g) => [g.audio, 'voice', g.lift]);
     const me = $('media');
-    if (me) els.push([me, 'media']);
-    return els;
+    if (me) els.push([me, 'media', '']);
+    return els.filter((e) => e[0]);
   }
   function outCtx() { return isGuest ? G.ctx : H.ctx; }
   // The engine is fit to play when it runs and its clock moves.
@@ -846,27 +895,33 @@
     if (!c || c.t !== ctx.currentTime) { OUT.clocks.set(ctx, { t: ctx.currentTime, at: now }); return true; }
     return now - c.at < 1500;
   }
-  function outLane(el, kind) {
+  function outLane(el, kind, lift) {
     const ctx = outCtx();
     const tr = el.srcObject && el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks()[0] || null : null;
+    lift = kind === 'voice' && tuneFor(lift) ? lift : '';
     let l = OUT.map.get(el);
-    if (l && (l.ctx !== ctx || l.track !== tr)) { outDrop(l); l = null; }
+    if (l && (l.ctx !== ctx || l.track !== tr || l.lift !== lift)) { outDrop(l); l = null; }
     if (!l) {
-      l = { el, kind, ctx, track: tr, src: null, gain: null, on: false, route: 'page' };
+      l = { el, kind, ctx, track: tr, src: null, gain: null, chain: null, lift, on: false, route: 'page' };
       if (ctx && tr && ctx.state !== 'closed') {
-        try { l.src = ctx.createMediaStreamSource(new MediaStream([tr])); l.gain = ctx.createGain(); l.src.connect(l.gain); } catch (e) { l.src = l.gain = null; }
+        try {
+          l.src = ctx.createMediaStreamSource(new MediaStream([tr]));
+          l.gain = ctx.createGain();
+          if (lift) { l.chain = clearChain(ctx, new MediaStream([tr]), { mode: lift }); l.chain.out.connect(l.gain); } else l.src.connect(l.gain);
+        } catch (e) { if (l.chain) l.chain.close(); l.src = l.gain = l.chain = null; }
       }
       OUT.map.set(el, l);
     }
     return l;
   }
   function outDrop(l) {
+    if (l.chain) l.chain.close();
     [l.src, l.gain].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} });
     OUT.map.delete(l.el);
   }
   function outLevel(l, now) { return l.kind === 'voice' ? SND.voice : SND.media * (now ? OUT.duckT : OUT.duck); }
   function outApply(l, smooth) {
-    const eng = !!l.gain && engineOk(l.ctx) && (ENGINE_OUT || (l.kind === 'voice' && SND.voice > 1));
+    const eng = outEngine(l);
     if (eng) {
       if (!l.on) { l.gain.connect(l.ctx.destination); l.on = true; }
       const g = l.gain.gain, t = l.ctx.currentTime, v = outLevel(l, true);
@@ -881,11 +936,17 @@
     }
     l.route = eng ? 'engine' : 'page';
   }
+  // Does this lane need the engine? On Safari, iPhone, iPad and the app, always; elsewhere a voice does only to
+  // be lifted or to go above 100%.
+  function outEngine(l) {
+    if (!l.gain || !engineOk(l.ctx)) return false;
+    return ENGINE_OUT || (l.kind === 'voice' && (!!l.chain || SND.voice > 1));
+  }
   // Should this element be muted (its sound plays through the engine instead)?
   function outMuted(el) { const l = OUT.map.get(el); return !!l && l.route === 'engine'; }
   function applyVolumes() {
     const live = new Set();
-    outEls().forEach(([el, kind]) => { live.add(el); outApply(outLane(el, kind)); });
+    outEls().forEach(([el, kind, lift]) => { live.add(el); outApply(outLane(el, kind, lift)); });
     [...OUT.map.values()].forEach((l) => { if (!live.has(l.el)) outDrop(l); });
     ytVolume();
     outWatch();
@@ -907,7 +968,7 @@
       app.duck = OUT.duck;
       OUT.map.forEach((l) => {
         const was = l.route;
-        const eng = !!l.gain && engineOk(l.ctx) && (ENGINE_OUT || (l.kind === 'voice' && SND.voice > 1));
+        const eng = outEngine(l);
         if (eng !== (was === 'engine')) outApply(l);
         else if (l.kind === 'media' && (smooth || l.route === 'page')) outApply(l, true);
       });
@@ -2597,9 +2658,11 @@
           H.mic = await getOwn('audio', micWant(CLEAR.mode));
           H.ctx.resume().catch(() => {}); // allowed now the page uses the mic: a tab opened from a ring has had no click
           H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {} });
-          // The engine runs at the mic's own rate: a mic and an engine at different rates crackle.
+          // The engine runs at the mic's own rate: a mic and an engine at different rates crackle. (Not on an
+          // iPhone or iPad: the mic doesn't pass through the engine there, and the engine stays at the speaker's
+          // own rate, so a headset's slower call mic never slows down everything you hear.)
           const rate = trackRate(H.mic);
-          if (rate && rate !== H.ctx.sampleRate) {
+          if (!SEND_RAW && rate && rate !== H.ctx.sampleRate) {
             try {
               const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: rate });
               const old = H.ctx;
@@ -2840,6 +2903,7 @@
       g.screenSender = pc.getSenders().find((s) => s.track === screen) || vids[0] || null;
       g.camSender = pc.getSenders().find((s) => s.track === H.camSlot) || vids[1] || null;
       g.faceSenders = H.blankF.map((t, k) => pc.getSenders().find((s) => s.track === t) || vids[2 + k] || null);
+      hostVoicePick();
       iceProblem(pc,
         (never) => {
           if (never) note((g.name || 'Your guest') + ' couldn’t connect. ' + NET_WHY, 'stay');
@@ -2904,7 +2968,9 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
+      if (d.t === 'lift') { g.lift = liftMode(d.mode); applyVolumes(); return; }
       if (d.t === 'hello') {
+        liftTell(g);
         g.ver = +d.v || 0;
         g.canShare = !!d.share;
         tell(g.conn, roomMsg()); // the sharer may have changed since we said hello
@@ -3067,8 +3133,25 @@
   }
   // Each guest's voice mix: everyone else's voice. A guest on the old Beside has no video-sound lane, so the
   // shared video's sound goes into its voice mix, as before.
+  // An iPhone or iPad host with one guest sends its mic as it comes (SEND_RAW). With more guests each one needs
+  // the others' voices mixed in, which only the audio engine can do, so then every guest gets the mix.
+  function hostVoicePick() {
+    const raw = SEND_RAW && H.mic ? H.mic.getAudioTracks()[0] : null;
+    const one = H.guests.size <= 1;
+    let sent = '';
+    for (const g of H.guests.values()) {
+      const s = g.voiceSender;
+      if (!s || !g.vdest) continue;
+      const mix = !one || (!!H.mediaSrc && g.ver < 3 && g.id !== H.sharer); // an old guest hears the video in its voice
+      const want = raw && raw.readyState === 'live' && !mix ? raw : g.vdest.stream.getAudioTracks()[0];
+      if (want && s.track !== want) s.replaceTrack(want).catch(() => {});
+      sent = want === raw ? 'plain' : 'mix';
+    }
+    app.hostVoice = sent;
+  }
   function rewire() {
     if (!H.ctx) return;
+    hostVoicePick();
     const all = [...H.guests.values()];
     all.forEach((g) => {
       if (!g.vsrc) return;
@@ -3185,6 +3268,7 @@
     if (!H.mic) { note('No microphone yet. Allow the microphone for this site, then press End and start the call again.', 'info'); return; }
     H.muted = !H.muted;
     H.micGain.gain.value = H.muted ? 0 : 1;
+    if (SEND_RAW) H.mic.getAudioTracks().forEach((t) => { t.enabled = !H.muted; }); // the mic itself is sent
     setPressed('muteBtn', H.muted, 'Unmute my mic', 'Mute my mic');
   }
   function hostMode(mode) {
@@ -3479,6 +3563,7 @@
     setJoinBusy(true);
     try {
       G.left = false;
+      G.lift = '';
       MV.away = false;
       moveCardHide();
       G.lost = G.dropped = false;
@@ -3708,6 +3793,7 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { G.camOn = !!d.cam; guestFace(); return; }
+      if (d.t === 'lift') { G.lift = liftMode(d.mode); applyVolumes(); return; }
       if (d.t === 'moving') { G.movingAt = Date.now(); return; }
       if (d.t === 'moved') { guestMovedAway(); return; }
       if (d.t === 'hello') {
@@ -3814,6 +3900,7 @@
     applyVolumes();
     layout();
     tell(G.conn, { cam: !!G.cam });
+    liftTell();
     clearInterval(G.lagTimer);
     G.lagTimer = setInterval(async () => { const r = await rtt(pc); app.lag = r; setLag('lag', r); }, 2000);
     app.watching = true;
@@ -3882,6 +3969,7 @@
   // leveller gets an engine of its own at the mic's rate (allowed without a tap while the mic is on).
   function guestVoiceSetup() {
     guestVoiceClose();
+    if (SEND_RAW) return; // an iPhone or iPad sends its mic as it comes (see SEND_RAW)
     if (!G.mic || !G.ctx || !G.ctx.createMediaStreamDestination) return;
     try {
       let ctx = G.ctx;
@@ -4492,7 +4580,9 @@
     if (window.Peer) whenNet(() => setTimeout(() => bootProbe(0), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearEss, CLEAR_TUNE, FOCUS_TUNE, W, ytWatch, ytClose }; // automated tests only
+    // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
+    app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
