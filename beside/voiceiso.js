@@ -136,10 +136,12 @@
         return true;
       }
       // About once a second: is the audio thread keeping up with the wall clock? More than 30 ms behind in a
-      // second means sound was lost (the computer couldn't keep up). A long gap (a paused context) isn't counted.
+      // second means sound was lost (the computer couldn't keep up). A stop (a paused engine, a new output) isn't counted.
       tick(n) {
         const now = Date.now();
-        if (!this.last || now - this.last > 1000) { this.wall = now; this.audio = 0; this.spent = 0; }
+        // A stop of over 100 ms (the engine paused, or the sound moved to AirPods or the speaker) starts the
+        // count again: that is the system, not the computer falling behind.
+        if (!this.last || now - this.last > 100) { this.wall = now; this.audio = 0; this.spent = 0; }
         this.last = now;
         this.audio += n;
         if (++this.q < 375) return;

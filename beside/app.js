@@ -703,7 +703,7 @@
         isoEnd(n);
         t = nt;
         let pre = null;
-        if (t && t.pre && CLEAR.pre) { try { pre = CLEAR.pre(ctx, ch.mode) || null; } catch (e) { pre = null; } }
+        if (t && t.pre && CLEAR.pre) { try { pre = CLEAR.pre(ctx, ch.mode, !fixed) || null; } catch (e) { pre = null; } }
         n = t ? clearNodes(ctx, t, pre) : null;
         if (n) n.out.connect(tail);
         ch.on = !!n;
@@ -738,18 +738,31 @@
   // voice's leveller after it keeps the voice loud. It needs a 48 kHz audio engine; elsewhere the chain runs
   // without it. If it falls behind (3 lost moments in 10 s, or its own buffer running short) it is switched
   // off on this device until the page is opened again, so the sound never breaks up.
-  const ISO = { off: false, late: [], why: '' };
-  function isoPre(ctx) {
+  // own: your own mic's chain (only that one sets what the Sound panel says; a lift chain is the other voice).
+  // A remover that fails to start (no download, no WebAssembly) is tried once more after 5 s.
+  const ISO = { off: false, late: [], why: '', retried: false };
+  function isoPre(ctx, mode, own) {
     if (ISO.off || !window.BesideIso) return null;
     let nd = null;
     try { nd = window.BesideIso.node(ctx, () => clearRebuild(true)); } catch (e) { nd = null; }
-    if (!nd) { ISO.why = ctx.sampleRate !== 48000 ? 'rate' : ISO.why; return null; }
-    ISO.why = '';
+    if (!nd) {
+      if (!own) return null;
+      if (!window.BesideIso.supported()) ISO.why = 'broke';
+      else if (ctx.sampleRate !== 48000) ISO.why = 'rate';
+      else window.BesideIso.ready(ctx).then((good) => {
+        if (good || ISO.off) return;
+        ISO.why = 'broke'; try { soundUi(); } catch (e) {}
+        if (!ISO.retried) { ISO.retried = true; setTimeout(() => clearRebuild(true), 5000); }
+      }, () => {});
+      return null;
+    }
+    if (own) ISO.why = '';
     const iso = nd.iso;
     let seen = 0;
     if (iso) iso.onhealth = (h) => {
       const now = Date.now();
-      if (h.late > seen) { for (let i = seen; i < h.late; i++) ISO.late.push(now); seen = h.late; }
+      // At most one lost moment counted per 1.5 s, however many removers (yours and the other voice's) saw it.
+      if (h.late > seen) { seen = h.late; if (!ISO.late.length || now - ISO.late[ISO.late.length - 1] > 1500) ISO.late.push(now); }
       ISO.late = ISO.late.filter((x) => now - x < 10000);
       if (h.underruns > 0 || ISO.late.length >= 3 || iso.ok === false) isoOff(h.underruns > 0 || ISO.late.length >= 3 ? 'slow' : 'broke');
     };
@@ -782,7 +795,12 @@
     }
     const ctx = mk();
     const src = ctx.createBufferSource(); src.buffer = bufOf(ctx);
-    const nd = clearNodes(ctx, t);
+    // Voice focus: the typing remover too, so Hear myself sounds like the call (at 48 kHz, as live).
+    let pre = null;
+    if (t.pre && !ISO.off && window.BesideIso && sr === 48000) {
+      try { if (await window.BesideIso.ready(ctx)) pre = window.BesideIso.node(ctx); } catch (e) { pre = null; }
+    }
+    const nd = clearNodes(ctx, t, pre);
     src.connect(nd.in); nd.out.connect(ctx.destination);
     const st = { loudAt: 0, floor: -60 };
     const step = Math.round(0.02 * sr);
@@ -1752,7 +1770,8 @@
       const say = b.querySelector('.sound-say');
       if (say) say.textContent = MODE_TEXT[CLEAR.mode][1] + (CLEAR.mode !== 'focus' || SEND_RAW ? ''
         : ISO.why === 'slow' ? ' The typing remover was too slow on this device, so it is off. Other sounds are still pushed back.'
-          : ISO.why === 'rate' || ISO.why === 'broke' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.' : '');
+          : ISO.why === 'rate' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.'
+            : ISO.why === 'broke' ? ' The typing remover can’t run on this device, so other sounds are only pushed back.' : '');
       const h = b.querySelector('.sound-hint');
       if (h) {
         h.textContent = !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
