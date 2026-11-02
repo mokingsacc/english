@@ -511,6 +511,8 @@ button:disabled{opacity:.55;cursor:default}
 .home-col{display:flex;flex-direction:column;gap:14px;min-width:0}
 .home-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .home-pair > div{display:grid}
+/* the countdown's Change form needs the whole row */
+.home-pair > #bHomeCount:has(.bb-form:not([hidden])){grid-column:1/-1}
 @media (min-width:900px){.home-grid{grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:18px;align-items:start}.home-col{gap:16px}}
 .acts{display:flex;gap:10px;align-items:center}
 .acts-guest{flex-direction:column;align-items:stretch}
@@ -523,6 +525,8 @@ button:disabled{opacity:.55;cursor:default}
 .act-words b{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .act-words small{font-size:12px;color:var(--clay-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .act-text{justify-content:center;font-size:17px;font-weight:600;text-align:center}
+/* small phones: the round buttons shrink a little and the words may wrap rather than be cut */
+@media (max-width:360px){.acts{gap:8px}.act-round{width:52px;height:52px}.act-main{padding:8px 16px;gap:10px}.act-words b,.act-words small{white-space:normal;overflow:visible}}
 .act-round{width:64px;height:64px;flex:none;border-radius:32px;background:var(--paper-3);display:grid;place-items:center;transition:transform .25s var(--ease)}
 .act-round svg{width:24px;height:24px}
 .act-main:focus-visible,.act-round:focus-visible,.rowbtn:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
@@ -580,8 +584,9 @@ button:disabled{opacity:.55;cursor:default}
 /* the Calls room: he lifts the remote, the TV clicks on, she leans on his shoulder */
 .tv-room .tv-on{opacity:0}
 .tv-room .tv-glow{opacity:0;transition:opacity .6s ease}
-.tv-arm{transform-box:fill-box;transform-origin:50% 92%;transition:transform .5s var(--ease)}
-.tv-room.tv-go .tv-arm{transform:rotate(-58deg)}
+/* the remote rests low in his lap, behind the sofa back, and lifts up toward the TV */
+.tv-arm{transform-box:fill-box;transform-origin:50% 92%;transform:rotate(-80deg);transition:transform .55s var(--ease)}
+.tv-room.tv-go .tv-arm{transform:rotate(18deg)}
 .tv-room.tv-go .tv-on{animation:tvclick .5s .42s both}
 .tv-room.tv-go .tv-glow{opacity:.55;transition-delay:.5s}
 .tv-room.tv-go .fig-semal > .fig-pose{transform:rotate(-5deg);transition-delay:.3s}
@@ -590,14 +595,14 @@ button:disabled{opacity:.55;cursor:default}
 .tvfx-pane{position:absolute;inset:0;background:var(--paper);overflow:hidden}
 .tvfx-screen{position:absolute;inset:0;background:#1C1712;will-change:clip-path}
 /* while it rings, their figure peeks in and hops */
-.ringfig{position:fixed;z-index:65;right:-10px;bottom:calc(132px + env(safe-area-inset-bottom));width:70px;pointer-events:none;transform-origin:100% 100%;transform:rotate(-8deg)}
+.ringfig{position:fixed;z-index:65;right:calc(env(safe-area-inset-right) - 10px);bottom:calc(132px + env(safe-area-inset-bottom));width:70px;pointer-events:none;transform-origin:100% 100%;transform:rotate(-8deg)}
 .ringfig svg{width:100%;height:auto}
 .ringfig.go{animation:peekin .7s var(--ease) both}
 .ringfig.go .fig-move{animation:hop 1.8s ease-in-out .7s infinite}
 @keyframes peekin{from{transform:translateX(110%) rotate(-8deg)}to{transform:translateX(0) rotate(-8deg)}}
 @keyframes hop{0%,58%,100%{transform:translateY(0)}68%{transform:translateY(-9px)}78%{transform:translateY(0)}86%{transform:translateY(-4px)}94%{transform:translateY(0)}}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
-@media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
 </style>
 </head>
 <body>
@@ -854,8 +859,8 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="figures.js?v=1"></script>
-<script src="board.js?v=4"></script>
-<script src="app.js?v=24"></script>
+<script src="figures.js?v=2"></script>
+<script src="board.js?v=5"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

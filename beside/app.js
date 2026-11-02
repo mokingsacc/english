@@ -123,7 +123,7 @@
   // Plans (Say it, calendar, to-dos), Hearts (send one, history).
   function boardMountNow() {
     window.BesideBoard.mount($('boardMount'), {
-      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', go: (t) => setTab(t), onRender: boardRendered,
+      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered,
       targets: { hello: $('bHello'), skies: $('bSkies'), homeThink: $('bHomeThink'), countdown: $('bHomeCount'), next: $('bHomeNext'), plans: $('boardMount'), hearts: $('bHearts'), note: $('bNote'), shared: $('bShared') },
     });
   }
@@ -193,6 +193,8 @@
       p.classList.remove('tab-in');
       void p.offsetWidth;
       p.classList.add('tab-in');
+      // Once it has slid in, drop the class, so a later copy of this tab (the TV opening) never replays it.
+      p.addEventListener('animationend', function done(e) { if (e.target !== p) return; p.classList.remove('tab-in'); p.removeEventListener('animationend', done); });
     }
     if (prev !== name) window.scrollTo(0, tabScroll[name] || 0);
   }
@@ -224,7 +226,9 @@
     [c, ...c.querySelectorAll('*')].forEach((x) => {
       if (x.tagName === 'pattern') return;
       ['id', 'data-state', 'data-shell', 'data-check-open', 'data-go', 'for', 'name'].forEach((a) => x.removeAttribute(a));
-      if (x.classList) x.classList.remove('ring-me');
+      if (x.classList) x.classList.remove('ring-me', 'tab-in');
+      // A copy of a busy button would show greyed out; the picture should look like the page did.
+      if ('disabled' in x) x.disabled = false;
     });
     c.setAttribute('aria-hidden', 'true');
     c.inert = true;
@@ -240,10 +244,16 @@
       const bar = document.querySelector('.tabbar');
       return { panel: quietCopy(panel), panelRect: rectOf(pr), bar: bar ? quietCopy(bar) : null, screen: rectOf(scr.getBoundingClientRect()), tv: true };
     }
+    // Safari does not focus a tapped button, so the button's place is noted when the finger goes down.
     const a = document.activeElement;
-    const r = a && a !== document.body && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
+    const r = lastTap && Date.now() - lastTap.at < 4000 ? lastTap.r : a && a !== document.body && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
     return { screen: r && r.width ? rectOf(r) : { left: innerWidth / 2 - 60, top: innerHeight / 2 - 40, width: 120, height: 80 } };
   }
+  let lastTap = null;
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('button') : null;
+    lastTap = b ? { r: b.getBoundingClientRect(), at: Date.now() } : null;
+  }, true);
   const clip = (r) => 'inset(' + Math.max(0, r.top).toFixed(1) + 'px ' + Math.max(0, innerWidth - r.left - r.width).toFixed(1) + 'px ' + Math.max(0, innerHeight - r.top - r.height).toFixed(1) + 'px ' + Math.max(0, r.left).toFixed(1) + 'px round ' + (r.round || 6) + 'px)';
   const FULL = () => ({ left: 0, top: 0, width: innerWidth, height: innerHeight, round: 0.01 });
   let tvFx = null;
@@ -2206,7 +2216,12 @@
       H.idRetries = 0;
       app.hostReady = true;
       text('liveHint', '');
-      if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) { H.ringOnReady = 0; ringThem($('ringBtn')); }
+      if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) {
+        // Ring them: if they are already waiting in the room, they come straight in, so give them a moment and
+        // only ring when nobody has arrived.
+        H.ringOnReady = 0;
+        setTimeout(() => { if (H.peer === peer && !H.guests.size && app.state === 'live') ringThem($('ringBtn')); }, 2500);
+      }
       if (bc) bc.postMessage('live!');
     });
     peer.on('connection', (conn) => {
@@ -2722,9 +2737,17 @@
     try {
       await navigator.clipboard.writeText(link);
     } catch (e) {
-      const el = $('linkText');
-      if (el) { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+      // Older browsers: copy from a box of our own, so it works whichever screen is showing.
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.setAttribute('readonly', '');
+      ta.setAttribute('aria-hidden', 'true');
+      Object.assign(ta.style, { position: 'fixed', top: '0', left: '0', width: '1px', height: '1px', opacity: '0', fontSize: '16px' });
+      document.body.append(ta);
+      ta.select();
+      try { ta.setSelectionRange(0, link.length); } catch (e3) {}
       try { document.execCommand('copy'); } catch (e2) {}
+      ta.remove();
     }
     const lab = btn && btn.querySelector('.label-t');
     if (lab) { lab.textContent = 'Copied'; setTimeout(() => { lab.textContent = 'Copy'; }, 1500); }
