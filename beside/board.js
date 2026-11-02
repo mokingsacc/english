@@ -445,7 +445,7 @@
       const open = h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: () => { when.set(null); form.hidden = false; open.hidden = true; title.focus(); } },
         h('span', { html: I.plus }), h('span', { text: 'Add an event' }));
       ui.calAddOn = (t) => { when.set(t, true); form.hidden = false; open.hidden = true; title.focus(); };
-      if (S.split) { ui.week = h('div', { class: 'bb-week', role: 'group', 'aria-label': 'This week' }); s.body.append(ui.week); }
+      if (S.split) { ui.week = h('div', { class: 'bb-cal', role: 'group', 'aria-label': 'Calendar' }); s.body.append(ui.week); }
       s.body.append(ui.calList, open, form);
     }
 
@@ -859,7 +859,7 @@
         return h('div', { class: 'bb-day', 'data-day': g.k }, h('p', { class: 'bb-day-h' }, h('b', { text: a }), h('span', { text: bLabel })), h('div', { class: 'bb-list' }, g.list.map((e) => evRow(e, g.k))));
       };
       ui.calList.replaceChildren();
-      if (ui.week) weekStrip(b, today);
+      if (ui.week) monthGrid(b, today);
       if (!groups.length) ui.calList.append(h('p', { class: 'bb-empty', text: S.loaded ? 'Nothing planned yet.' : '' }));
       else {
         ui.calList.append(...groups.slice(0, SHOW_DAYS).map(day));
@@ -922,26 +922,49 @@
         h('span', { class: 'bb-tz-bar', 'aria-hidden': 'true' }, h('i', { class: 'bb-tz-mark', style: 'left:calc(' + (frac * 100).toFixed(1) + '% - 7px)' })));
     }));
   }
-  function weekStrip(b, today) {
+  // A full month, with the months before and after a tap away. A dot marks a day with plans. Tapping a day goes
+  // to its plans in the list below, or starts a new plan on that day.
+  const CAL_BACK = 12, CAL_AHEAD = 36; // how far it goes, in months
+  function monthGrid(b, today) {
     const ui = S.ui;
     const has = new Set(b.events.map(evKey));
-    const days = [];
-    const [y, mo, d] = today.split('-').map(Number);
-    for (let i = 0; i < 7; i++) {
-      const noon = Date.UTC(y, mo - 1, d + i, 12);
+    const [ty, tm] = today.split('-').map(Number);
+    const nowIdx = ty * 12 + tm - 1;
+    const idx = Math.min(nowIdx + CAL_AHEAD, Math.max(nowIdx - CAL_BACK, S.calMonth == null ? nowIdx : S.calMonth));
+    const y = Math.floor(idx / 12), mo = idx % 12 + 1;
+    const go = (n) => { S.calMonth = idx + n; render(); };
+    const mid = Date.UTC(y, mo - 1, 15, 12);
+    const title = fmt('UTC', { month: 'long', year: 'numeric' }).format(mid);
+    const arrow = (d, label, n, off) => h('button', { type: 'button', class: 'bb-cal-go', 'aria-label': label, disabled: off, onclick: () => go(n), html: svg(d) });
+    const head = h('div', { class: 'bb-cal-head' },
+      arrow('<path d="m15 6-6 6 6 6"/>', 'Previous month', -1, idx <= nowIdx - CAL_BACK),
+      h('p', { class: 'bb-cal-title', 'aria-live': 'polite', text: title }),
+      idx === nowIdx ? h('span', { class: 'bb-cal-gap' }) : h('button', { type: 'button', class: 'bb-cal-today', onclick: () => go(nowIdx - idx), text: 'Today' }),
+      arrow('<path d="m9 6 6 6-6 6"/>', 'Next month', 1, idx >= nowIdx + CAL_AHEAD));
+    // Weeks start on Monday.
+    const names = [];
+    for (let i = 0; i < 7; i++) names.push(h('span', { text: fmt('UTC', { weekday: 'narrow' }).format(Date.UTC(2024, 0, 1 + i, 12)) }));
+    const first = (new Date(Date.UTC(y, mo - 1, 1, 12)).getUTCDay() + 6) % 7;
+    const count = new Date(Date.UTC(y, mo, 0, 12)).getUTCDate();
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(h('span', { class: 'bb-cal-blank' }));
+    for (let d = 1; d <= count; d++) {
+      const noon = Date.UTC(y, mo - 1, d, 12);
       const k = keyOf(noon, 'UTC');
-      const wd = fmt('UTC', { weekday: 'short' }).format(noon);
-      const dn = fmt('UTC', { day: 'numeric' }).format(noon);
+      const past = k < today, plans = has.has(k);
       const long = fmt('UTC', { weekday: 'long', day: 'numeric', month: 'long' }).format(noon);
-      days.push(h('button', { type: 'button', class: 'bb-wday' + (i === 0 ? ' bb-today' : '') + (has.has(k) ? ' bb-has' : ''), 'aria-label': long + (has.has(k) ? ', has plans' : ''), onclick: () => {
-        let g = ui.calList.querySelector('[data-day="' + k + '"]');
-        // Plans on that day sit in the "Show more days" fold: open it, then go to them.
-        if (!g && has.has(k) && !S.folds.calMore) { S.folds.calMore = true; render(); g = ui.calList.querySelector('[data-day="' + k + '"]'); }
-        if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
-        else ui.calAddOn(zoned(y, mo, d + i, 12, 0, myZone()));
-      } }, h('span', { class: 'bb-wd', text: wd }), h('span', { class: 'bb-dn', text: dn }), h('i', { class: 'bb-wdot' })));
+      cells.push(h('button', { type: 'button', class: 'bb-cal-day' + (k === today ? ' bb-today' : '') + (plans ? ' bb-has' : '') + (past ? ' bb-past' : ''),
+        'aria-label': long + (k === today ? ', today' : '') + (plans ? ', has plans' : ''), 'data-key': k, onclick: () => {
+          let g = ui.calList.querySelector('[data-day="' + k + '"]');
+          // Plans on that day sit in the "Show more days" fold: open it, then go to them.
+          if (!g && plans && !past && !S.folds.calMore) { S.folds.calMore = true; render(); g = ui.calList.querySelector('[data-day="' + k + '"]'); }
+          // A day gone by: its plans are in the Past fold.
+          if (!g && plans && past) { if (!S.folds.past) { S.folds.past = true; render(); } g = ui.calList.querySelector('.bb-past'); }
+          if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
+          else if (!past) ui.calAddOn(zoned(y, mo, d, 12, 0, myZone()));
+        } }, h('span', { class: 'bb-dn', text: String(d) }), h('i', { class: 'bb-wdot' })));
     }
-    ui.week.replaceChildren(...days);
+    ui.week.replaceChildren(head, h('div', { class: 'bb-cal-names', 'aria-hidden': 'true' }, names), h('div', { class: 'bb-cal-grid' }, cells));
   }
   function thSplit(b, rest) {
     const ui = S.ui;
@@ -1208,7 +1231,7 @@
 .bb-tabs .bb-heart-btn{width:48px;height:48px;border-radius:24px;flex:none;display:grid;place-items:center;background:var(--bb-clay);color:var(--bb-clay-ink);transition:transform .25s var(--bb-ease)}
 .bb-tabs .bb-heart-btn:active{transform:scale(.92)}
 .bb-tabs .bb-heart-btn svg{width:22px;height:22px}
-.bb-tabs .bb-hthink-open:focus-visible,.bb-tabs .bb-hnext:focus-visible,.bb-tabs .bb-heart-btn:focus-visible,.bb-tabs .bb-wday:focus-visible{outline:2px solid var(--bb-clay);outline-offset:2px}
+.bb-tabs .bb-hthink-open:focus-visible,.bb-tabs .bb-hnext:focus-visible,.bb-tabs .bb-heart-btn:focus-visible,.bb-tabs .bb-cal-day:focus-visible,.bb-tabs .bb-cal-go:focus-visible,.bb-tabs .bb-cal-today:focus-visible{outline:2px solid var(--bb-clay);outline-offset:2px}
 .bb-tabs[id=bHomeCount] .bb-sec{height:100%}
 .bb-tabs [data-sec=countdown] .bb-head{display:none}
 .bb-tabs [data-sec=countdown] .bb-body{padding:16px;height:100%}
@@ -1245,19 +1268,26 @@
 .bboard.bb-tabs .bb-talk .bb-add-btn{grid-area:b;width:48px;height:48px;min-height:48px;padding:0;border-radius:24px}
 .bb-tabs .bb-talk .bb-add-word{display:none}
 .bb-tabs .bb-talk .bb-add-btn svg{width:22px;height:22px}
-.bb-tabs .bb-week{display:grid;grid-template-columns:repeat(7,minmax(44px,1fr));gap:6px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
-.bb-tabs .bb-week::-webkit-scrollbar{display:none}
-/* small phones: closer together and out to the card's edge; the very smallest scroll the week sideways, inside the card */
-@media (max-width:400px){.bb-tabs .bb-week{gap:2px;margin:0 -8px}}
-.bb-tabs .bb-wday{position:relative;height:58px;min-width:44px;border-radius:16px;background:var(--bb-paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:transform .2s var(--bb-ease)}
-.bb-tabs .bb-wday:active{transform:scale(.95)}
-.bb-tabs .bb-wd{font-size:11px;color:var(--bb-ink-2)}
+/* the month calendar */
+.bb-tabs .bb-cal{margin:0 0 6px}
+.bb-tabs .bb-cal-head{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+.bb-tabs .bb-cal-title{flex:1;margin:0;font-family:var(--bb-display);font-size:21px;line-height:1.2}
+.bb-tabs .bb-cal-gap{width:0}
+.bb-tabs .bb-cal-go{width:44px;height:44px;min-width:44px;border-radius:22px;display:grid;place-items:center;background:var(--bb-paper);color:var(--bb-ink)}
+.bb-tabs .bb-cal-go svg{width:20px;height:20px}
+.bb-tabs .bb-cal-go:disabled{opacity:.3}
+.bb-tabs .bb-cal-today{min-height:44px;padding:0 14px;border-radius:22px;background:var(--bb-paper);color:var(--bb-ink);font-size:14px;font-weight:600}
+.bb-tabs .bb-cal-names,.bb-tabs .bb-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.bb-tabs .bb-cal-names{margin:0 0 4px;font-size:11px;color:var(--bb-ink-2);text-align:center}
+@media (max-width:400px){.bb-tabs .bb-cal-names,.bb-tabs .bb-cal-grid{gap:2px}}
+.bb-tabs .bb-cal-day{position:relative;height:46px;min-width:0;border-radius:14px;background:var(--bb-paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:transform .2s var(--bb-ease)}
+.bb-tabs .bb-cal-day:active{transform:scale(.95)}
+.bb-tabs .bb-cal-day.bb-past{background:transparent;color:var(--bb-ink-2)}
 .bb-tabs .bb-dn{font-size:16px;font-weight:600}
 .bb-tabs .bb-wdot{width:5px;height:5px;border-radius:3px;background:transparent}
-.bb-tabs .bb-wday.bb-has{box-shadow:inset 0 0 0 1.5px var(--bb-clay)}
-.bb-tabs .bb-wday.bb-has .bb-wdot{background:var(--bb-clay)}
-.bb-tabs .bb-wday.bb-today{background:var(--bb-ink);color:var(--bb-paper)}
-.bb-tabs .bb-wday.bb-today .bb-wd{color:inherit;opacity:.85}
+.bb-tabs .bb-cal-day.bb-has{box-shadow:inset 0 0 0 1.5px var(--bb-clay)}
+.bb-tabs .bb-cal-day.bb-has .bb-wdot{background:var(--bb-clay)}
+.bb-tabs .bb-cal-day.bb-today{background:var(--bb-ink);color:var(--bb-paper)}
 .bb-tabs .bb-day.bb-flash{animation:bb-flash 1.4s ease}
 @keyframes bb-flash{0%,100%{background:transparent}30%{background:var(--bb-clay-soft)}}
 .bb-tabs .bb-day{border-radius:14px}
