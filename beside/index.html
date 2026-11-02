@@ -474,6 +474,7 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound-tog{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:center;min-height:44px;cursor:pointer;font-size:14px;font-weight:600}
 .sound-tog input{width:20px;height:20px;margin:0;accent-color:var(--clay);cursor:pointer}
 .sound-modes{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sound-mode:last-child:nth-child(odd){grid-column:1 / -1}
 .sound-mode{min-height:44px;padding:0 8px;border-radius:12px;border:1.5px solid var(--snd-line);background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .sound-mode[aria-checked="true"]{background:var(--clay);border-color:var(--clay);color:var(--clay-ink)}
 .sound-mode:focus-visible,.sound-test:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
@@ -910,6 +911,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=4"></script>
 <script src="board.js?v=8"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
