@@ -516,6 +516,9 @@ button:disabled{opacity:.55;cursor:default}
 .endcard .btn{min-height:48px;padding:0 22px;font-size:16px}
 .endcard-x{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ink-2)}
 .endcard-x svg{width:18px;height:18px}
+.movecard{padding-right:18px}
+.movecard-acts{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap}
+.movecard-not{min-height:44px;min-width:44px;padding:0 10px;font-size:15px;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 /* Home */
 .home-grid{display:grid;gap:14px;min-width:0}
@@ -557,11 +560,10 @@ button:disabled{opacity:.55;cursor:default}
 .callstage .chip{justify-self:start}
 .card{background:var(--paper-2);border-radius:var(--radius);padding:16px;min-width:0}
 .card .btn.quiet{background:var(--paper);box-shadow:none}
-.linkcard .label{font-size:13px;font-weight:600;color:var(--ink-2)}
-.linkcard .link{font-size:24px;margin-top:6px}
 .linkcard-acts{margin-top:12px}
 .linkcard-acts .btn{flex:1;min-height:48px}
 .linkcard-acts .btn svg{width:18px;height:18px}
+.invitesheet .linkcard-acts .btn{white-space:nowrap;padding:0 12px}
 .rows{padding:6px}
 .rowbtn{width:100%;display:flex;align-items:center;gap:12px;min-height:54px;padding:0 12px;border-radius:16px;text-align:left;font-size:16px;font-weight:500;transition:background .2s}
 .rowbtn:hover{background:var(--paper)}
@@ -614,6 +616,8 @@ button:disabled{opacity:.55;cursor:default}
 @keyframes hop{0%,58%,100%{transform:translateY(0)}68%{transform:translateY(-9px)}78%{transform:translateY(0)}86%{transform:translateY(-4px)}94%{transform:translateY(0)}}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
+/* nobody is looking (window minimised, another tab, phone locked): every animation waits, to save battery */
+html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play-state:paused !important;transition:none !important}
 </style>
 </head>
 <body>
@@ -621,6 +625,11 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 
 <!-- NOT IN A CALL: the tabs. Home, Plans, Calls, Hearts. The board (board.js) draws its parts into the b* boxes. -->
 <section class="boardzone shell" id="boardZone" hidden>
+  <!-- Move the call here: this room is in a call on another of your devices (or theirs, for a guest) -->
+  <div class="endcard movecard" id="moveCard" role="region" aria-label="Move the call here" hidden>
+    <div class="endcard-words"><h2 class="display" id="moveTitle">You’re in a call on your other device.</h2><p id="moveText">Move it here and carry on. Nobody is dropped.</p></div>
+    <div class="movecard-acts"><button class="btn primary" id="moveBtn">Move the call here</button><button class="movecard-not" id="moveNot">Not now</button></div>
+  </div>
   <div class="endcard" data-state="ended" hidden>
       <div class="endcard-words"><h2 class="display" id="endedTitle">Call ended.</h2><p id="endedText">Your link stays the same for next time.</p></div>
       <button class="btn primary" id="endedAction">Start a call</button>
@@ -673,18 +682,11 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
           </div>
           <button class="chip" id="micStartToggle" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micStartLabel">Mic on</span><span class="switch"></span></button>
         </div>
-        <div class="card linkcard">
-          <div class="label">Your link, the same every time</div>
-          <div class="link" id="idleLinkText"></div>
-          <div class="row linkcard-acts">
-            <button class="btn quiet" id="idleCopyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span class="label-t">Copy</span></button>
-            <button class="btn quiet" id="idleShareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Send link</button>
-          </div>
-        </div>
         <div class="card rows">
           <button class="rowbtn" data-check-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Check my setup</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           <button class="rowbtn" id="mineIdleBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg><span>Use my room on my iPad or iPhone</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           <button class="rowbtn ring-me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Let Beside ring me</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button class="rowbtn" id="inviteRowBtn" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/></svg><span>Invite someone else</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
         </div>
       </section>
       <section class="stage callstage" data-state="join" data-shell data-role="guest" hidden>
@@ -816,6 +818,20 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </section>
 
 <!-- OUR BOARD in a call: More opens the countdown, to-dos and calendar here. -->
+<!-- INVITE: the link for someone else, from Calls -->
+<div class="sheet" id="inviteSheet" hidden>
+  <div class="menu invitesheet" role="dialog" aria-modal="true" aria-labelledby="inviteTitle">
+    <header><h2 class="display" id="inviteTitle">Invite someone else</h2><button class="btn x" id="inviteClose" aria-label="Close">×</button></header>
+    <div class="body">
+      <p class="label">Your link, the same every time</p>
+      <div class="link" id="idleLinkText"></div>
+      <div class="row linkcard-acts">
+        <button class="btn quiet" id="idleCopyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span class="label-t">Copy</span></button>
+        <button class="btn quiet" id="idleShareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Send link</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="sheet" id="boardSheet" hidden>
   <div class="menu boardsheet" role="dialog" aria-modal="true" aria-labelledby="boardTitle">
     <header><h2 class="display" id="boardTitle">Together</h2><button class="btn x" id="boardClose" aria-label="Close">×</button></header>
@@ -872,7 +888,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=2"></script>
-<script src="board.js?v=5"></script>
-<script src="app.js?v=26"></script>
+<script src="board.js?v=6"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

@@ -97,6 +97,7 @@
     const into = SHELL.includes(prev) && !SHELL.includes(state);
     const back = !!prev && !SHELL.includes(prev) && SHELL.includes(state);
     const snap = into ? tvSnap() : null; // before the tabs go
+    if (into) { const inv = $('inviteSheet'); if (inv) inv.hidden = true; }
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
@@ -2166,7 +2167,9 @@
     mode = mode === 'video' || mode === 'share' ? mode : 'voice';
     if (mode === 'share' && !CAN_SHARE) { note(NO_SHARE, 'info'); return; }
     store.set('beside.start', mode);
-    if (H.otherTabLive) {
+    MV.away = false;
+    moveCardHide();
+    if (H.otherTabLive && !H.moveTo) {
       H.otherTabLive = false; // ask again, in case that tab has gone
       if (bc) bc.postMessage('live?');
       note(OTHER_TAB, 'stay');
@@ -2197,7 +2200,7 @@
         }
         if (isWholeScreen(display)) { display.getTracks().forEach((t) => t.stop()); hostCleanup(); note(WHOLE_SCREEN, 'stay'); return; }
       }
-      const wantMic = !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
+      const wantMic = !!H.moveTo || !$('micStartToggle') || $('micStartToggle').getAttribute('aria-pressed') !== 'false';
       if (wantMic) {
         try {
           H.mic = await getOwn('audio', MIC);
@@ -2250,6 +2253,7 @@
     H.stopping = false;
     text('liveHint', 'Getting your link ready…');
     if (!netReady()) { const code = H.code; NET.p.then(() => { if (H.code === code && !H.stopping && app.state === 'live') openHostPeer(); }); return; }
+    if (H.moveTo && !H.moveTo.sent) { H.moveTo.sent = true; H.fast = 40; text('liveHint', 'Moving the call here…'); moveAsk(); }
     if (NET.own && !H.spare) openSparePeer();
     let wasOpen = false;
     const peer = new Peer(PREFIX + H.code, opts());
@@ -2259,6 +2263,8 @@
       if (H.peer !== peer) return;
       wasOpen = true;
       H.idRetries = 0;
+      H.fast = 0;
+      H.moveTo = null;
       app.hostReady = true;
       text('liveHint', '');
       if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) {
@@ -2271,6 +2277,7 @@
     });
     peer.on('connection', (conn) => {
       if (H.peer !== peer) { try { conn.close(); } catch (e) {} return; }
+      if (moveConn(conn)) return;
       hostKnock(conn);
     });
     peer.on('disconnected', () => {
@@ -2285,7 +2292,24 @@
       if (t === 'unavailable-id') {
         // Our own session after a Wi-Fi blip: PeerJS keeps the calls and 'disconnected' retries.
         if (wasOpen) { text('liveHint', 'Reconnecting to the call server…'); return; }
+        // Moving the call here: the other device is letting go of the link right now.
+        if (H.fast > 0) {
+          H.fast--;
+          try { peer.destroy(); } catch (e2) {}
+          setTimeout(() => { if (H.peer === peer && !H.stopping && app.state === 'live') openHostPeer(); }, 250);
+          return;
+        }
         if (H.otherTabLive) { note(OTHER_TAB, 'stay'); hostStop(); return; }
+        // The first time: is it live on another of my devices? Then offer to move it here instead of waiting.
+        if (!H.idRetries) {
+          moveProbe((r) => {
+            if (!r || !r.live || H.peer !== peer || app.hostReady || app.state !== 'live') return;
+            hostCleanup();
+            show('idle');
+            MV.dismissed = false;
+            moveFound(r);
+          });
+        }
         if (H.idRetries < 30) {
           // A reload or a sleeping Mac still holds the link for a moment; it frees itself.
           H.idRetries++;
@@ -2333,6 +2357,7 @@
     }, ms);
     peer.on('connection', (conn) => {
       if (H.spare !== peer) { try { conn.close(); } catch (e) {} return; }
+      if (moveConn(conn)) return;
       hostKnock(conn);
     });
     peer.on('disconnected', () => again(3000));
@@ -2390,7 +2415,7 @@
           tuneVoice(g.voiceSender);
           text('liveHint', '');
           tell(conn, { cam: !!H.cam });
-          if (!g.live) { g.live = true; guestStatus(); }
+          if (!g.live) { g.live = true; guestStatus(); moveTakeOver(g); }
           hostFace(g);
         });
     }
@@ -2773,6 +2798,132 @@
     text('endedAction', action);
     show('ended');
   }
+  // ---------- MOVE THE CALL HERE ----------
+  // One person, two devices: the call is live on one (phone, iPad, Mac, browser or the Beside app) and they open
+  // Beside on another. A quick look (a "probe": a short data link with metadata {beside:'probe'}) asks the live
+  // room. For a host, any live host device of this room counts; for a guest, a live guest with the same name
+  // (the name is the per-person key the guest link's devices share). "Move the call here" then:
+  //  host: the new device asks the live one to hand over ({beside:'move'}); the old one tells the guests a move
+  //        is coming, stops hosting (which ends any screen share it was running) and frees the link; the new one
+  //        claims it with quick retries; the guests knock again by themselves.
+  //  guest: the new device joins first (with {move:1}); once it is in, the host tells the old device to leave.
+  const MV = { probing: false, dismissed: false, cam: false, away: false };
+  function moveProbe(then) {
+    if (MV.probing || !window.Peer || !roomy()) return;
+    const nm = isGuest ? cleanName(store.get('beside.name') || '') : '';
+    if (isGuest && !nm) return; // no name yet: nothing to match a guest's other device by
+    const target = isGuest ? hostId : PREFIX + (H.code || hostCode());
+    MV.probing = true;
+    let p = null;
+    const done = (r) => {
+      if (!MV.probing) return;
+      MV.probing = false;
+      clearTimeout(t);
+      setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 200);
+      if (then) then(r);
+    };
+    const t = setTimeout(() => done(null), 5000);
+    try { p = new Peer(opts()); } catch (e) { done(null); return; }
+    p.on('open', () => {
+      const c = p.connect(target, { reliable: true, metadata: { beside: 'probe', as: isGuest ? 'guest' : 'host', name: nm } });
+      c.on('data', (d) => { if (d && d.t === 'probe') done(d); });
+      c.on('error', () => done(null));
+    });
+    p.on('error', () => done(null));
+  }
+  function roomy() { return isGuest ? !!guestCode : true; }
+  function moveFound(r) {
+    if (!r || !r.live || MV.dismissed) return;
+    if (isGuest ? !r.here || !['join', 'ended'].includes(app.state) : !['idle', 'ended'].includes(app.state)) return;
+    MV.cam = !!r.cam;
+    const c = $('moveCard');
+    if (c) c.hidden = false;
+    if (typeof setTab === 'function') setTab('home', true);
+  }
+  function moveCardHide() { const c = $('moveCard'); if (c) c.hidden = true; }
+  // The live device: a probe or a move request on its link (never counted as a guest).
+  function moveConn(conn) {
+    const m = conn.metadata;
+    if (!m || (m.beside !== 'probe' && m.beside !== 'move')) return false;
+    conn.on('open', () => {
+      if (m.beside === 'probe') {
+        const nm = cleanName(m.name || '').toLowerCase();
+        const same = m.as === 'guest' && nm ? [...H.guests.values()].find((g) => g.live && (g.name || '').toLowerCase() === nm) : null;
+        tell(conn, { t: 'probe', live: app.state === 'live' && !!app.hostReady, here: m.as === 'host' || !!same, cam: m.as === 'host' ? !!H.cam : !!(same && same.camOn) });
+        setTimeout(() => { try { conn.close(); } catch (e) {} }, 1500);
+      } else if (m.as === 'host' && app.state === 'live') {
+        // Only another host device of this room asks this; a guest's other device joins instead (see guestConnect).
+        tell(conn, { t: 'moving' });
+        setTimeout(moveAway, 100);
+      }
+    });
+    return true;
+  }
+  function moveAway() {
+    if (app.state !== 'live') return;
+    MV.cam = !!H.cam;
+    toGuests({ t: 'moving' });
+    setTimeout(() => {
+      hostCleanup();
+      nativeEnd();
+      MV.away = true;
+      ended('Moved to your other device.', 'The call carries on there.', 'Bring it back');
+    }, 60);
+  }
+  // The new device: ask the live one to hand over, then claim the link (openHostPeer retries quickly).
+  function moveAsk() {
+    let p = null;
+    const bye = () => setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 300);
+    try { p = new Peer(opts()); } catch (e) { return; }
+    p.on('open', () => {
+      const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'move', as: 'host' } });
+      c.on('data', bye);
+      c.on('close', bye);
+      c.on('error', bye);
+    });
+    p.on('error', bye);
+    setTimeout(bye, 4000);
+  }
+  function moveHere() {
+    moveCardHide();
+    MV.away = false;
+    if (isGuest) {
+      G.moveIn = true;
+      G.moveCam = MV.cam;
+      if (app.state === 'ended') show('join');
+      guestJoin(true);
+      return;
+    }
+    H.moveTo = { sent: false };
+    hostStart(MV.cam ? 'video' : 'voice');
+  }
+  // The guest's old device, told by the host that the new one is in.
+  function guestMovedAway() {
+    MV.cam = !!G.cam;
+    guestLeave();
+    nativeEnd();
+    MV.away = true;
+    ended('Moved to your other device.', 'The call carries on there.', 'Bring it back');
+  }
+  // The host, when a guest that came with {move:1} is in: their other device (same name) can go.
+  function moveTakeOver(g) {
+    const m = (g.conn && g.conn.metadata) || {};
+    if (!m.move || !g.name) return;
+    const nm = g.name.toLowerCase();
+    for (const [k, o] of H.guests) {
+      if (o === g || (o.name || '').toLowerCase() !== nm) continue;
+      tell(o.conn, { t: 'moved' });
+      setTimeout(() => hostDropGuest(k), 500);
+    }
+  }
+  // Inside the Beside app, the old device's phone call (CallKit) ends with the page's call.
+  function nativeEnd() {
+    const n = window.BesideNative;
+    if (!n) return;
+    try { if (typeof n.endCall === 'function') n.endCall('moved'); } catch (e) {}
+    try { const mh = window.webkit && window.webkit.messageHandlers; if (mh && mh.beside) mh.beside.postMessage({ t: 'ended', why: 'moved' }); } catch (e) {}
+    try { window.dispatchEvent(new CustomEvent('beside:ended', { detail: { why: 'moved' } })); } catch (e) {}
+  }
   function hostStop(msg) {
     hostCleanup();
     ended('Call ended.', msg || 'Your link stays the same for next time.', 'Start a call');
@@ -2849,6 +3000,8 @@
     setJoinBusy(true);
     try {
       G.left = false;
+      MV.away = false;
+      moveCardHide();
       G.lost = G.dropped = false;
       G.tries = G.quiet = G.reopenedAt = 0;
       // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
@@ -3008,7 +3161,7 @@
     G.conn = null;
     if (old && !old.open && !answered(old)) G.spare = old;
     else if (old) { try { old.close(); } catch (e) {} }
-    const conn = G.peer.connect(hostId, { reliable: true, metadata: { name: store.get('beside.name') || '' } });
+    const conn = G.peer.connect(hostId, { reliable: true, metadata: G.moveIn ? { name: store.get('beside.name') || '', move: 1 } : { name: store.get('beside.name') || '' } });
     G.conn = conn;
     knock(conn);
   }
@@ -3018,7 +3171,7 @@
     // No answer within 4 s: they're not live yet, or the call server dropped the knock (0.peerjs.com sometimes
     // drops a knock on a link that isn't live without saying so), so knock again; after ~10 minutes, every 12 s.
     // An answer but no link after 15 s: one of the networks is blocking the call.
-    const patience = G.tries > 150 ? 12000 : 4000;
+    const patience = G.movingAt && Date.now() - G.movingAt < 15000 ? 1200 : G.tries > 150 ? 12000 : 4000;
     const check = () => {
       if (G.conn !== conn || opened || G.left || app.state === 'watching') return;
       const age = Date.now() - at;
@@ -3075,6 +3228,8 @@
     try {
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { G.camOn = !!d.cam; guestFace(); return; }
+      if (d.t === 'moving') { G.movingAt = Date.now(); return; }
+      if (d.t === 'moved') { guestMovedAway(); return; }
       if (d.t === 'hello') {
         G.hostVer = +d.v || 0;
         G.hostName = cleanName(d.name);
@@ -3128,7 +3283,8 @@
   }
   // After a call: a dropped connection keeps saying so until it's back; an end says they ended it.
   function lostText() {
-    if (G.dropped) wait('The connection dropped.', 'Reconnecting…', 'Usually a Wi-Fi hiccup. Keep this open.');
+    if (G.movingAt && Date.now() - G.movingAt < 15000) wait('Moving the call…', 'Back in a moment…', (theirName || 'They') + ' is moving the call to another device.');
+    else if (G.dropped) wait('The connection dropped.', 'Reconnecting…', 'Usually a Wi-Fi hiccup. Keep this open.');
     else wait((theirName || 'They') + ' ended the call.', 'Waiting for ' + (theirName || 'them') + ' to start again…', 'Keep this open and it reconnects by itself.');
   }
   function wait(title, status, hint) {
@@ -3145,7 +3301,9 @@
     clearTimeout(G.retry);
     if (G.left) return;
     // Quick at first (1 s), then about every 4 s; after ~10 minutes every 12 s to save battery.
-    const ms = Math.min(G.tries > 150 ? 12000 : 4000, 1000 * Math.pow(1.4, G.tries || 0));
+    // The host is moving the call to another of their devices: knock again quickly.
+    const moving = G.movingAt && Date.now() - G.movingAt < 15000;
+    const ms = moving ? 250 : Math.min(G.tries > 150 ? 12000 : 4000, 1000 * Math.pow(1.4, G.tries || 0));
     G.tries = (G.tries || 0) + 1;
     G.retry = setTimeout(guestConnect, ms);
   }
@@ -3181,6 +3339,8 @@
     app.watching = true;
     G.lost = G.dropped = false;
     G.tries = G.quiet = 0;
+    G.movingAt = 0;
+    if (G.moveIn) { G.moveIn = false; if (G.moveCam && !G.cam) { G.moveCam = false; guestCam(); } }
     stayAwake(true);
     wakeControls();
   }
@@ -3616,7 +3776,17 @@
   }
 
   // ---------- WIRE UP ----------
+  // Nobody looking: animations wait (the page's own class; board.js sets the same). Calls, sound, the ring and
+  // the board's checks carry on.
+  function hiddenClass() {
+    const hid = document.visibilityState === 'hidden';
+    document.documentElement.classList.toggle('is-hidden', hid);
+    // A fade or slide still going is simply finished.
+    if (hid && document.getAnimations) document.getAnimations().forEach((a) => { if (window.CSSTransition && a instanceof CSSTransition) { try { a.finish(); } catch (e) {} } });
+  }
+  document.addEventListener('visibilitychange', hiddenClass);
   function boot() {
+    hiddenClass();
     document.body.dataset.role = isGuest ? 'guest' : 'host';
     if (store.get('beside.mode') === 'motion') H.mode = 'motion';
     modeLabel();
@@ -3645,6 +3815,19 @@
     ['copyBtn', 'moreCopyBtn', 'idleCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
     ['shareBtn', 'moreShareBtn', 'idleShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
     ['mineBtn', 'mineIdleBtn'].forEach((id) => on(id, 'click', () => copyMine($(id))));
+    // Calls: "Invite someone else" opens a small sheet with the link, Copy and Send link.
+    const inv = $('inviteSheet');
+    const invite = (open) => {
+      if (!inv) return;
+      inv.hidden = !open;
+      if (open) { renderLink(); const x = $('inviteClose'); if (x) x.focus(); } else { const r = $('inviteRowBtn'); if (r) r.focus(); }
+    };
+    on('inviteRowBtn', 'click', () => invite(true));
+    on('inviteClose', 'click', () => invite(false));
+    if (inv) {
+      inv.addEventListener('click', (e) => { if (e.target === inv) invite(false); });
+      inv.addEventListener('keydown', (e) => { if (e.key === 'Escape') invite(false); });
+    }
     on('boardBtn', 'click', () => boardSheet(true));
     on('nameInput', 'change', () => { if (boardOn && app.state === 'join') boardPlace('join'); });
     on('boardClose', 'click', () => boardSheet(false));
@@ -3734,7 +3917,10 @@
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
     const more = $('moreSheet');
     if (more) more.addEventListener('click', (e) => { if (e.target === more) closeMore(); });
-    on('endedAction', 'click', () => { if (isGuest) show('join'); else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
+    on('endedAction', 'click', () => { if (MV.away) moveHere(); else if (isGuest) show('join'); else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
+    on('moveBtn', 'click', moveHere);
+    on('moveNot', 'click', () => { MV.dismissed = true; moveCardHide(); });
+    on('nameInput', 'change', () => { if (app.state === 'join') moveProbe(moveFound); });
     document.addEventListener('pointerdown', () => {
       if (H.ctx && H.ctx.state === 'suspended') H.ctx.resume().catch(() => {});
       // Safari can refuse to play a guest's voice until a click on the page.
@@ -3797,6 +3983,8 @@
       show('idle');
       if (bc) bc.postMessage('live?');
     }
+    // Already in this call on another device? Offer to move it here.
+    if (window.Peer) whenNet(() => setTimeout(() => moveProbe(moveFound), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
     if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, W, ytWatch, ytClose }; // automated tests only
