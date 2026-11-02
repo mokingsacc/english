@@ -478,6 +478,10 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 #watchRoot[data-faces="1"] .ytbox{right:calc(max(14px,env(safe-area-inset-right)) + clamp(112px,22vw,224px) + 14px)}
 @media (max-aspect-ratio:1/1){#watchRoot[data-faces="1"] .ytbox{right:max(14px,env(safe-area-inset-right));top:calc(max(14px,env(safe-area-inset-top)) + 70px + 27vw)}}
 .msg .ytgo{display:flex;margin-top:8px;min-height:34px;padding:0 12px;font-size:14px}
+.boardzone{padding:0 16px max(28px,env(safe-area-inset-bottom))}
+.boardin{max-width:1100px;margin:0 auto}
+body.has-board .stage[data-state~="idle"] .frame,body.has-board .stage[data-state~="join"] .frame,body.has-board .stage[data-state~="ended"] .frame{min-height:0;padding-bottom:20px}
+.menu.boardsheet{max-width:1100px}
 .sound-clear{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;cursor:pointer;padding:2px 0 4px}
 .sound-clear input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--clay);cursor:pointer}
 .sound-clear b{display:block;font-size:14px;font-weight:600}
@@ -650,6 +654,15 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
   </div>
 </section>
 
+<!-- OUR BOARD: countdown, thinking of you, to-dos, calendar (board.js). Under the start and join screens; in a call it opens from More. -->
+<section class="boardzone" id="boardZone" hidden><div class="boardin" id="boardMount"></div></section>
+<div class="sheet" id="boardSheet" hidden>
+  <div class="menu boardsheet" role="dialog" aria-modal="true" aria-labelledby="boardTitle">
+    <header><h2 class="display" id="boardTitle">Together</h2><button class="btn x" id="boardClose" aria-label="Close">×</button></header>
+    <div class="body" id="boardSheetBody"></div>
+  </div>
+</div>
+
 <!-- CHECK MY SETUP (sheet over any state) -->
 <div class="sheet" data-state="check" hidden>
   <div class="check" role="dialog" aria-modal="true" aria-labelledby="checkTitle">
@@ -676,6 +689,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
         </div>
         <button class="btn quiet wide" id="mineBtn" style="margin-top:10px">Use this room on my iPad or iPhone</button>
       </div>
+      <button class="btn quiet wide" id="boardBtn">Countdown, to-dos and calendar</button>
       <button class="btn quiet wide" id="changeBtn" data-role="host" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11l-3-3M20 17H9l3 3"/></svg>Share a different tab</button>
       <div data-role="host">
         <div class="seg" id="modeToggle" role="group" aria-label="Picture priority">
@@ -696,6 +710,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=20"></script>
+<script src="board.js?v=1"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
