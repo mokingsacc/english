@@ -1297,6 +1297,7 @@
 .bb-fly{position:fixed;left:0;top:0;z-index:95;width:28px;height:28px;pointer-events:none;filter:drop-shadow(0 0 6px rgba(232,144,122,.55))}
 .bb-fly svg{width:100%;height:100%;display:block}
 @media (prefers-reduced-motion:reduce){.bboard *,.bboard *::before,.bboard *::after,.bb-fly{animation:none !important;transition:none !important}}
+html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard *::after{animation-play-state:paused !important;transition:none !important}
 `;
 
   function mount(el, opts) {
@@ -1324,6 +1325,15 @@
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('pageshow', onVisible);
   setInterval(() => { if (S && document.visibilityState === 'visible') render(); }, 30000); // "2 h ago", the countdown
+  // Nobody looking: every animation waits (html.is-hidden), and the words catch up the moment they look again.
+  function seen() {
+    const hid = document.visibilityState === 'hidden';
+    document.documentElement.classList.toggle('is-hidden', hid);
+    if (hid && document.getAnimations) document.getAnimations().forEach((a) => { if (window.CSSTransition && a instanceof CSSTransition) { try { a.finish(); } catch (e) {} } });
+    if (!hid && S) render();
+  }
+  document.addEventListener('visibilitychange', seen);
+  seen();
 
   window.BesideBoard = {
     mount,
