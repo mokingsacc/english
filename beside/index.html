@@ -467,6 +467,10 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound input[type=range]{width:100%;height:28px;accent-color:var(--clay);cursor:pointer}
 .sound input[type=range]:disabled{cursor:default}
 .sound-hint{font-size:12.5px;line-height:1.35;color:rgba(240,231,216,.62)}
+.sound-clear{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;cursor:pointer;padding:2px 0 4px}
+.sound-clear input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--clay);cursor:pointer}
+.sound-clear b{display:block;font-size:14px;font-weight:600}
+.sound-clear small{display:block;font-size:12.5px;line-height:1.35;color:rgba(240,231,216,.62);margin-top:2px}
 #soundBtn[aria-expanded="true"]{background:rgba(255,255,255,.16)}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
@@ -597,7 +601,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
         <button class="btn share" id="screenBtn" data-role="host" title="Show one tab or window" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/><path d="m9 10.5 3-3 3 3M12 7.5v6"/></svg><span class="label-t">Share screen</span></button>
         <button class="btn share" id="gScreenBtn" data-role="guest" title="Show one tab or window" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/><path d="m9 10.5 3-3 3 3M12 7.5v6"/></svg><span class="label-t">Share screen</span></button>
         <button class="btn icon" id="chatBtn" aria-label="Chat" title="Chat" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12z"/></svg><span class="badge" id="chatBadge" hidden></span></button>
-        <button class="btn icon" id="soundBtn" aria-label="Sound" title="Sound: voices and the shared video" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>
+        <button class="btn icon" id="soundBtn" aria-label="Sound" title="Sound: Clear voice and volumes" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>
         <button class="btn icon" id="moreBtn" aria-label="More" title="More" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="18.5" cy="12" r="1.9"/></svg></button>
         <button class="btn leave" id="stopBtn" data-role="host" title="End the call">End</button>
         <button class="btn leave" id="leaveBtn" data-role="guest" title="Leave the call">Leave</button>
@@ -675,6 +679,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
