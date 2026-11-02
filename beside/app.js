@@ -78,6 +78,7 @@
     const rq = (q.get('room') || '').toLowerCase();
     if (!isGuest && /^[a-z0-9]{8}$/.test(rq)) {
       store.set('beside.room', rq);
+      store.set('beside.room.linked', '1');
       const nq = cleanName(q.get('name'));
       if (nq && !store.get('beside.name.host')) store.set('beside.name.host', nq);
     }
@@ -1307,10 +1308,7 @@
     if (store.get(ringKey())) { // on: turn it off
       RG.busy = true;
       try {
-        const reg = await ringSw();
-        const s = reg && await reg.pushManager.getSubscription();
         await ringPost('/push', { off: true, endpoint: store.get(ringKey()) });
-        if (s) await s.unsubscribe().catch(() => {});
         store.set(ringKey(), '');
         note('Beside won’t ring this device any more.', 'info');
       } catch (e) { note(e.message, 'info'); }
@@ -1346,6 +1344,7 @@
   function ringNative() {
     const n = window.BesideNative;
     if (!n || !n.voip || !/^[0-9a-f]{64,200}$/.test(n.voip)) return;
+    if (!isGuest && !store.get('beside.room.linked')) return; // not yet given a link: no room of its own to ring
     const mark = n.voip + '|' + boardRoom() + '|' + ringRole() + '|' + boardName();
     if (store.get('beside.voip.sent') === mark) return;
     ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), voip: n.voip, env: n.env === 'sandbox' ? 'sandbox' : 'production' })
@@ -1359,6 +1358,7 @@
       const j = await ringPost('/ring', { role: ringRole(), name: isGuest ? boardName() : (myName() || 'Your person') });
       const who = isGuest ? (theirName || 'them') : ((j.names && j.names[0]) || 'them');
       if (j.sent > 0) note('Ringing ' + who + '…', 'info');
+      else if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
       else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay');
     } catch (e) { note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
     setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
@@ -1376,7 +1376,42 @@
     if (isGuest) { if (app.state === 'ended') show('join'); if (app.state === 'join') guestJoin(true); }
     else if (app.state === 'idle' || app.state === 'ended') hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice');
   }
+  // A "rings on" flag is only a note: at each start, hand the browser's current subscription to the server again
+  // (it may have changed, or been dropped as gone), or clear the flag if there is none.
+  async function ringRecheck() {
+    if (NATIVE() || !store.get(ringKey()) || !('Notification' in window) || Notification.permission !== 'granted') {
+      if (store.get(ringKey()) && 'Notification' in window && Notification.permission === 'denied') { store.set(ringKey(), ''); ringMeUi(); }
+      return;
+    }
+    try {
+      const reg = await ringSw();
+      const s = reg && await reg.pushManager.getSubscription();
+      if (!s) { store.set(ringKey(), ''); ringMeUi(); return; }
+      const j = s.toJSON();
+      await ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), web: { endpoint: j.endpoint, keys: j.keys } });
+      store.set(ringKey(), j.endpoint);
+    } catch (e) { /* offline: try again next time */ }
+  }
+  // The Beside app opens at sitbeside.pages.dev with no link: ask for the link once, so it knows its room.
+  function ringLinkAsk() {
+    const box = $('linkAsk');
+    if (!box) return;
+    box.hidden = !(NATIVE() && !isGuest && !store.get('beside.room.linked'));
+  }
+  function ringLinkGo() {
+    const v = String(($('linkAskInput') || {}).value || '').trim();
+    let u = null;
+    try { u = new URL(v); } catch (e) {}
+    const ok = u && (u.host === location.host) && (/^#[a-z0-9]{8}/.test(u.hash) || /^[a-z0-9]{8}$/.test(u.searchParams.get('room') || ''));
+    if (!ok) { note('That isn’t a Beside link. It looks like ' + location.host + '/#abcd1234-Mo or ' + location.host + '/?room=abcd1234.', 'stay'); return; }
+    location.href = u.href;
+    if (u.pathname === location.pathname && u.search === location.search) location.reload(); // only the #part changed
+  }
   function ringBoot() {
+    on('linkAskGo', 'click', ringLinkGo);
+    on('linkAskInput', 'keydown', (e) => { if (e.key === 'Enter') ringLinkGo(); });
+    ringLinkAsk();
+    window.addEventListener('besidenative', ringLinkAsk);
     document.querySelectorAll('.ring-me').forEach((b) => b.addEventListener('click', ringMe));
     on('ringBtn', 'click', (e) => ringThem(e.currentTarget));
     on('gRingBtn', 'click', (e) => ringThem(e.currentTarget));
@@ -1385,7 +1420,18 @@
     ringNative();
     window.addEventListener('besidenative', () => { ringMeUi(); ringNative(); });
     on('nameInput', 'change', ringNative);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.beside === 'answer' && e.data.fresh) ringAnswerNow(); });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
+      const d = e.data;
+      if (!d || d.beside !== 'answer') return;
+      if (!d.url) { if (d.fresh) ringAnswerNow(); return; } // no link said: this page
+      let u = null;
+      try { u = new URL(d.url, location.href); } catch (x) {}
+      const m = u && u.hash.slice(1).match(/^([a-z0-9]{8})/);
+      const here = u && (isGuest ? !!m && m[1] === guestCode : !m && (u.searchParams.get('room') || hostCode()) === hostCode());
+      if (here) { if (d.fresh) ringAnswerNow(); }
+      else if (u) location.href = u.href; // a ring for another room or role: open that one
+    });
+    ringRecheck();
     ringAnswer();
   }
 
@@ -1919,6 +1965,7 @@
       if (wantMic) {
         try {
           H.mic = await getOwn('audio', MIC);
+          H.ctx.resume().catch(() => {}); // allowed now the page uses the mic: a tab opened from a ring has had no click
           H.mic.getAudioTracks().forEach((t) => { try { t.contentHint = 'speech'; } catch (e) {} });
           try { H.clear = clearChain(H.ctx, H.mic, { live: () => !H.muted }); H.clear.out.connect(H.micGain); } catch (e) {
             H.clear = null;
