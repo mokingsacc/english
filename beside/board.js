@@ -249,7 +249,7 @@
       h('button', { type: 'button', class: 'bb-note-x', 'aria-label': 'Close', html: I.x, onclick: () => { n.hidden = true; } })].filter(Boolean));
     n.hidden = false;
     clearTimeout(S.noteT);
-    S.noteT = setTimeout(() => { n.hidden = true; }, action ? 7000 : 9000);
+    S.noteT = setTimeout(() => { n.hidden = true; }, action ? 12000 : 9000);
   }
 
   // ---------- sections ----------
@@ -441,9 +441,22 @@
       s.body.append(ui.calList, open, form);
     }
 
+    // Say it: one sentence becomes to-dos, events or a countdown (the keyboard's mic does the listening).
+    {
+      const inp = h('input', { type: 'text', class: 'bb-in', maxlength: 300, placeholder: 'Say it: dinner Friday 7pm', 'aria-label': 'Add by saying it', autocomplete: 'off', autocapitalize: 'sentences', enterkeyhint: 'send' });
+      const go = h('button', { type: 'submit', class: 'bb-btn bb-primary bb-add-btn', 'aria-label': 'Add it' }, h('span', { html: I.plus }), h('span', { class: 'bb-add-word', text: 'Add' }));
+      ui.talkIn = inp; ui.talkGo = go;
+      ui.talk = h('form', { class: 'bb-add bb-talk', onsubmit: (e) => {
+        e.preventDefault();
+        const t = inp.value.trim();
+        if (!t) { inp.focus(); return; }
+        talk(t);
+      } }, inp, go);
+    }
+
     ui.status = h('p', { class: 'bb-status', role: 'status' });
     ui.clocks = h('div', { class: 'bb-clocks', 'aria-label': 'Your times and weather' });
-    root.replaceChildren(ui.note, ui.clocks,
+    root.replaceChildren(ui.note, ui.clocks, ui.talk,
       h('div', { class: 'bb-grid' },
         h('div', { class: 'bb-col' }, secs.countdown.sec, secs.think.sec),
         h('div', { class: 'bb-col' }, secs.todo.sec, secs.cal.sec)),
@@ -452,6 +465,45 @@
   }
 
   const short = (t) => (t.length > 40 ? t.slice(0, 38) + '…' : t);
+
+  // "“Dinner”, Fri 6 Nov, 7:00 pm London"
+  function said(a) {
+    if (a.kind === 'todo') return '“' + short(a.text) + '” to the list';
+    const z = myZone();
+    const day = a.allDay ? fmt('UTC', { weekday: 'short', day: 'numeric', month: 'short' }).format(a.at) : fmt(z, { weekday: 'short', day: 'numeric', month: 'short' }).format(a.at);
+    const time = a.allDay ? '' : ', ' + timeIn(a.at, z) + ' ' + (z === LA ? 'LA' : 'London');
+    return (a.kind === 'countdown' ? 'a countdown to “' : '“') + short(a.title) + '”, ' + day + time;
+  }
+  async function talk(t) {
+    if (S.talking) return;
+    const me = S;
+    S.talking = true;
+    S.ui.talkGo.disabled = true;
+    render();
+    let msg = '';
+    try {
+      const r = await api('/talk', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ text: t.slice(0, 300), by: S.name, zone: myZone() }) }, 35000);
+      if (r.ok) {
+        const j = await r.json();
+        if (me !== S) return;
+        accept(j.board);
+        if (j.added && j.added.length) {
+          if (S.ui.talkIn.value.trim() === t) S.ui.talkIn.value = '';
+          const undo = j.undo || [];
+          note('Added ' + j.added.map(said).join(', and ') + '.', undo.length ? { label: 'Undo', fn: () => undo.forEach((o) => send(o, 'the undo')) } : null);
+        } else note(j.reply || 'Nothing in that could go on the board.');
+      } else msg = [400, 429, 503].includes(r.status) ? (await r.text()).slice(0, 200) : 'The board isn’t answering. Please try again.';
+    } catch (e) {
+      msg = 'The connection dropped. Please try again.';
+    } finally {
+      if (me === S) {
+        S.talking = false;
+        S.ui.talkGo.disabled = false;
+        if (msg) note(msg);
+        render();
+      }
+    }
+  }
   const isMe = (n) => !!n && !!S.name && n.trim().toLowerCase() === S.name.trim().toLowerCase();
 
   function showPhoto(src) {
@@ -638,7 +690,7 @@
       }
     }
 
-    ui.status.textContent = S.offline ? 'Can’t reach the board right now. It will keep trying.' : S.pending.length ? 'Saving…' : '';
+    ui.status.textContent = S.offline ? 'Can’t reach the board right now. It will keep trying.' : S.talking ? 'Reading that…' : S.pending.length ? 'Saving…' : '';
     ui.status.classList.toggle('bb-off', !!S.offline);
   }
 
@@ -654,6 +706,8 @@
 .bboard .bb-grid{display:grid;gap:14px;min-width:0}
 .bboard .bb-col{display:grid;gap:14px;align-content:start;min-width:0}
 @container (min-width:700px){.bboard .bb-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.bboard .bb-col{gap:16px}}
+.bboard .bb-talk{margin:0 0 14px}
+.bboard .bb-talk .bb-btn:disabled{opacity:.6}
 .bboard .bb-clocks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
 .bboard .bb-clock{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-radius:var(--bb-r);background:var(--bb-paper-2);box-shadow:inset 0 0 0 1px var(--bb-line);min-width:0}
 .bboard .bb-clock.bb-mine{background:var(--bb-paper)}

@@ -11,9 +11,11 @@
    /peerjs/board/<room>/photo/<id>   a "thinking of you" photo
    /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip}), or {off} to stop
    /peerjs/board/<room>/ring   POST {role, name}: ring the other person's devices; GET: the last ring
+   /peerjs/board/<room>/talk   POST {text, by, zone}: one sentence becomes to-dos, events or a countdown (Claude reads it)
    /peerjs/push/key            the public key browsers need to say yes to rings */
 
 import { sendWeb, sendVoip, vapidPublic, pushHostOk } from './push.js';
+import { understand, toOps, TalkError, TALK_ZONES, TALK_MAX } from './talk.js';
 
 const STALE_MS = 120000; // PeerJS beats every 5 s (up to ~60 s in a hidden, throttled tab); silent longer = a dead line
 const QUEUE_MS = 5000; // like peerjs-server: hold a message for a browser that's reconnecting, then EXPIRE
@@ -84,11 +86,11 @@ function board(req, env, p) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' } });
   }
-  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring))?\/?$/);
+  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring|talk))?\/?$/);
   if (!m) return plain('Not found', 404);
   if (!ROOM_RE.test(m[1])) return plain('That board name isn’t right: use 4 to 40 letters, numbers or _.');
   if (m[3] && !ID_RE.test(m[3])) return plain('Not found', 404);
-  const post = req.method === 'POST' && !m[3], get = req.method === 'GET' && m[4] !== 'push';
+  const post = req.method === 'POST' && !m[3], get = req.method === 'GET' && m[4] !== 'push' && m[4] !== 'talk';
   if (!post && !get) return plain('Only GET and POST work here.', 405);
   return env.BOARD.get(env.BOARD.idFromName(m[1])).fetch(req);
 }
@@ -121,6 +123,8 @@ const SUBS_MAX = 12;
 const RING_GAP = 8000; // one ring per room every 8 s at most
 const RING_RE = /^(host|guest)$/;
 const VOIP_RE = /^[0-9a-f]{64,200}$/;
+const TALK_DAY = 60; // sentences per board per day
+const TALK_ALL_DAY = 200; // sentences per day across every board, so made-up board names can't run up a bill
 
 export class Board {
   constructor(ctx, env) {
@@ -198,6 +202,70 @@ export class Board {
     return { sent: this.ring.sent, devices: to.length - gone.size, gone: gone.size, names };
   }
 
+  // One sentence: Claude reads it, then every change is checked and saved together, with how to undo them.
+  async talk(req) {
+    const raw = await req.text();
+    if (raw.length > 4000) return plain('That’s too long.');
+    let o, sentence, by;
+    try { o = JSON.parse(raw); } catch (e) { return plain('That couldn’t be read.'); }
+    if (!o || typeof o !== 'object') return plain('That couldn’t be read.');
+    try { sentence = text(o.text, 'sentence', TALK_MAX); by = text(o.by, 'name', NAME_MAX, true); } catch (e) {
+      if (e instanceof Bad) return plain(e.message);
+      throw e;
+    }
+    const zone = TALK_ZONES.includes(o.zone) ? o.zone : TALK_ZONES[0];
+    if (!this.env.ANTHROPIC_API_KEY) return plain('Say it isn’t switched on yet.', 503);
+    const full = 'The board has heard enough for today. Please add the rest by hand.';
+    if (!(await this.count(1, TALK_DAY))) return plain(full, 429);
+    const meter = this.env.BOARD.get(this.env.BOARD.idFromName('meter:talk'));
+    const take = (n) => meter.fetch('https://meter/meter', { method: 'POST', body: String(n) }).then((r) => r.ok);
+    if (!(await take(1))) { await this.count(-1); return plain(full, 429); }
+    let got;
+    try { got = await understand(this.env, sentence, by, zone); } catch (e) {
+      // A sentence that failed doesn't count.
+      await this.count(-1);
+      await take(-1);
+      if (e instanceof TalkError) return plain(e.message, 503);
+      throw e;
+    }
+    // From here to this.b = ... there is no await (the board may have changed while Claude was reading).
+    let b = this.b;
+    const added = [], undo = [];
+    let why = '';
+    for (const op of toOps(got.items, zone)) {
+      op.by = by;
+      if (op.op !== 'countdown.set') op.id = newId();
+      let next;
+      try { next = this.apply(b, op); } catch (e) {
+        if (e instanceof Bad) { why = why || e.message; continue; }
+        throw e;
+      }
+      if (!next) continue;
+      if (op.op === 'todo.add') { added.push({ kind: 'todo', id: op.id, text: op.text }); undo.push({ op: 'todo.delete', id: op.id }); }
+      if (op.op === 'event.add') { added.push({ kind: 'event', id: op.id, title: op.title, at: op.at, allDay: op.allDay }); undo.push({ op: 'event.delete', id: op.id }); }
+      if (op.op === 'countdown.set') {
+        added.push({ kind: 'countdown', title: op.title, at: op.at });
+        undo.push(b.countdown ? { op: 'countdown.set', title: b.countdown.title, at: b.countdown.at } : { op: 'countdown.clear' });
+      }
+      b = next.board;
+    }
+    if (!added.length) return this.reply({ board: this.b, added, reply: why || got.reply || 'Nothing in that could go on the board.' });
+    b.v = this.b.v + 1;
+    this.b = b;
+    await this.ctx.storage.put('board', b);
+    return this.reply({ board: b, added, undo: undo.reverse() });
+  }
+
+  // Today's count of sentences in this object, moved by n; false when that would pass max.
+  async count(n, max = Infinity) {
+    const day = new Date().toISOString().slice(0, 10);
+    const use = (await this.ctx.storage.get('talk')) || {};
+    const now = use.day === day ? use.n : 0;
+    if (n > 0 && now + n > max) return false;
+    await this.ctx.storage.put('talk', { day, n: Math.max(0, now + n) });
+    return true;
+  }
+
   reply(b) { return new Response(JSON.stringify(b), { headers: { ...JSON_H, ...CORS } }); }
 
   async fetch(req) {
@@ -212,6 +280,11 @@ export class Board {
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return new Response(bytes, { headers: { 'content-type': 'image/' + m[1], 'cache-control': 'private, max-age=31536000, immutable', ...CORS } });
     }
+    if (url.pathname === '/meter') { // the one shared count for Say it (only this Worker can reach it)
+      const n = Number(await req.text()) === -1 ? -1 : 1;
+      return new Response(null, { status: (await this.count(n, TALK_ALL_DAY)) ? 204 : 429 });
+    }
+    if (/\/talk\/?$/.test(url.pathname)) return this.talk(req);
     const sub = url.pathname.match(/\/(push|ring)\/?$/);
     if (sub && req.method === 'GET') return this.reply({ ring: this.ring && Date.now() - this.ring.at < 120000 ? this.ring : null });
     if (sub) {
