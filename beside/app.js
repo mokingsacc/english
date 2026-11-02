@@ -548,7 +548,7 @@
   const MODE_TEXT = {
     natural: ['Natural', 'Your mic as the browser gives it, with nothing added.'],
     clear: ['Clear voice', 'Lifts a quiet voice and keeps the room quiet in pauses.'],
-    focus: ['Voice focus', 'For a noisy room. Keeps your voice and pushes other sounds back.'],
+    focus: ['Voice focus', 'Removes typing, fans and other sounds around you, and keeps your voice.'],
     far: ['Far away', 'For a phone across the room or under the covers. Lifts a soft, muffled voice a lot.'],
     music: ['Music', 'Every sound as it is, in stereo, for playing or singing. Use headphones.'],
   };
@@ -700,6 +700,7 @@
         ch.mode = fixed || mode;
         if (nt === t && ch.on !== null && !again) return;
         if (n) [n.out, n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} });
+        isoEnd(n);
         t = nt;
         let pre = null;
         if (t && t.pre && CLEAR.pre) { try { pre = CLEAR.pre(ctx, ch.mode) || null; } catch (e) { pre = null; } }
@@ -710,6 +711,7 @@
         if (!fixed) app.clear = ch.on;
       },
       set(on) { ch.use(on ? 'clear' : 'natural'); },
+      hasPre() { return !!(n && n.pre); }, // the noise remover is in (tests and the self-check)
       // Same chain, a new mic (an iPhone can end the mic when the camera starts; a new mode can need a new mic).
       swap(stream2) {
         try { ch.src.disconnect(); } catch (e) {}
@@ -717,17 +719,50 @@
         zero = 0;
         wire();
       },
-      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail, n && n.out, n && n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} }); },
+      close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail, n && n.out, n && n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} }); isoEnd(n); },
     };
     if (!fixed) CLEAR.chains.add(ch);
     ch.use(fixed || CLEAR.mode);
     return ch;
   }
   // Builds every chain again, yours and the ones lifting a voice you hear: after CLEAR.pre changes.
-  function clearRebuild() {
-    CLEAR.chains.forEach((c) => c.use(c.mode, true));
-    OUT.map.forEach((l) => { if (l.chain) l.chain.use(l.lift, true); });
+  // onlyPre: just the chains whose tuning takes the noise remover (Voice focus), so the others don't blip.
+  function clearRebuild(onlyPre) {
+    const want = (m) => !onlyPre || !!(tuneFor(m) && tuneFor(m).pre);
+    CLEAR.chains.forEach((c) => { if (want(c.mode)) c.use(c.mode, true); });
+    OUT.map.forEach((l) => { if (l.chain && want(l.lift)) l.chain.use(l.lift, true); });
   }
+  // VOICE ISOLATION (Mo, 2 Nov 2026: "allows the typing sound to not be heard ... like a good voice isolation",
+  // "our voices to be heard really clear and loud"). Voice focus puts RNNoise (voiceiso.js) first in its chain,
+  // on the sending side, and on the listening side when an iPhone sends its voice as it comes (LIFT); Clear
+  // voice's leveller after it keeps the voice loud. It needs a 48 kHz audio engine; elsewhere the chain runs
+  // without it. If it falls behind (3 lost moments in 10 s, or its own buffer running short) it is switched
+  // off on this device until the page is opened again, so the sound never breaks up.
+  const ISO = { off: false, late: [], why: '' };
+  function isoPre(ctx) {
+    if (ISO.off || !window.BesideIso) return null;
+    let nd = null;
+    try { nd = window.BesideIso.node(ctx, () => clearRebuild(true)); } catch (e) { nd = null; }
+    if (!nd) { ISO.why = ctx.sampleRate !== 48000 ? 'rate' : ISO.why; return null; }
+    ISO.why = '';
+    const iso = nd.iso;
+    let seen = 0;
+    if (iso) iso.onhealth = (h) => {
+      const now = Date.now();
+      if (h.late > seen) { for (let i = seen; i < h.late; i++) ISO.late.push(now); seen = h.late; }
+      ISO.late = ISO.late.filter((x) => now - x < 10000);
+      if (h.underruns > 0 || ISO.late.length >= 3 || iso.ok === false) isoOff(h.underruns > 0 || ISO.late.length >= 3 ? 'slow' : 'broke');
+    };
+    return nd;
+  }
+  function isoOff(why) {
+    if (ISO.off) return;
+    ISO.off = true; ISO.why = why;
+    clearRebuild(true);
+    try { soundUi(); } catch (e) {}
+  }
+  function isoEnd(n) { try { if (n && n.pre && n.pre.iso) { n.pre.iso.onhealth = null; n.pre.iso.close(); } } catch (e) {} }
+  CLEAR.pre = isoPre;
   // The same processing, offline, on a recording: for "Hear myself" and for the tests. The pause rule and the
   // de-esser step every 20 ms from the recording's own level, as the live timer does.
   async function renderVoice(x, sr, mode) {
@@ -831,7 +866,7 @@
     if (isGuest) { if (G.conn) tell(G.conn, liftMsg()); } else if (g) tell(g.conn, liftMsg()); else toGuests(liftMsg());
   }
   function liftMode(m) { return MODES.includes(m) && tuneFor(m) ? m : ''; }
-  // Voices go at 64 kbit/s; Music at 128 kbit/s. The lane allows stereo, and only a stereo mic fills it.
+  // Voices go at up to 96 kbit/s (Mo, 2 Nov 2026: "really clear and loud and good quality"); Music at 128 kbit/s. The lane allows stereo, and only a stereo mic fills it.
   function voiceRates() {
     if (isGuest) tuneVoice(G.voiceSender);
     else for (const g of H.guests.values()) tuneVoice(g.voiceSender);
@@ -863,7 +898,7 @@
       if (!p || !p.encodings || !p.encodings.length) return;
       p.encodings[0].priority = 'high';
       p.encodings[0].networkPriority = 'high';
-      p.encodings[0].maxBitrate = CLEAR.mode === 'music' ? 128000 : 64000;
+      p.encodings[0].maxBitrate = CLEAR.mode === 'music' ? 128000 : 96000;
       s.setParameters(p).catch(() => {});
     } catch (e) { /* defaults are fine */ }
   }
@@ -1715,7 +1750,9 @@
         m.tabIndex = on ? 0 : -1;
       });
       const say = b.querySelector('.sound-say');
-      if (say) say.textContent = MODE_TEXT[CLEAR.mode][1];
+      if (say) say.textContent = MODE_TEXT[CLEAR.mode][1] + (CLEAR.mode !== 'focus' || SEND_RAW ? ''
+        : ISO.why === 'slow' ? ' The typing remover was too slow on this device, so it is off. Other sounds are still pushed back.'
+          : ISO.why === 'rate' || ISO.why === 'broke' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.' : '');
       const h = b.querySelector('.sound-hint');
       if (h) {
         h.textContent = !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
@@ -4582,7 +4619,7 @@
     ringBoot();
     // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
     app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, W, ytWatch, ytClose }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
