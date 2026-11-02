@@ -165,6 +165,10 @@ p{color:var(--ink-2)}
 .link em{font-style:normal;color:var(--clay)}
 .ticket .actions{display:flex;gap:10px;padding:0 20px 18px}
 .ticket .actions .btn{flex:1;min-height:52px}
+.ticket .actions{flex-wrap:wrap}
+.ticket .actions .btn svg{width:18px;height:18px}
+.ring-me[aria-pressed="true"]{text-decoration:none}
+.ring-me[aria-pressed="true"] svg{color:var(--moss)}
 .tear{height:0;border-top:2px dashed var(--line);position:relative;margin:0 -1px}
 .tear::before,.tear::after{content:"";position:absolute;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--paper)}
 .tear::before{left:-11px}.tear::after{right:-11px}
@@ -528,6 +532,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
     <div class="foot">
       <button data-check-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Check my setup</button>
       <button id="mineIdleBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Use my room on my iPad or iPhone</button>
+      <button class="ring-me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Let Beside ring me</span></button>
     </div>
   </div>
 </section>
@@ -547,6 +552,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
     </div>
     <div class="foot">
       <label class="name-row hint">Your name <input id="nameInput" maxlength="20" autocomplete="given-name" placeholder="optional"></label>
+      <button class="ring-me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Let Beside ring me</span></button>
       <button data-check-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Check my setup</button>
     </div>
   </div>
@@ -562,6 +568,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
       <div class="waitline"><span class="ripple"></span><span id="waitingText">Connecting…</span></div>
       <p class="hint" id="waitHint"></p>
       <div class="row" style="justify-content:center">
+        <button class="btn primary" id="gRingBtn">Ring them</button>
         <button class="btn ghost" data-check-open>Check my setup</button>
         <button class="btn ghost" id="waitLeaveBtn">Leave</button>
       </div>
@@ -591,6 +598,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
           <div class="actions">
             <button class="btn quiet" id="copyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span class="label-t">Copy</span></button>
             <button class="btn quiet" id="shareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>Send link…</button>
+            <button class="btn quiet" id="ringBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>Ring</button>
           </div>
           <div class="tear"></div>
           <div class="waitrow"><span class="ripple"></span><span id="inviteStatus">Send this link to the person you want to talk to.</span></div>
@@ -690,6 +698,7 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
         <button class="btn quiet wide" id="mineBtn" style="margin-top:10px">Use this room on my iPad or iPhone</button>
       </div>
       <button class="btn quiet wide" id="boardBtn">Countdown, to-dos and calendar</button>
+      <button class="btn quiet wide ring-me"><span>Let Beside ring me</span></button>
       <button class="btn quiet wide" id="changeBtn" data-role="host" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11l-3-3M20 17H9l3 3"/></svg>Share a different tab</button>
       <div data-role="host">
         <div class="seg" id="modeToggle" role="group" aria-label="Picture priority">
@@ -711,6 +720,6 @@ body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{di
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="board.js?v=1"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

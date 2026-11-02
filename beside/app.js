@@ -1267,6 +1267,128 @@
     if (vw) vw.hidden = true;
   }
 
+  // ---------- RING ----------
+  // Rings the other person's devices when Beside is closed there. In a browser each device says yes once
+  // ("Let Beside ring me": a web push, kept by the board's server for this room). In the Beside iPhone and iPad
+  // app the ring is a real incoming call, and the app hands its device code over by itself (window.BesideNative).
+  // Tapping the ring opens Beside with ?answer=1, which joins (guest) or starts the call (host) straight away.
+  const RG = { busy: false, until: 0 };
+  const ringBase = () => (srv ? 'http://' + srv : '') + '/peerjs/board/' + boardRoom();
+  const ringRole = () => (isGuest ? 'guest' : 'host');
+  function ringOpen() { return isGuest ? location.origin + location.pathname + location.hash : location.origin + location.pathname + '?room=' + hostCode(); }
+  function ringPost(path, o) {
+    return fetch(ringBase() + path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) })
+      .then(async (r) => { if (!r.ok) throw new Error((await r.text()) || 'The ring server didn’t answer.'); return r.json(); });
+  }
+  const NATIVE = () => window.BesideNative && window.BesideNative.app === 'ios';
+  function ringStandaloneNeeded() {
+    return IS_IOS && !navigator.standalone && !(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  }
+  const ringKey = () => 'beside.ring.' + boardRoom() + '.' + ringRole();
+  function ringMeUi() {
+    const on = !!store.get(ringKey());
+    document.querySelectorAll('.ring-me').forEach((b) => {
+      b.hidden = NATIVE();
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const t = b.querySelector('span') || b;
+      t.textContent = on ? 'Beside rings this device' : 'Let Beside ring me';
+    });
+  }
+  function b64uBytes(s) {
+    const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+    return Uint8Array.from(b, (c) => c.charCodeAt(0));
+  }
+  async function ringSw() {
+    if (!('serviceWorker' in navigator)) return null;
+    try { await navigator.serviceWorker.register('sw.js'); return await navigator.serviceWorker.ready; } catch (e) { return null; }
+  }
+  async function ringMe() {
+    if (RG.busy) return;
+    if (store.get(ringKey())) { // on: turn it off
+      RG.busy = true;
+      try {
+        const reg = await ringSw();
+        const s = reg && await reg.pushManager.getSubscription();
+        await ringPost('/push', { off: true, endpoint: store.get(ringKey()) });
+        if (s) await s.unsubscribe().catch(() => {});
+        store.set(ringKey(), '');
+        note('Beside won’t ring this device any more.', 'info');
+      } catch (e) { note(e.message, 'info'); }
+      RG.busy = false;
+      ringMeUi();
+      return;
+    }
+    if (ringStandaloneNeeded()) { note('On iPhone and iPad, rings need Beside on your Home Screen. Tap Share, then Add to Home Screen, open Beside from there and tap this again.', 'stay'); return; }
+    if (!('PushManager' in window) || !('Notification' in window) || !('serviceWorker' in navigator)) { note('This browser can’t ring. Use Chrome, Firefox, Safari on a Mac, or Beside from the iPhone Home Screen.', 'stay'); return; }
+    RG.busy = true;
+    try {
+      const perm = await Notification.requestPermission(); // first, while the tap still counts
+      if (perm !== 'granted') throw new Error('Rings need notifications. Turn them on for Beside in Settings, then tap this again.');
+      const k = await fetch((srv ? 'http://' + srv : '') + '/peerjs/push/key', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
+      if (!k.key) throw new Error('Rings aren’t switched on at Beside’s server yet.');
+      const reg = await ringSw();
+      if (!reg) throw new Error('This browser can’t ring.');
+      let s = await reg.pushManager.getSubscription();
+      if (s && s.options && s.options.applicationServerKey) {
+        const had = new Uint8Array(s.options.applicationServerKey), want = b64uBytes(k.key);
+        if (had.length !== want.length || had.some((x, i) => x !== want[i])) { await s.unsubscribe().catch(() => {}); s = null; }
+      }
+      if (!s) s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(k.key) });
+      const j = s.toJSON();
+      await ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), web: { endpoint: j.endpoint, keys: j.keys } });
+      store.set(ringKey(), j.endpoint);
+      note('Done. When ' + (isGuest ? (theirName || 'they') : 'your person') + ' rings, this device will too.', 'info');
+    } catch (e) { note(e.message || 'That didn’t work. Try again.', 'stay'); }
+    RG.busy = false;
+    ringMeUi();
+  }
+  // The Beside app's device code: handed over quietly, again whenever it or the room changes.
+  function ringNative() {
+    const n = window.BesideNative;
+    if (!n || !n.voip || !/^[0-9a-f]{64,200}$/.test(n.voip)) return;
+    const mark = n.voip + '|' + boardRoom() + '|' + ringRole() + '|' + boardName();
+    if (store.get('beside.voip.sent') === mark) return;
+    ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), voip: n.voip, env: n.env === 'sandbox' ? 'sandbox' : 'production' })
+      .then(() => store.set('beside.voip.sent', mark)).catch(() => {});
+  }
+  async function ringThem(btn) {
+    if (Date.now() < RG.until) { note('Still ringing…', 'info'); return; }
+    RG.until = Date.now() + 8000;
+    if (btn) btn.disabled = true;
+    try {
+      const j = await ringPost('/ring', { role: ringRole(), name: isGuest ? boardName() : (myName() || 'Your person') });
+      const who = isGuest ? (theirName || 'them') : ((j.names && j.names[0]) || 'them');
+      if (j.sent > 0) note('Ringing ' + who + '…', 'info');
+      else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay');
+    } catch (e) { note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
+    setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
+  }
+  function ringAnswer() {
+    let q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    if (q.get('answer') !== '1') return;
+    q.delete('answer');
+    const qs2 = q.toString();
+    try { history.replaceState(null, '', location.pathname + (qs2 ? '?' + qs2 : '') + location.hash); } catch (e) {}
+    setTimeout(ringAnswerNow, 600); // after the "is another tab live?" answer
+  }
+  function ringAnswerNow() {
+    if (isGuest) { if (app.state === 'ended') show('join'); if (app.state === 'join') guestJoin(true); }
+    else if (app.state === 'idle' || app.state === 'ended') hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice');
+  }
+  function ringBoot() {
+    document.querySelectorAll('.ring-me').forEach((b) => b.addEventListener('click', ringMe));
+    on('ringBtn', 'click', (e) => ringThem(e.currentTarget));
+    on('gRingBtn', 'click', (e) => ringThem(e.currentTarget));
+    if (theirName) text('gRingBtn', 'Ring ' + theirName);
+    ringMeUi();
+    ringNative();
+    window.addEventListener('besidenative', () => { ringMeUi(); ringNative(); });
+    on('nameInput', 'change', ringNative);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.beside === 'answer' && e.data.fresh) ringAnswerNow(); });
+    ringAnswer();
+  }
+
   // ---------- WATCH YOUTUBE TOGETHER ----------
   // Paste a YouTube link in the chat (or press Watch together under one): it opens for everyone in the call, and
   // play, pause and jumps follow on every screen within about a second. Each screen plays YouTube itself, so it's
@@ -3369,6 +3491,7 @@
       if (bc) bc.postMessage('live?');
     }
     if (!window.Peer) peerLibOk();
+    ringBoot();
     if (LOCAL) app.debug = { H, G, V, C, T, SND, mini, setVol, clearChain, W, ytWatch, ytClose }; // automated tests only
     app.booted = true;
   }
