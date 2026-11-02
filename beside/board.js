@@ -260,6 +260,12 @@
     { id: 'cal', title: 'Calendar', icon: I.cal },
   ];
   function section(s) {
+    if (S.split) { // tabs: each section is a plain card, always open
+      const sum = h('span', { class: 'bb-sum' });
+      const body = h('div', { class: 'bb-body', id: 'bb-' + s.id });
+      const sec = h('section', { class: 'bb-sec bb-card', 'data-sec': s.id }, h('div', { class: 'bb-head bb-head-static' }, h('h3', { text: s.title }), sum), body);
+      return { sec, sum, body };
+    }
     const closed = (store.get('bboard.closed') || []).includes(s.id);
     const sum = h('span', { class: 'bb-sum' });
     const body = h('div', { class: 'bb-body', id: 'bb-' + s.id });
@@ -296,10 +302,10 @@
       allowAllDay ? h('p', { class: 'bb-hint', text: 'No time means all day.' }) : null);
     return {
       el,
-      set(t) {
+      set(t, dateOnly) {
         const p = parts(t != null ? t : Date.now(), zone);
         date.value = p.y + '-' + pad(p.mo) + '-' + pad(p.d);
-        time.value = t != null ? pad(p.h) + ':' + pad(p.mi) : '';
+        time.value = t != null && !dateOnly ? pad(p.h) + ':' + pad(p.mi) : '';
         paint();
       },
       read() {
@@ -390,7 +396,7 @@
       } }, 'Add a note or photo');
       const go = h('button', { type: 'button', class: 'bb-btn bb-primary bb-warm', onclick: () => {
         if (go.disabled) return;
-        send({ op: 'think', id: newId(), from: S.name, note: noteIn.value.trim().slice(0, 300), photo: photo || undefined }, 'that');
+        sendThink(noteIn.value.trim().slice(0, 300), photo);
         noteIn.value = ''; photo = null; showPhoto();
         extra.hidden = true; more.textContent = 'Add a note or photo'; more.setAttribute('aria-expanded', 'false');
         go.disabled = true;
@@ -438,6 +444,8 @@
         h('button', { type: 'button', class: 'bb-btn bb-quiet', onclick: () => { form.hidden = true; open.hidden = false; } }, 'Cancel')));
       const open = h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: () => { when.set(null); form.hidden = false; open.hidden = true; title.focus(); } },
         h('span', { html: I.plus }), h('span', { text: 'Add an event' }));
+      ui.calAddOn = (t) => { when.set(t, true); form.hidden = false; open.hidden = true; title.focus(); };
+      if (S.split) { ui.week = h('div', { class: 'bb-week', role: 'group', 'aria-label': 'This week' }); s.body.append(ui.week); }
       s.body.append(ui.calList, open, form);
     }
 
@@ -456,12 +464,92 @@
 
     ui.status = h('p', { class: 'bb-status', role: 'status' });
     ui.clocks = h('div', { class: 'bb-clocks', 'aria-label': 'Your times and weather' });
+    S.ui = ui;
+    if (S.split) { buildSplit(ui, secs); return; }
     root.replaceChildren(ui.note, ui.clocks, ui.talk,
       h('div', { class: 'bb-grid' },
         h('div', { class: 'bb-col' }, secs.countdown.sec, secs.think.sec),
         h('div', { class: 'bb-col' }, secs.todo.sec, secs.cal.sec)),
       ui.status);
-    S.ui = ui;
+  }
+
+  // ---------- the app's tabs: each part goes where the app asks (Home, Plans, Hearts) ----------
+  const FIG = () => window.BesideFigures || null;
+  const whoMe = () => (myZone() === LA ? 'semal' : 'mo');
+  const whoThem = () => (whoMe() === 'mo' ? 'semal' : 'mo');
+  const zoneOf = (who) => (who === 'semal' ? LA : LONDON);
+  const placeholderName = (n) => !n || /^(host|guest|someone)$/i.test(n.trim());
+  // Their name: from the app, else the latest name on the board that isn't mine, else the figure's own name.
+  function theirName(b) {
+    if (S.them) return S.them;
+    const names = [];
+    (b ? b.thinks : []).forEach((t) => names.push([t.at || 0, t.from]));
+    (b ? b.todos : []).forEach((t) => names.push([t.at || 0, t.by]));
+    (b ? b.events : []).forEach((e) => names.push([e.at || 0, e.by]));
+    names.sort((x, y) => y[0] - x[0]);
+    const n = names.map((x) => x[1]).find((x) => x && !isMe(x) && !placeholderName(x));
+    return n || '';
+  }
+  const nameFor = (who, b) => (who === whoMe() ? (placeholderName(S.name) ? '' : S.name) : theirName(b)) || (FIG() ? FIG().NAME[who] : '');
+  const figHtml = (who, o) => (FIG() ? FIG().figure(who, { name: nameFor(who, S.lastView), ...(o || {}) }) : '');
+  const reduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+
+  function buildSplit(ui, secs) {
+    const T = S.t;
+    const put = (k, ...kids) => { if (T[k]) { T[k].classList.add('bboard', 'bb-tabs'); T[k].replaceChildren(...kids.filter(Boolean)); } };
+    ui.talk.prepend(h('span', { class: 'bb-talk-label', text: 'Say it. Type, or use your keyboard mic.' }));
+    // Home
+    ui.hello = h('div', { class: 'bb-hello' }, h('span', { class: 'bb-hello-day' }), h('h1', { class: 'bb-hello-hi' }));
+    ui.hThink = h('div', { class: 'bb-hcard bb-hthink' });
+    ui.hNext = h('button', { type: 'button', class: 'bb-hcard bb-hnext', onclick: () => go('plans') });
+    put('hello', ui.hello);
+    put('skies', ui.clocks);
+    ui.clocks.classList.add('bb-figs');
+    put('homeThink', ui.hThink);
+    put('countdown', secs.countdown.sec);
+    put('next', ui.hNext);
+    // Plans
+    put('plans', ui.talk, h('div', { class: 'bb-grid' }, h('div', { class: 'bb-col' }, secs.cal.sec), h('div', { class: 'bb-col' }, secs.todo.sec)), ui.status);
+    // Hearts
+    ui.hScene = h('div', { class: 'bb-hscene bb-figs', html: FIG() ? FIG().pair({ label: 'Mo and Semal, hand in hand' }) : '' });
+    put('hearts', h('div', { class: 'bb-grid' }, h('div', { class: 'bb-col' }, ui.hScene, secs.think.sec), h('div', { class: 'bb-col bb-hist' }, ui.thHist = h('section', { class: 'bb-sec bb-card', 'data-sec': 'history' },
+      h('div', { class: 'bb-head bb-head-static' }, h('h3', { text: 'Earlier' })), ui.thHistBody = h('div', { class: 'bb-body' })))));
+    put('note', ui.note);
+  }
+  const go = (tab) => { if (S && S.opts.go) S.opts.go(tab); };
+
+  // Thinking of you: sent at once, and on screen a soft heart floats from your figure to theirs as you both lean in.
+  function sendThink(noteText, photo) {
+    send({ op: 'think', id: newId(), from: S.name, note: noteText || '', photo: photo || undefined }, 'that');
+    celebrate();
+  }
+  function celebrate() {
+    const me = whoMe(), them = whoThem();
+    const pick = (who) => [...document.querySelectorAll('.bb-figs [data-fig="' + who + '"]')].find(shown);
+    const a = pick(me), b = pick(them);
+    if (!a || !b || reduced()) return;
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    const right = ra.left < rb.left;
+    a.classList.add(right ? 'fig-lean-r' : 'fig-lean-l');
+    b.classList.add(right ? 'fig-lean-l' : 'fig-lean-r');
+    const x0 = ra.left + ra.width / 2, y0 = ra.top + ra.height * 0.3, x1 = rb.left + rb.width / 2, y1 = rb.top + rb.height * 0.3;
+    const cx = (x0 + x1) / 2, cy = Math.min(y0, y1) - Math.max(40, Math.abs(x1 - x0) * 0.35);
+    const el = h('div', { class: 'bb-fly', html: FIG().softHeart() });
+    document.body.append(el);
+    const frames = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24, u = 1 - t;
+      const x = u * u * x0 + 2 * u * t * cx + t * t * x1, y = u * u * y0 + 2 * u * t * cy + t * t * y1;
+      const sc = 0.55 + 0.6 * Math.sin(Math.PI * Math.min(1, t * 1.1)) * 0.8 + 0.25 * t;
+      frames.push({ transform: 'translate(' + (x - 14).toFixed(1) + 'px,' + (y - 14).toFixed(1) + 'px) scale(' + sc.toFixed(3) + ')', opacity: t < 0.12 ? t / 0.12 : t > 0.88 ? (1 - t) / 0.12 : 1 });
+    }
+    const done = () => {
+      el.remove();
+      b.classList.add('fig-glad');
+      setTimeout(() => { a.classList.remove('fig-lean-r', 'fig-lean-l'); b.classList.remove('fig-lean-r', 'fig-lean-l', 'fig-glad'); }, 1300);
+    };
+    try { el.animate(frames, { duration: 1900, easing: 'cubic-bezier(.4,0,.3,1)', fill: 'forwards' }).onfinish = done; } catch (e) { done(); }
   }
 
   const short = (t) => (t.length > 40 ? t.slice(0, 38) + '…' : t);
@@ -534,9 +622,86 @@
     }).catch(() => {}).finally(() => { WX.busy = false; });
   }
   function partOfDay(hr) { return hr < 5 ? 'night' : hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : hr < 21 ? 'evening' : 'night'; }
+  // The two skies (tabs): built once, then only words, colours and the weather's little picture change, so the
+  // figures keep moving smoothly.
+  const wxKind = (c) => (typeof c !== 'number' ? '' : c <= 1 ? 'clear' : c <= 3 ? 'cloud' : c <= 48 ? 'fog' : c <= 67 || (c >= 80 && c <= 82) || c >= 95 ? 'rain' : 'snow');
+  const DECO = {
+    sun: '<svg class="bb-deco bb-sun" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="34" fill="#EDBE7A"/></svg>',
+    moon: '<svg class="bb-deco bb-moon" viewBox="0 0 80 80" aria-hidden="true"><path d="M52 10 A30 30 0 1 0 70 52 A24 24 0 1 1 52 10 Z" fill="#F1E6C8"/></svg><svg class="bb-deco bb-stars" viewBox="0 0 160 60" aria-hidden="true"><circle cx="20" cy="14" r="1.6" fill="#F1E6C8"/><circle cx="64" cy="30" r="1.2" fill="#F1E6C8"/><circle cx="110" cy="10" r="1.4" fill="#F1E6C8"/><circle cx="138" cy="40" r="1.1" fill="#F1E6C8"/><circle cx="40" cy="48" r="1" fill="#F1E6C8"/></svg>',
+    cloud: '<svg class="bb-deco bb-cloud" viewBox="0 0 120 50" aria-hidden="true"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z" fill="currentColor"/></svg>',
+    rain: '<svg class="bb-deco bb-rain" viewBox="0 0 171 60" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 10l-4 9M44 24l-4 9M70 6l-4 9M100 20l-4 9M128 8l-4 9M152 26l-4 9M32 42l-4 9M140 44l-4 9"/></svg>',
+    snow: '<svg class="bb-deco bb-snow" viewBox="0 0 171 60" aria-hidden="true" fill="currentColor"><circle cx="20" cy="12" r="2"/><circle cx="54" cy="30" r="1.6"/><circle cx="88" cy="8" r="2"/><circle cx="120" cy="26" r="1.8"/><circle cx="150" cy="10" r="1.6"/><circle cx="36" cy="48" r="1.8"/><circle cx="132" cy="50" r="2"/></svg>',
+  };
+  const WX_ICON = {
+    clear: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    night: '<path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1 .5-8A5 5 0 0 1 17 11a3.5 3.5 0 0 1 0 7z"/>',
+    fog: '<path d="M4 9h16M6 13h12M4 17h16"/>',
+    rain: '<path d="M7 15a4 4 0 0 1 .5-8A5 5 0 0 1 17 8a3.5 3.5 0 0 1 0 7z"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
+    snow: '<path d="M7 15a4 4 0 0 1 .5-8A5 5 0 0 1 17 8a3.5 3.5 0 0 1 0 7z"/><path d="M8 19h.01M12 20h.01M16 19h.01"/>',
+  };
+  const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  const clockText = (t, z) => fmt(z, { hour: 'numeric', minute: '2-digit' }).formatToParts(t).filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();
+  function drawSkies(now) {
+    const el = S.ui.clocks;
+    const b = S.lastView;
+    if (!S.ui.skies) {
+      S.ui.skies = PLACES.map((p) => {
+        const who = p.z === LA ? 'semal' : 'mo';
+        const r = {
+          place: h('span', { class: 'bb-clock-place', text: p.label }),
+          whoEl: h('span', { class: 'bb-clock-who' }),
+          time: h('b', { class: 'bb-clock-time' }),
+          part: h('span', { class: 'bb-clock-part' }),
+          wx: h('span', { class: 'bb-clock-wx' }),
+          deco: h('div', { class: 'bb-sky-deco', 'aria-hidden': 'true' }),
+          fig: h('div', { class: 'bb-sky-fig', html: figHtml(who) }),
+          key: '', p, who,
+        };
+        r.el = h('div', { class: 'bb-clock bb-sky' + (p.z === HERE ? ' bb-mine' : '') }, r.deco, h('div', { class: 'bb-sky-words' }, r.place, r.whoEl, r.time, r.part, r.wx), r.fig);
+        return r;
+      });
+      el.replaceChildren(...S.ui.skies.map((r) => r.el));
+    }
+    S.ui.skies.forEach((r) => {
+      const t = parts(now, r.p.z);
+      const pod = partOfDay(t.h);
+      const w = WX.now[r.p.z];
+      const kind = w ? wxKind(w.weather_code) : '';
+      const night = pod === 'night' || (w && w.is_day === 0);
+      const grey = !night && /^(rain|snow|fog|cloud)$/.test(kind);
+      const skyName = night ? 'night' : grey ? 'grey' : pod;
+      let wx = '';
+      if (w && typeof w.temperature_2m === 'number') {
+        const deg = r.p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
+        wx = (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + r.p.unit;
+      }
+      const mine = r.who === whoMe();
+      const nm = mine ? 'You' : nameFor(r.who, b);
+      if (r.whoEl.textContent !== nm) r.whoEl.textContent = nm;
+      const tm = clockText(now, r.p.z);
+      if (r.time.textContent !== tm) r.time.textContent = tm;
+      r.part.textContent = cap(pod);
+      const key = skyName + '|' + kind + '|' + wx;
+      if (key !== r.key) {
+        r.key = key;
+        r.el.dataset.sky = skyName;
+        r.el.dataset.wx = kind || 'none';
+        r.wx.replaceChildren();
+        if (wx) r.wx.append(h('span', { html: svg(WX_ICON[night && kind === 'clear' ? 'night' : kind] || WX_ICON.cloud) }), h('span', { text: wx }));
+        const deco = [];
+        if (night) deco.push(DECO.moon); else if (!grey) deco.push(DECO.sun);
+        if (kind === 'cloud' || kind === 'fog') deco.push(DECO.cloud);
+        if (kind === 'rain') deco.push(DECO.rain);
+        if (kind === 'snow') deco.push(DECO.snow);
+        r.deco.innerHTML = deco.join('');
+      }
+    });
+  }
   function drawClocks(now) {
     const el = S.ui.clocks;
     if (!el) return;
+    if (S.split) { drawSkies(now); return; }
     el.replaceChildren(...PLACES.map((p) => {
       const t = parts(now, p.z);
       const w = WX.now[p.z];
@@ -556,6 +721,7 @@
   function render() {
     if (!S || !S.ui) return;
     const b = view();
+    S.lastView = b;
     const ui = S.ui;
     const now = Date.now();
     drawClocks(now);
@@ -571,7 +737,10 @@
         if (!c) {
           sec.sum.textContent = '';
           ui.cdShow.append(h('div', { class: 'bb-empty' }, h('p', { text: S.loaded ? 'Counting down to something? Pick the day.' : 'Opening the board…' })));
+          if (S.split && S.loaded) ui.cdShow.prepend(meet(60));
           if (S.loaded) ui.cdShow.append(h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: ui.cdOpen }, 'Set a countdown'));
+        } else if (S.split) {
+          cdSplit(c, now, sec);
         } else {
           const left = c.at - now;
           const big = h('div', { class: 'bb-big' });
@@ -606,7 +775,7 @@
       if (top) {
         const fresh = S.seenThink && S.seenThink !== top.id;
         ui.thTop.append(h('div', { class: 'bb-th-card' + (fresh ? ' bb-pulse' : '') },
-          h('p', { class: 'bb-th-line' }, h('span', { html: I.heart, class: 'bb-th-heart' }), h('span', {}, h('b', { text: top.from }), ' is thinking of you'), h('span', { class: 'bb-ago', text: ' · ' + ago(top.at) })),
+          h('p', { class: 'bb-th-line' }, h('span', { html: I.heart, class: 'bb-th-heart' }), h('span', {}, h('b', { text: top.from }), ' is thinking of you'), h('span', { class: 'bb-ago', text: (S.split ? '' : ' · ') + ago(top.at) })),
           top.note ? h('p', { class: 'bb-th-note', text: top.note }) : null,
           top.photo ? h('button', { type: 'button', class: 'bb-th-photo', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(top)) }, h('img', { src: photoUrl(top), alt: 'Photo from ' + top.from, loading: 'lazy' })) : null));
         sec.sum.textContent = top.from + ' · ' + ago(top.at);
@@ -616,7 +785,8 @@
       ui.thSent.textContent = mine ? 'You last sent one ' + ago(mine.at) + '.' : '';
       const rest = b.thinks.filter((t) => t !== top).slice(0, SHOW_THINKS * 4);
       ui.thList.replaceChildren();
-      if (rest.length) {
+      if (S.split) thSplit(b, rest);
+      else if (rest.length) {
         const rows = rest.map((t) => h('div', { class: 'bb-row bb-th-row' },
           t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' })) : h('span', { class: 'bb-dot', html: I.heart }),
           h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ' · ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)));
@@ -632,13 +802,15 @@
       sec.sum.textContent = open.length ? open.length + ' to do' : done.length ? 'All done' : '';
       const row = (t) => h('div', { class: 'bb-row bb-todo' + (t.done ? ' bb-done' : ''), 'data-id': t.id },
         h('button', { type: 'button', class: 'bb-tick', role: 'checkbox', 'aria-checked': String(!!t.done), 'aria-label': (t.done ? 'Not done: ' : 'Done: ') + t.text, html: I.tick, onclick: () => send({ op: 'todo.toggle', id: t.id, done: !t.done }, '“' + short(t.text) + '”') }),
-        h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-todo-text', text: t.text }), t.by && !isMe(t.by) ? h('p', { class: 'bb-sub', text: t.by }) : null),
+        h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-todo-text', text: t.text }), t.by && !isMe(t.by) ? h('p', { class: 'bb-sub', text: S.split ? 'Added by ' + t.by : t.by }) : null),
         h('button', { type: 'button', class: 'bb-x', 'aria-label': 'Delete ' + t.text, html: I.x, onclick: () => {
           send({ op: 'todo.delete', id: t.id }, 'that');
           note('Deleted “' + short(t.text) + '”.', { label: 'Undo', fn: () => send({ op: 'todo.add', id: t.id, text: t.text }, '“' + short(t.text) + '”') });
         } }));
       ui.todoList.replaceChildren();
-      if (!open.length) ui.todoList.append(h('p', { class: 'bb-empty', text: S.loaded ? (done.length ? 'All done. Lovely.' : 'Nothing on the list yet.') : '' }));
+      if (!open.length && S.split && S.loaded) ui.todoList.append(h('div', { class: 'bb-empty bb-empty-sofa' }, h('div', { class: 'bb-sofa', html: FIG() ? FIG().sofa() : '' }),
+        h('p', { class: 'bb-empty-h', text: done.length ? 'All done for today' : 'Nothing on the list yet' }), h('p', { text: 'Say it at the top to add one.' })));
+      else if (!open.length) ui.todoList.append(h('p', { class: 'bb-empty', text: S.loaded ? (done.length ? 'All done. Lovely.' : 'Nothing on the list yet.') : '' }));
       else {
         ui.todoList.append(h('div', { class: 'bb-list' }, open.slice(0, SHOW_TODOS).map(row)));
         if (open.length > SHOW_TODOS) ui.todoList.append(fold('todoMore', ['Show ' + (open.length - SHOW_TODOS) + ' more', 'Show fewer'], h('div', { class: 'bb-list' }, open.slice(SHOW_TODOS).map(row))));
@@ -665,16 +837,17 @@
       sec.sum.textContent = up.length ? (dayLabel(groups[0].k)[0] === 'Today' ? 'Today' : 'Next: ' + dayLabel(groups[0].k)[0]) : '';
       const evRow = (e, k) => h('div', { class: 'bb-row bb-ev', 'data-id': e.id },
         h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-ev-title', text: e.title }),
-          h('p', { class: 'bb-sub bb-times', text: e.allDay ? 'All day' : bothTimes(e.at, k) })),
+          S.split && !e.allDay ? twoTimes(e.at, k) : h('p', { class: 'bb-sub bb-times', text: e.allDay ? 'All day' : bothTimes(e.at, k) })),
         h('button', { type: 'button', class: 'bb-x', 'aria-label': 'Delete ' + e.title, html: I.x, onclick: () => {
           send({ op: 'event.delete', id: e.id }, 'that');
           note('Deleted “' + short(e.title) + '”.', { label: 'Undo', fn: () => send({ op: 'event.add', id: e.id, title: e.title, at: e.at, allDay: !!e.allDay }, '“' + short(e.title) + '”') });
         } }));
       const day = (g) => {
         const [a, bLabel] = dayLabel(g.k);
-        return h('div', { class: 'bb-day' }, h('p', { class: 'bb-day-h' }, h('b', { text: a }), h('span', { text: bLabel })), h('div', { class: 'bb-list' }, g.list.map((e) => evRow(e, g.k))));
+        return h('div', { class: 'bb-day', 'data-day': g.k }, h('p', { class: 'bb-day-h' }, h('b', { text: a }), h('span', { text: bLabel })), h('div', { class: 'bb-list' }, g.list.map((e) => evRow(e, g.k))));
       };
       ui.calList.replaceChildren();
+      if (ui.week) weekStrip(b, today);
       if (!groups.length) ui.calList.append(h('p', { class: 'bb-empty', text: S.loaded ? 'Nothing planned yet.' : '' }));
       else {
         ui.calList.append(...groups.slice(0, SHOW_DAYS).map(day));
@@ -692,6 +865,125 @@
 
     ui.status.textContent = S.offline ? 'Can’t reach the board right now. It will keep trying.' : S.talking ? 'Reading that…' : S.pending.length ? 'Saving…' : '';
     ui.status.classList.toggle('bb-off', !!S.offline);
+    if (S.split) homeSplit(b, now);
+    if (S.opts.onRender) { try { S.opts.onRender({ me: whoMe(), them: theirName(b), theirFigure: whoThem() }); } catch (e) { /* the app's own business */ } }
+  }
+
+  // ---------- tabs: Home's cards, the countdown's two figures, the week, both clocks on each plan ----------
+  // Two small heads with a dotted path between them: the path shortens as the day comes.
+  function meet(days) {
+    const f = FIG();
+    const here = days <= 0;
+    const gap = here ? 0 : Math.round(8 + Math.min(1, days / 60) * 56);
+    return h('div', { class: 'bb-meet' + (here ? ' bb-meet-here' : ''), role: 'img', 'aria-label': here ? 'The two of you, together' : 'The two of you, a little closer each day' },
+      h('span', { class: 'bb-meet-h bb-meet-mo', html: f ? f.figure('mo', { pose: 'head', label: '' }) : '' }),
+      here ? h('span', { class: 'bb-meet-heart', html: f ? f.softHeart() : '' }) : h('span', { class: 'bb-meet-path', style: 'width:' + gap + 'px' }),
+      h('span', { class: 'bb-meet-h bb-meet-semal', html: f ? f.figure('semal', { pose: 'head', label: '' }) : '' }));
+  }
+  function cdSplit(c, now, sec) {
+    const ui = S.ui;
+    const left = c.at - now;
+    let num = '', unit = '';
+    if (left <= 0) sec.sum.textContent = 'It’s here';
+    else {
+      const d = Math.floor(left / DAY), hr = Math.floor((left % DAY) / 36e5), mn = Math.max(1, Math.floor((left % 36e5) / 6e4));
+      if (d > 0) { num = String(d); unit = (d === 1 ? 'day' : 'days') + ' to go'; } else if (hr > 0) { num = String(hr); unit = (hr === 1 ? 'hour' : 'hours') + ' to go'; } else { num = String(mn); unit = (mn === 1 ? 'minute' : 'minutes') + ' to go'; }
+      sec.sum.textContent = num + ' ' + unit;
+    }
+    ui.cdShow.append(
+      h('p', { class: 'bb-cd-title', text: c.title }),
+      left <= 0 ? h('div', { class: 'bb-here', text: 'It’s here' }) : h('div', { class: 'bb-cd-num' }, h('b', { text: num }), h('span', { text: unit })),
+      meet(Math.ceil(left / DAY)),
+      h('p', { class: 'bb-cd-when', text: fmt(HERE, { weekday: 'short', day: 'numeric', month: 'short' }).format(c.at) }),
+      h('button', { type: 'button', class: 'bb-link bb-cd-change', onclick: ui.cdOpen, 'aria-label': 'Change the countdown' }, 'Change'));
+  }
+  // "7:00 pm", "London, evening", and where that sits in the day there.
+  function twoTimes(t, dayKey) {
+    const f = FIG();
+    return h('div', { class: 'bb-times bb-two' }, ZONES.map(({ z, label }) => {
+      const p = parts(t, z);
+      const k = keyOf(t, z);
+      const frac = (p.h * 60 + p.mi) / 1440;
+      return h('div', { class: 'bb-tz' },
+        h('span', { class: 'bb-tz-fig', html: f ? f.figure(z === LA ? 'semal' : 'mo', { pose: 'head', label: '' }) : '' }),
+        h('span', { class: 'bb-tz-words' }, h('b', { text: timeIn(t, z) + (dayKey && k !== dayKey ? ' ' + weekdayIn(t, z) : '') }), h('span', { text: label + ', ' + partOfDay(p.h) })),
+        h('span', { class: 'bb-tz-bar', 'aria-hidden': 'true' }, h('i', { class: 'bb-tz-mark', style: 'left:calc(' + (frac * 100).toFixed(1) + '% - 7px)' })));
+    }));
+  }
+  function weekStrip(b, today) {
+    const ui = S.ui;
+    const has = new Set(b.events.map(evKey));
+    const days = [];
+    const [y, mo, d] = today.split('-').map(Number);
+    for (let i = 0; i < 7; i++) {
+      const noon = Date.UTC(y, mo - 1, d + i, 12);
+      const k = keyOf(noon, 'UTC');
+      const wd = fmt('UTC', { weekday: 'short' }).format(noon);
+      const dn = fmt('UTC', { day: 'numeric' }).format(noon);
+      const long = fmt('UTC', { weekday: 'long', day: 'numeric', month: 'long' }).format(noon);
+      days.push(h('button', { type: 'button', class: 'bb-wday' + (i === 0 ? ' bb-today' : '') + (has.has(k) ? ' bb-has' : ''), 'aria-label': long + (has.has(k) ? ', has plans' : ''), onclick: () => {
+        const g = ui.calList.querySelector('[data-day="' + k + '"]');
+        if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
+        else ui.calAddOn(zoned(y, mo, d + i, 12, 0, myZone()));
+      } }, h('span', { class: 'bb-wd', text: wd }), h('span', { class: 'bb-dn', text: dn }), h('i', { class: 'bb-wdot' })));
+    }
+    ui.week.replaceChildren(...days);
+  }
+  function thSplit(b, rest) {
+    const ui = S.ui;
+    const f = FIG();
+    ui.thHistBody.replaceChildren();
+    if (!rest.length) {
+      ui.thHistBody.append(h('div', { class: 'bb-empty bb-empty-sofa' }, h('div', { class: 'bb-sofa', html: f ? f.sofa() : '' }),
+        h('p', { class: 'bb-empty-h', text: S.loaded ? 'No hearts yet' : 'Opening the board…' }), S.loaded ? h('p', { text: 'Send the first one. It takes one tap.' }) : null));
+      return;
+    }
+    ui.thHistBody.append(h('div', { class: 'bb-list' }, rest.map((t) => h('div', { class: 'bb-row bb-th-row' },
+      t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' }))
+        : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + (isMe(t.from) ? whoMe() : whoThem()), html: f ? f.figure(isMe(t.from) ? whoMe() : whoThem(), { pose: 'head', label: '' }) : I.heart }),
+      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ' · ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)))));
+  }
+  function homeSplit(b, now) {
+    const ui = S.ui;
+    const f = FIG();
+    // Hello
+    const hr = parts(now, HERE).h;
+    const hi = hr < 5 ? 'Hello' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+    ui.hello.firstChild.textContent = fmt(HERE, { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
+    ui.hello.lastChild.textContent = hi + (placeholderName(S.name) ? '' : ', ' + S.name);
+    // The latest heart from them, with a quick one back
+    const top = b.thinks.filter((t) => !isMe(t.from))[0];
+    const them = whoThem();
+    const nm = theirName(b) || (f ? f.NAME[them] : 'They');
+    const key = (top ? top.id + ago(top.at) : '-') + nm + S.loaded;
+    if (ui.hThink.dataset.k !== key) {
+      ui.hThink.dataset.k = key;
+      const quick = h('button', { type: 'button', class: 'bb-heart-btn', 'aria-label': 'Send a heart', html: I.heart, onclick: () => {
+        if (quick.disabled) return;
+        quick.disabled = true;
+        sendThink('', null);
+        quick.innerHTML = I.tick;
+        quick.setAttribute('aria-label', 'Sent');
+        setTimeout(() => { quick.disabled = false; quick.innerHTML = I.heart; quick.setAttribute('aria-label', 'Send a heart'); }, 2500);
+      } });
+      ui.hThink.replaceChildren(
+        h('button', { type: 'button', class: 'bb-hthink-open', onclick: () => go('hearts'), 'aria-label': top ? nm + ' is thinking of you, ' + ago(top.at) + '. Open Hearts' : 'Open Hearts' },
+          h('span', { class: 'bb-hthink-fig bb-fig-' + them, html: f ? f.figure(them, { pose: 'head', label: '' }) : I.heart }),
+          h('span', { class: 'bb-hthink-words' },
+            h('b', { text: top ? nm + ' is thinking of you' : S.loaded ? 'Send a heart' : 'Thinking of you' }),
+            h('span', { class: 'bb-sub', text: top ? ago(top.at) : 'Let ' + nm + ' know you’re thinking of them.' }),
+            top && top.note ? h('span', { class: 'bb-hthink-note', text: top.note }) : null)),
+        quick);
+    }
+    // The next plan, in both clocks
+    const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
+    const chev = h('span', { class: 'bb-hnext-chev', html: svg('<path d="M9 6l6 6-6 6"/>') });
+    ui.hNext.replaceChildren(h('span', { class: 'bb-hnext-top' }, h('span', { class: 'bb-label', text: 'Next plan' }), chev),
+      ...(up ? [h('b', { class: 'bb-hnext-title', text: up.title + ', ' + fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short', day: 'numeric', month: 'short' }).format(up.at) }),
+        h('span', { class: 'bb-hnext-times' }, ...(up.allDay ? [h('span', { text: 'All day' })] : ZONES.map(({ z, label }) => h('span', { text: timeIn(up.at, z) + ' ' + label }))))]
+        : [h('b', { class: 'bb-hnext-title', text: S.loaded ? 'Nothing planned yet' : 'Opening the board…' }), h('span', { class: 'bb-hnext-times' }, h('span', { text: 'Say it on Plans to add one.' }))]));
+    ui.hNext.setAttribute('aria-label', 'Next plan: ' + ui.hNext.textContent.replace(/^Next plan/, '') + '. Open Plans');
+    if (S.t.shared) S.t.shared.textContent = 'Shared with ' + nm;
   }
 
   // ---------- styles (all under .bboard; colours come from Beside's own tokens) ----------
@@ -834,7 +1126,153 @@
 .bboard .bb-status.bb-off{color:var(--bb-rust)}
 .bboard.bb-viewer{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:16px;background:rgba(12,10,8,.92);cursor:zoom-out;animation:bb-fade .2s}
 .bboard.bb-viewer img{max-width:100%;max-height:calc(100dvh - 32px);border-radius:10px}
-@media (prefers-reduced-motion:reduce){.bboard *{animation:none !important;transition:none !important}}
+/* ---------- tabs (Two Skies): the parts the app spreads over Home, Plans and Hearts ---------- */
+.bb-tabs{--bb-ease:cubic-bezier(.3,.7,.2,1);font-family:var(--font-ui,sans-serif)}
+.bb-tabs .bb-sec.bb-card{background:var(--bb-paper-2);box-shadow:none;border-radius:24px}
+.bb-tabs .bb-head-static{min-height:0;padding:16px 18px 8px;display:flex;align-items:baseline;gap:10px}
+.bb-tabs .bb-head-static h3{font-size:13px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--bb-ink-2)}
+.bb-tabs .bb-head-static .bb-sum{opacity:1;font-size:13px;color:var(--bb-ink-3)}
+.bb-tabs .bb-body{padding:0 16px 16px;gap:12px}
+.bb-tabs .bb-quiet{background:var(--bb-paper);box-shadow:none}
+.bb-tabs .bb-grid{gap:14px}
+@container (min-width:700px){.bb-tabs .bb-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}}
+.bb-hello{display:flex;flex-direction:column;gap:2px;min-height:56px;justify-content:center}
+.bb-hello-day{font-size:13px;font-weight:500;color:var(--bb-ink-2)}
+.bb-hello-hi{font-family:var(--bb-display);font-weight:400;font-size:26px;line-height:1.1;letter-spacing:-.01em;margin:0;overflow-wrap:anywhere}
+/* the two skies */
+.bboard.bb-tabs .bb-clocks{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:0}
+.bboard.bb-tabs .bb-sky{--sky:#F3D9B1;--sky-ink:#2A2420;--sky-sub:#5E4426;position:relative;display:block;height:clamp(236px,64vw,280px);padding:16px;border-radius:28px;overflow:hidden;background:var(--sky);color:var(--sky-ink);box-shadow:none;transition:background-color 1.4s ease,color 1.4s ease}
+.bboard.bb-tabs .bb-sky[data-sky=afternoon]{--sky:#CFE0E8;--sky-ink:#22303A;--sky-sub:#3F5560}
+.bboard.bb-tabs .bb-sky[data-sky=evening]{--sky:#E9B49A;--sky-ink:#2A1A14;--sky-sub:#5A3226}
+.bboard.bb-tabs .bb-sky[data-sky=night]{--sky:#2F3550;--sky-ink:#FFFFFF;--sky-sub:#D5D9E8}
+.bboard.bb-tabs .bb-sky[data-sky=grey]{--sky:#4F5F6C;--sky-ink:#FFFFFF;--sky-sub:#DCE3E8}
+.bb-tabs .bb-sky-words{position:relative;z-index:2;display:flex;flex-direction:column;gap:2px;min-width:0}
+.bboard.bb-tabs .bb-clock-place{font-size:15px;font-weight:600;letter-spacing:0;text-transform:none;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bb-tabs .bb-clock-who{font-size:13px;color:var(--sky-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bboard.bb-tabs .bb-clock-time{font-family:var(--bb-display);font-weight:400;font-size:clamp(38px,11vw,48px);line-height:1;margin-top:10px;color:inherit;font-variant-numeric:lining-nums tabular-nums;letter-spacing:-.01em}
+.bb-tabs .bb-clock-part{font-size:14px;margin-top:6px}
+.bb-tabs .bb-clock-wx{font-size:14px;display:flex;align-items:center;gap:6px;color:var(--sky-sub);min-height:20px}
+.bb-tabs .bb-clock-wx svg{width:18px;height:18px;stroke-width:1.8}
+.bb-tabs .bb-sky-fig{position:absolute;z-index:1;left:50%;bottom:-30px;width:66px;transform:translateX(-50%)}
+.bboard.bb-tabs .bb-sky-fig svg{width:100%;height:auto}
+.bboard.bb-tabs .bb-meet-h svg,.bboard.bb-tabs .bb-hthink-fig svg,.bboard.bb-tabs .bb-tz-fig svg,.bboard.bb-tabs .bb-th-row .bb-dot.bb-dot-fig svg{width:100%;height:100%}
+.bboard.bb-tabs .bb-meet-heart svg{width:14px;height:14px}
+.bboard.bb-tabs .bb-deco{width:auto;height:auto}
+@media (min-width:900px){.bboard.bb-tabs .bb-sky{height:340px}.bb-tabs .bb-sky-fig{width:84px;bottom:-36px}}
+.bb-tabs .bb-sky-deco{position:absolute;inset:0;z-index:0;pointer-events:none}
+.bb-tabs .bb-deco{position:absolute;width:auto;height:auto}
+.bb-tabs .bb-sun{right:-20px;top:96px;width:80px;animation:bb-glow 7s ease-in-out infinite}
+.bb-tabs .bb-moon{right:14px;top:92px;width:42px}
+.bb-tabs .bb-stars{left:0;top:76px;width:100%;animation:bb-twinkle 5s ease-in-out infinite}
+.bb-tabs .bb-cloud{right:-14px;top:104px;width:96px;color:rgba(255,255,255,.42);animation:bb-drift 14s ease-in-out infinite}
+.bb-tabs .bb-rain{left:0;bottom:40px;width:100%;color:#8C9BA7;animation:bb-rain 1.9s linear infinite}
+.bb-tabs .bb-snow{left:0;bottom:40px;width:100%;color:rgba(255,255,255,.8);animation:bb-snow 4s linear infinite}
+@keyframes bb-glow{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes bb-twinkle{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes bb-drift{0%,100%{transform:translateX(0)}50%{transform:translateX(-10px)}}
+@keyframes bb-rain{0%{transform:translateY(-6px);opacity:0}30%{opacity:1}100%{transform:translateY(10px);opacity:0}}
+@keyframes bb-snow{0%{transform:translateY(-8px);opacity:0}25%{opacity:1}100%{transform:translateY(14px);opacity:0}}
+/* Home: the latest heart, the countdown, the next plan */
+.bb-tabs .bb-hcard{width:100%;background:var(--bb-paper-2);border-radius:24px;color:var(--bb-ink);text-align:left}
+.bb-tabs .bb-hthink{display:flex;align-items:center;gap:10px;padding:12px}
+.bb-tabs .bb-hthink-open{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:60px;text-align:left;border-radius:18px}
+.bb-tabs .bb-hthink-fig{width:60px;height:60px;border-radius:30px;overflow:hidden;flex:none;background:#F3D9B1}
+.bb-tabs .bb-hthink-fig.bb-fig-mo{background:#EDE3D6}
+.bb-tabs .bb-hthink-fig svg{width:100%;height:100%}
+.bb-tabs .bb-hthink-words{display:flex;flex-direction:column;gap:1px;min-width:0}
+.bb-tabs .bb-hthink-words b{font-size:15px;font-weight:600}
+.bb-tabs .bb-hthink-words .bb-sub{font-size:13px;margin:0}
+.bb-tabs .bb-hthink-note{font-family:var(--bb-display);font-style:italic;font-size:15px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.bb-tabs .bb-heart-btn{width:48px;height:48px;border-radius:24px;flex:none;display:grid;place-items:center;background:var(--bb-clay);color:var(--bb-clay-ink);transition:transform .25s var(--bb-ease)}
+.bb-tabs .bb-heart-btn:active{transform:scale(.92)}
+.bb-tabs .bb-heart-btn svg{width:22px;height:22px}
+.bb-tabs .bb-hthink-open:focus-visible,.bb-tabs .bb-hnext:focus-visible,.bb-tabs .bb-heart-btn:focus-visible,.bb-tabs .bb-wday:focus-visible{outline:2px solid var(--bb-clay);outline-offset:2px}
+.bb-tabs[id=bHomeCount] .bb-sec{height:100%}
+.bb-tabs [data-sec=countdown] .bb-head{display:none}
+.bb-tabs [data-sec=countdown] .bb-body{padding:16px;height:100%}
+.bb-tabs .bb-cd{text-align:left;gap:4px;padding:0;align-content:space-between;height:100%}
+.bb-tabs .bb-cd-title{font-family:var(--font-ui,sans-serif);font-size:13px;font-weight:500;color:var(--bb-ink-2);line-height:1.3;text-wrap:pretty;overflow-wrap:anywhere}
+.bb-tabs .bb-cd-num{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.bb-tabs .bb-cd-num b{font-family:var(--bb-display);font-weight:400;font-size:44px;line-height:1;font-variant-numeric:lining-nums}
+.bb-tabs .bb-cd-num span{font-size:14px}
+.bb-tabs .bb-here{font-size:30px}
+.bb-tabs .bb-cd-when{font-size:12px;font-weight:500;color:var(--bb-ink-2)}
+.bb-tabs .bb-cd-change{justify-self:start;min-height:44px;padding:0;margin:-8px 0 -12px;font-size:14px}
+.bb-tabs .bb-cd .bb-empty{text-align:left;padding:0;font-size:14px}
+.bb-meet{display:flex;align-items:center;gap:6px;min-height:28px}
+.bb-meet-h{width:26px;height:26px;border-radius:13px;overflow:hidden;flex:none;background:#EDE3D6}
+.bb-meet-semal{background:#F3D9B1}
+.bb-meet-h svg{width:100%;height:100%}
+.bb-meet-path{height:0;border-top:2px dotted #B9A796;transition:width .8s var(--bb-ease)}
+.bb-meet-here{gap:0;position:relative}
+.bb-meet-here .bb-meet-mo{margin-right:-5px}
+.bb-meet-heart{position:absolute;left:19px;top:-12px;width:14px;height:14px}
+.bb-meet-heart svg{width:100%;height:100%}
+.bb-tabs .bb-hnext{display:flex;flex-direction:column;justify-content:space-between;gap:8px;padding:16px;min-height:126px}
+.bb-tabs .bb-hnext-top{display:flex;align-items:center;justify-content:space-between;width:100%}
+.bb-tabs .bb-label{font-size:13px;font-weight:500;color:var(--bb-ink-2)}
+.bb-tabs .bb-hnext-chev svg{width:18px;height:18px;color:var(--bb-ink-2)}
+.bb-tabs .bb-hnext-title{font-size:16px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.bb-tabs .bb-hnext-times{display:flex;flex-direction:column;font-size:13px;color:var(--bb-ink-2)}
+/* Plans: Say it, the week, both clocks on each plan */
+.bboard.bb-tabs .bb-talk{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l b" "i b";align-items:center;column-gap:10px;min-height:68px;padding:8px 8px 2px 18px;margin:0 0 14px;border-radius:24px;background:var(--bb-paper-2)}
+.bb-tabs .bb-talk-label{grid-area:l;font-size:12px;font-weight:600;color:var(--bb-ink-2)}
+.bboard.bb-tabs .bb-talk .bb-in{grid-area:i;background:transparent;box-shadow:none;min-height:44px;height:44px;padding:0;border-radius:0;font-size:16px}
+.bboard.bb-tabs .bb-talk .bb-in:focus{outline:none}
+.bboard.bb-tabs .bb-talk:focus-within{box-shadow:0 0 0 2px var(--bb-clay)}
+.bboard.bb-tabs .bb-talk .bb-add-btn{grid-area:b;width:48px;height:48px;min-height:48px;padding:0;border-radius:24px}
+.bb-tabs .bb-talk .bb-add-word{display:none}
+.bb-tabs .bb-talk .bb-add-btn svg{width:22px;height:22px}
+.bb-tabs .bb-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+@media (max-width:400px){.bb-tabs .bb-week{gap:2px;margin:0 -8px}}
+.bb-tabs .bb-wday{position:relative;height:58px;border-radius:16px;background:var(--bb-paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:0;transition:transform .2s var(--bb-ease)}
+.bb-tabs .bb-wday:active{transform:scale(.95)}
+.bb-tabs .bb-wd{font-size:11px;color:var(--bb-ink-2)}
+.bb-tabs .bb-dn{font-size:16px;font-weight:600}
+.bb-tabs .bb-wdot{width:5px;height:5px;border-radius:3px;background:transparent}
+.bb-tabs .bb-wday.bb-has{box-shadow:inset 0 0 0 1.5px var(--bb-clay)}
+.bb-tabs .bb-wday.bb-has .bb-wdot{background:var(--bb-clay)}
+.bb-tabs .bb-wday.bb-today{background:var(--bb-ink);color:var(--bb-paper)}
+.bb-tabs .bb-wday.bb-today .bb-wd{color:inherit;opacity:.85}
+.bb-tabs .bb-day.bb-flash{animation:bb-flash 1.4s ease}
+@keyframes bb-flash{0%,100%{background:transparent}30%{background:var(--bb-clay-soft)}}
+.bb-tabs .bb-day{border-radius:14px}
+.bb-tabs .bb-ev-title{font-family:var(--bb-display);font-weight:400;font-size:21px;line-height:1.2}
+.bb-tabs .bb-two{display:grid;gap:4px;margin-top:6px}
+.bb-tabs .bb-tz{display:grid;grid-template-columns:30px 96px minmax(0,1fr);align-items:center;gap:10px;min-height:36px}
+.bb-tabs .bb-tz-fig{width:30px;height:30px;border-radius:15px;overflow:hidden;background:#EDE3D6}
+.bb-tabs .bb-tz + .bb-tz .bb-tz-fig{background:#F3D9B1}
+.bb-tabs .bb-tz-fig svg{width:100%;height:100%}
+.bb-tabs .bb-tz-words{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.bb-tabs .bb-tz-words b{font-size:15px;font-weight:600;white-space:nowrap}
+.bb-tabs .bb-tz-words span{font-size:12px;color:var(--bb-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bb-tabs .bb-tz-bar{position:relative;height:16px;border-radius:8px;background:linear-gradient(90deg,#4F5F6C 0 25%,#F3D9B1 25% 83.3%,#4F5F6C 83.3%)}
+.bb-tabs .bb-tz-mark{position:absolute;top:1px;width:14px;height:14px;border-radius:7px;background:#FFFFFF;box-shadow:inset 0 0 0 3px var(--bb-clay)}
+.bb-tabs .bb-ev{padding-left:0;align-items:flex-start;padding-top:8px;padding-bottom:8px}
+.bb-tabs .bb-ev::before{display:none}
+.bb-tabs .bb-past .bb-ev-title{font-family:var(--font-ui,sans-serif);font-size:16px;font-weight:600}
+.bb-tabs .bb-empty-sofa{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 4px}
+.bb-tabs .bb-sofa{width:150px;margin-bottom:4px}
+.bb-tabs .bb-sofa svg,.bb-tabs .bb-hscene svg{width:100%;height:auto;display:block}
+.bb-tabs .bb-empty-h{font-weight:600;color:var(--bb-ink);font-size:15px}
+/* Hearts */
+.bb-tabs .bb-hscene{display:grid;place-items:center;padding:18px 16px 8px;border-radius:24px;background:linear-gradient(180deg,#F6E2C6,#F3D9B1)}
+.bb-tabs .bb-hscene svg{max-width:200px}
+.bb-tabs .bb-dot-fig{background:#EDE3D6;overflow:hidden}
+.bb-tabs .bb-dot-fig.bb-fig-semal{background:#F3D9B1}
+.bb-tabs .bb-dot-fig svg{width:100%;height:100%}
+.bb-tabs .bb-th-row .bb-dot.bb-dot-fig{width:40px;height:40px;border-radius:20px}
+.bb-tabs .bb-th-card{border-radius:20px}
+.bb-tabs .bb-th-line{font-size:19px;row-gap:2px}
+.bb-tabs .bb-th-line .bb-ago{flex-basis:100%;padding-left:28px}
+.bb-tabs [data-sec=think] .bb-head-static .bb-sum{display:none}
+/* notes sit above the tab bar */
+.bb-notewrap .bb-note{position:fixed;z-index:62;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(calc(100% - 32px),520px);margin:0;border-radius:18px;padding:6px 4px 6px 16px;min-height:52px;animation:bb-up .4s var(--bb-ease)}
+.bb-notewrap .bb-note .bb-note-act{color:#F3C98F;box-shadow:none;min-height:44px}
+@keyframes bb-up{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.bb-fly{position:fixed;left:0;top:0;z-index:95;width:28px;height:28px;pointer-events:none;filter:drop-shadow(0 0 6px rgba(232,144,122,.55))}
+.bb-fly svg{width:100%;height:100%;display:block}
+@media (prefers-reduced-motion:reduce){.bboard *,.bb-fly{animation:none !important;transition:none !important}}
 `;
 
   function mount(el, opts) {
@@ -842,10 +1280,11 @@
     const o = opts || {};
     const room = String(o.room || '');
     const name = String(o.name || '').trim().slice(0, 40) || 'Someone';
-    if (S && S.el === el && S.room === room) { S.name = name; render(); return; }
+    if (S && S.el === el && S.room === room) { S.name = name; if (o.them != null) S.them = String(o.them).trim().slice(0, 40); render(); return; }
     if (S) { clearTimeout(S.timer); S.el.classList.remove('bboard'); }
     if (!document.getElementById('bboard-css')) document.head.append(h('style', { id: 'bboard-css', text: CSS }));
-    S = { el, room, name, server: empty(), pending: [], chain: Promise.resolve(), folds: {}, fails: 0, loaded: false, offline: false, timer: 0 };
+    S = { el, room, name, server: empty(), pending: [], chain: Promise.resolve(), folds: {}, fails: 0, loaded: false, offline: false, timer: 0,
+      split: !!o.targets, t: o.targets || {}, opts: o, them: String(o.them || '').trim().slice(0, 40) };
     if (!ROOM_RE.test(room)) {
       el.classList.add('bboard');
       el.replaceChildren(h('p', { class: 'bb-empty', text: 'The board opens once you’re on a Beside link.' }));
@@ -865,5 +1304,8 @@
   window.BesideBoard = {
     mount,
     refresh() { if (S) { poll(); schedule(); } },
+    // Which figure is this person's (Mo's home is London, Semal's is LA), and the other one's name if known.
+    people() { return { me: myZone() === LA ? 'semal' : 'mo', them: S ? theirName(S.lastView) : '' }; },
+    celebrate() { if (S) celebrate(); },
   };
 })();
