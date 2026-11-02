@@ -1,6 +1,7 @@
-/* Ring: wakes the other person's device when Beside is closed.
+/* Ring and hearts: wake the other person's device when Beside is closed.
    Web push (Safari Home Screen icon, Chrome, Firefox): VAPID (RFC 8292) with an encrypted payload (RFC 8291, aes128gcm).
-   The Beside iPhone and iPad app: an Apple VoIP push, which the app turns into a real incoming call (CallKit).
+   The Beside iPhone and iPad app: an Apple VoIP push, which the app turns into a real incoming call (CallKit),
+   and an ordinary Apple notification (with a soft ping) for a heart.
    Keys are Worker secrets: VAPID_JWK (a P-256 private key as JWK), APNS_KEY_P8, APNS_KEY_ID, APPLE_TEAM_ID. */
 
 const enc = new TextEncoder();
@@ -67,7 +68,8 @@ export async function encryptPayload(text, p256dh, auth) {
 }
 
 // One web push. Returns 'ok', 'gone' (forget this device) or 'fail'.
-export async function sendWeb(env, sub, payload) {
+// topic: a newer push with the same topic replaces one still waiting (a ring, or a heart).
+export async function sendWeb(env, sub, payload, topic = 'ring') {
   const j = vapidJwk(env);
   if (!j || !pushHostOk(sub.endpoint, env)) return 'fail';
   const key = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', d: j.d, x: j.x, y: j.y }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
@@ -78,7 +80,7 @@ export async function sendWeb(env, sub, payload) {
   try {
     const r = await fetch(sub.endpoint, {
       method: 'POST',
-      headers: { authorization: `vapid t=${jwt}, k=${vapidPublic(env)}`, ttl: '60', urgency: 'high', topic: 'ring', 'content-encoding': 'aes128gcm', 'content-type': 'application/octet-stream' },
+      headers: { authorization: `vapid t=${jwt}, k=${vapidPublic(env)}`, ttl: '60', urgency: 'high', topic, 'content-encoding': 'aes128gcm', 'content-type': 'application/octet-stream' },
       body,
     });
     if (r.status === 404 || r.status === 410) return 'gone';
@@ -89,18 +91,24 @@ export async function sendWeb(env, sub, payload) {
 // One Apple VoIP push to the Beside app (a real incoming call screen).
 let apnsJwt = null;
 export const APNS_TOPIC = 'com.mokingsacc.beside.voip';
-export async function sendVoip(env, sub, payload) {
+export const APNS_ALERT_TOPIC = 'com.mokingsacc.beside';
+export const sendVoip = (env, sub, payload) => apns(env, sub.token, sub.env, 'voip', APNS_TOPIC, payload);
+// One ordinary Apple notification to the Beside app (a heart), to the device's notification token.
+export const sendAlert = (env, sub, payload) => apns(env, sub.alert, sub.env, 'alert', APNS_ALERT_TOPIC, payload);
+
+async function apns(env, token, where, type, topic, payload) {
   if (!env.APNS_KEY_P8 || !env.APNS_KEY_ID || !env.APPLE_TEAM_ID) return 'fail';
   if (!apnsJwt || Date.now() - apnsJwt.at > 40 * 60 * 1000) {
     const pem = String(env.APNS_KEY_P8).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
     const key = await crypto.subtle.importKey('pkcs8', unb64u(pem.replace(/\+/g, '-').replace(/\//g, '_')), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
     apnsJwt = { at: Date.now(), t: await es256({ alg: 'ES256', kid: env.APNS_KEY_ID }, { iss: env.APPLE_TEAM_ID, iat: Math.floor(Date.now() / 1000) }, key) };
   }
-  const host = sub.env === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
+  const host = where === 'sandbox' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com';
+  const base = env.APNS_TEST_URL || host; // local tests only
   try {
-    const r = await fetch(`https://${host}/3/device/${sub.token}`, {
+    const r = await fetch(`${base}/3/device/${token}`, {
       method: 'POST',
-      headers: { authorization: 'bearer ' + apnsJwt.t, 'apns-push-type': 'voip', 'apns-topic': APNS_TOPIC, 'apns-priority': '10', 'apns-expiration': '0', 'content-type': 'application/json' },
+      headers: { authorization: 'bearer ' + apnsJwt.t, 'apns-push-type': type, 'apns-topic': topic, 'apns-priority': '10', 'apns-expiration': '0', 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (r.ok) return 'ok';
