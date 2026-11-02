@@ -2573,6 +2573,7 @@
     H.probeAgain = false;
     H.checked = false;
     H.liveSince = 0;
+    H.ownDown = false;
     setStartBusy(true);
     try {
       // Audio engine first, inside the click, so Safari lets it run. Each guest gets their own voice mix: your
@@ -2677,13 +2678,15 @@
     peer.on('open', () => {
       if (H.peer !== peer) return;
       wasOpen = true;
+      H.ownDown = false;
+      MV.liveAt = 0; // the link is ours now: what was live elsewhere has ended or moved here
       if (!H.liveSince) H.liveSince = Date.now();
       H.idRetries = 0;
       H.fast = 0;
       H.moveTo = null;
       app.hostReady = true;
-      // The spare link on the free server opens only once the own server gave us the link: before that another
-      // of my devices may hold it, and a spare must never take guests for a call that isn't ours.
+      // The spare link on the free server opens once the own server gave us the link (or can't be reached):
+      // before that another of my devices may hold it, and a spare must never take guests for a call that isn't ours.
       if (NET.own && !H.spare) openSparePeer();
       text('liveHint', '');
       if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) {
@@ -2755,6 +2758,10 @@
         note('This browser can’t make calls. Use Chrome or Safari.', 'stay');
       } else if (NET_ERR.test(t || '')) {
         text('liveHint', 'Can’t reach the call server. Trying again… Anyone already in the call stays connected.');
+        // The own server is down: the spare on the free server carries the call meanwhile (there, too, the link
+        // is only ours if no other device holds it).
+        if (!wasOpen) H.ownDown = true;
+        if (NET.own && !H.spare) openSparePeer();
         // A server that never answered leaves PeerJS destroyed: start a fresh one.
         setTimeout(() => { if (H.peer === peer && !H.stopping && app.state === 'live' && peer.destroyed) openHostPeer(); }, 3000);
       }
@@ -2787,7 +2794,7 @@
       }
     }, ms);
     peer.on('connection', (conn) => {
-      if (H.spare !== peer || !app.hostReady) { try { conn.close(); } catch (e) {} return; }
+      if (H.spare !== peer || (!app.hostReady && !H.ownDown)) { try { conn.close(); } catch (e) {} return; }
       if (moveConn(conn)) return;
       hostKnock(conn);
     });
@@ -3271,7 +3278,8 @@
   }
   function roomy() { return isGuest ? !!guestCode : true; }
   function moveFound(r) {
-    if (r && r.live && !isGuest) MV.liveAt = Date.now(); // seen live: a Start here asks it first
+    // Seen live elsewhere: a Start here asks it first. (Not while this device holds the call: then it was us.)
+    if (r && r.live && !isGuest && ['idle', 'ended'].includes(app.state) && !app.hostReady) MV.liveAt = Date.now();
     if (!r || !r.live || MV.dismissed) return;
     if (isGuest ? !r.here || !['join', 'ended'].includes(app.state) : !['idle', 'ended'].includes(app.state)) return;
     MV.cam = !!r.cam;
