@@ -2,7 +2,6 @@
   "name": "Beside",
   "short_name": "Beside",
   "description": "Talk, see each other and share your screen from a link.",
-  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#F5EFE4",
