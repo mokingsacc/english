@@ -8,7 +8,12 @@
    .../peerjs/id    a fresh random id (PeerJS asks for one when it isn't given one)
    .../peerjs?id=   the WebSocket
    /peerjs/board/<room>   the Together board: GET it, or POST one change ({op, ...}); one Durable Object per room
-   /peerjs/board/<room>/photo/<id>   a "thinking of you" photo */
+   /peerjs/board/<room>/photo/<id>   a "thinking of you" photo
+   /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip}), or {off} to stop
+   /peerjs/board/<room>/ring   POST {role, name}: ring the other person's devices; GET: the last ring
+   /peerjs/push/key            the public key browsers need to say yes to rings */
+
+import { sendWeb, sendVoip, vapidPublic, pushHostOk } from './push.js';
 
 const STALE_MS = 120000; // PeerJS beats every 5 s (up to ~60 s in a hidden, throttled tab); silent longer = a dead line
 const QUEUE_MS = 5000; // like peerjs-server: hold a message for a browser that's reconnecting, then EXPIRE
@@ -22,6 +27,7 @@ export default {
     if (p === '/peerjs/health') return new Response('{"ok":true}', { headers: { ...JSON_H, 'access-control-allow-origin': '*' } });
     if (p === '/peerjs/turn') return turn(req, env);
     if (p.startsWith('/peerjs/board/')) return board(req, env, p);
+    if (p === '/peerjs/push/key') return new Response(JSON.stringify({ key: vapidPublic(env) }), { headers: { ...JSON_H, ...CORS } });
     if (/\/peerjs\/id$/.test(p)) return new Response(crypto.randomUUID(), { headers: { 'cache-control': 'no-store', 'access-control-allow-origin': '*' } });
     if (/\/peerjs$/.test(p) && req.headers.get('upgrade') === 'websocket') {
       return env.LOBBY.get(env.LOBBY.idFromName('lobby')).fetch(req);
@@ -78,11 +84,12 @@ function board(req, env, p) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' } });
   }
-  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+))?\/?$/);
+  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring))?\/?$/);
   if (!m) return plain('Not found', 404);
   if (!ROOM_RE.test(m[1])) return plain('That board name isn’t right: use 4 to 40 letters, numbers or _.');
-  if (m[2] && !ID_RE.test(m[3])) return plain('Not found', 404);
-  if (req.method !== 'GET' && !(req.method === 'POST' && !m[2])) return plain('Only GET and POST work here.', 405);
+  if (m[3] && !ID_RE.test(m[3])) return plain('Not found', 404);
+  const post = req.method === 'POST' && !m[3], get = req.method === 'GET' && m[4] !== 'push';
+  if (!post && !get) return plain('Only GET and POST work here.', 405);
   return env.BOARD.get(env.BOARD.idFromName(m[1])).fetch(req);
 }
 
@@ -110,13 +117,85 @@ function oldId(v) {
   return v;
 }
 
+const SUBS_MAX = 12;
+const RING_GAP = 8000; // one ring per room every 8 s at most
+const RING_RE = /^(host|guest)$/;
+const VOIP_RE = /^[0-9a-f]{64,200}$/;
+
 export class Board {
-  constructor(ctx) {
+  constructor(ctx, env) {
     this.ctx = ctx;
+    this.env = env || {};
     this.b = null;
+    this.subs = [];
+    this.ring = null;
     ctx.blockConcurrencyWhile(async () => {
       this.b = (await ctx.storage.get('board')) || { v: 0, countdown: null, todos: [], events: [], thinks: [] };
+      this.subs = (await ctx.storage.get('subs')) || [];
+      this.ring = (await ctx.storage.get('ring')) || null;
     });
+  }
+
+  // Where a ring should open on this device: Beside's own address only.
+  openLink(v, req) {
+    try {
+      const u = new URL(String(v || ''));
+      const own = new URL(req.url);
+      const okHost = u.host === 'sitbeside.pages.dev' || u.host === own.host || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(u.host);
+      if ((u.protocol === 'https:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1') && okHost && String(v).length < 300) return u.href;
+    } catch (e) {}
+    throw new Bad('That link isn’t Beside’s.');
+  }
+
+  async push(o, req) {
+    const role = typeof o.role === 'string' && RING_RE.test(o.role) ? o.role : null;
+    const key = o.voip ? 'voip:' + o.voip : o.web && o.web.endpoint ? 'web:' + o.web.endpoint : o.endpoint ? 'web:' + o.endpoint : null;
+    if (!key) throw new Bad('Nothing to ring.');
+    let subs = this.subs.filter((s) => s.key !== key);
+    if (o.off) {
+      if (subs.length === this.subs.length) return { on: false };
+      this.subs = subs;
+      await this.ctx.storage.put('subs', subs);
+      return { on: false };
+    }
+    if (!role) throw new Bad('Say who this device belongs to.');
+    const s = { key, role, name: text(o.name, 'name', NAME_MAX, true), open: this.openLink(o.open, req), at: Date.now() };
+    if (o.voip) {
+      if (typeof o.voip !== 'string' || !VOIP_RE.test(o.voip)) throw new Bad('That device code isn’t right.');
+      s.kind = 'voip'; s.token = o.voip; s.env = o.env === 'sandbox' ? 'sandbox' : 'production';
+    } else {
+      const w = o.web || {};
+      if (typeof w.endpoint !== 'string' || w.endpoint.length > 1000 || !pushHostOk(w.endpoint, this.env)) throw new Bad('This browser’s ring address isn’t one Beside knows.');
+      if (!w.keys || typeof w.keys.p256dh !== 'string' || typeof w.keys.auth !== 'string' || w.keys.p256dh.length > 200 || w.keys.auth.length > 100) throw new Bad('This browser’s ring keys are missing.');
+      s.kind = 'web'; s.endpoint = w.endpoint; s.keys = { p256dh: w.keys.p256dh, auth: w.keys.auth };
+    }
+    subs = [s].concat(subs).slice(0, SUBS_MAX);
+    this.subs = subs;
+    await this.ctx.storage.put('subs', subs);
+    return { on: true, devices: subs.filter((x) => x.role === role).length };
+  }
+
+  async sendRing(o) {
+    if (typeof o.role !== 'string' || !RING_RE.test(o.role)) throw new Bad('Say who is ringing.');
+    const now = Date.now();
+    if (this.ring && now - this.ring.at < RING_GAP && this.ring.role === o.role) return { sent: this.ring.sent || 0, again: true };
+    const name = text(o.name, 'name', NAME_MAX, true) || (o.role === 'host' ? 'Your person' : 'Your guest');
+    const id = newId();
+    const to = this.subs.filter((s) => s.role !== o.role);
+    this.ring = { id, role: o.role, name, at: now, sent: 0 };
+    const results = await Promise.all(to.map((s) => {
+      const ring = { id, name, from: o.role, link: s.open };
+      return (s.kind === 'voip'
+        ? sendVoip(this.env, s, { ring })
+        : sendWeb(this.env, s, { title: name + ' is calling', body: 'Tap to join on Beside.', url: s.open, id, tag: 'beside-ring' })
+      ).catch(() => 'fail');
+    }));
+    const gone = new Set(to.filter((s, i) => results[i] === 'gone').map((s) => s.key));
+    if (gone.size) this.subs = this.subs.filter((s) => !gone.has(s.key));
+    this.ring.sent = results.filter((r) => r === 'ok').length;
+    await this.ctx.storage.put({ subs: this.subs, ring: this.ring });
+    const names = [...new Set(to.filter((s) => !gone.has(s.key) && s.name).map((s) => s.name))];
+    return { sent: this.ring.sent, devices: to.length - gone.size, gone: gone.size, names };
   }
 
   reply(b) { return new Response(JSON.stringify(b), { headers: { ...JSON_H, ...CORS } }); }
@@ -132,6 +211,19 @@ export class Board {
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return new Response(bytes, { headers: { 'content-type': 'image/' + m[1], 'cache-control': 'private, max-age=31536000, immutable', ...CORS } });
+    }
+    const sub = url.pathname.match(/\/(push|ring)\/?$/);
+    if (sub && req.method === 'GET') return this.reply({ ring: this.ring && Date.now() - this.ring.at < 120000 ? this.ring : null });
+    if (sub) {
+      const raw = await req.text();
+      if (raw.length > 4000) return plain('That’s too big.');
+      let o;
+      try { o = JSON.parse(raw); } catch (e) { return plain('That couldn’t be read.'); }
+      if (!o || typeof o !== 'object') return plain('That couldn’t be read.');
+      try { return this.reply(sub[1] === 'push' ? await this.push(o, req) : await this.sendRing(o)); } catch (e) {
+        if (e instanceof Bad) return plain(e.message);
+        throw e;
+      }
     }
     if (req.method === 'GET') {
       const b = this.b;
