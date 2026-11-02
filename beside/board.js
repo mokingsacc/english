@@ -530,7 +530,8 @@
 
   // Thinking of you: sent at once, and on screen a soft heart floats from your figure to theirs as you both lean in.
   function sendThink(noteText, photo) {
-    send({ op: 'think', id: newId(), from: S.name, note: noteText || '', photo: photo || undefined }, 'that');
+    // role: the server pings the other person's devices (host is Mo, guest is Semal).
+    send({ op: 'think', id: newId(), from: S.name, note: noteText || '', photo: photo || undefined, role: S.role || undefined }, 'that');
     celebrate();
   }
   function celebrate() {

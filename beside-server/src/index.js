@@ -7,14 +7,15 @@
    /peerjs/turn     short-lived relay passwords (Cloudflare TURN) for networks that block direct calls
    .../peerjs/id    a fresh random id (PeerJS asks for one when it isn't given one)
    .../peerjs?id=   the WebSocket
-   /peerjs/board/<room>   the Together board: GET it, or POST one change ({op, ...}); one Durable Object per room
+   /peerjs/board/<room>   the Together board: GET it, or POST one change ({op, ...}); one Durable Object per room.
+                          A heart ({op: 'think', role}) also pings the other person's devices.
    /peerjs/board/<room>/photo/<id>   a "thinking of you" photo
-   /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip}), or {off} to stop
+   /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip, alert}), or {off} to stop
    /peerjs/board/<room>/ring   POST {role, name}: ring the other person's devices; GET: the last ring
    /peerjs/board/<room>/talk   POST {text, by, zone}: one sentence becomes to-dos, events or a countdown (Claude reads it)
    /peerjs/push/key            the public key browsers need to say yes to rings */
 
-import { sendWeb, sendVoip, vapidPublic, pushHostOk } from './push.js';
+import { sendWeb, sendVoip, sendAlert, vapidPublic, pushHostOk } from './push.js';
 import { understand, toOps, TalkError, TALK_ZONES, TALK_MAX } from './talk.js';
 
 const STALE_MS = 120000; // PeerJS beats every 5 s (up to ~60 s in a hidden, throttled tab); silent longer = a dead line
@@ -121,6 +122,7 @@ function oldId(v) {
 
 const SUBS_MAX = 12;
 const RING_GAP = 8000; // one ring per room every 8 s at most
+const HEART_GAP = 5000; // one heart ping per person every 5 s at most
 const RING_RE = /^(host|guest)$/;
 const VOIP_RE = /^[0-9a-f]{64,200}$/;
 const TALK_DAY = 60; // sentences per board per day
@@ -133,6 +135,7 @@ export class Board {
     this.b = null;
     this.subs = [];
     this.ring = null;
+    this.hearts = {}; // when each person last pinged the other
     ctx.blockConcurrencyWhile(async () => {
       this.b = (await ctx.storage.get('board')) || { v: 0, countdown: null, todos: [], events: [], thinks: [] };
       this.subs = (await ctx.storage.get('subs')) || [];
@@ -167,6 +170,7 @@ export class Board {
     if (o.voip) {
       if (typeof o.voip !== 'string' || !VOIP_RE.test(o.voip)) throw new Bad('That device code isn’t right.');
       s.kind = 'voip'; s.token = o.voip; s.env = o.env === 'sandbox' ? 'sandbox' : 'production';
+      if (typeof o.alert === 'string' && VOIP_RE.test(o.alert)) s.alert = o.alert; // the app's notification token, for hearts
     } else {
       const w = o.web || {};
       if (typeof w.endpoint !== 'string' || w.endpoint.length > 1000 || !pushHostOk(w.endpoint, this.env)) throw new Bad('This browser’s ring address isn’t one Beside knows.');
@@ -200,6 +204,25 @@ export class Board {
     await this.ctx.storage.put({ subs: this.subs, ring: this.ring });
     const names = [...new Set(to.filter((s) => !gone.has(s.key) && s.name).map((s) => s.name))];
     return { sent: this.ring.sent, devices: to.length - gone.size, gone: gone.size, names };
+  }
+
+  // A heart was saved: a soft ping on the other person's devices. Never stops the heart itself being saved.
+  async sendHeart(role, t) {
+    const now = Date.now();
+    if (now - (this.hearts[role] || 0) < HEART_GAP) return;
+    this.hearts[role] = now;
+    const title = (t.from || 'Your person') + ' is thinking of you';
+    const body = t.note ? t.note.slice(0, 140) : t.photo ? 'They sent you a photo.' : 'Open Beside to send one back.';
+    const to = this.subs.filter((s) => s.role !== role && (s.kind === 'web' || s.alert));
+    const results = await Promise.all(to.map((s) => (s.kind === 'web'
+      ? sendWeb(this.env, s, { kind: 'heart', title, body, url: s.open, tag: 'beside-heart' }, 'heart')
+      : sendAlert(this.env, s, { aps: { alert: { title, body }, sound: 'ping.wav', 'thread-id': 'beside-hearts' }, kind: 'heart' })
+    ).catch(() => 'fail')));
+    const gone = to.filter((s, i) => results[i] === 'gone');
+    if (!gone.length) return;
+    // A web device that is gone is forgotten; the app keeps ringing and only loses its heart token.
+    this.subs = this.subs.filter((s) => !(s.kind === 'web' && gone.includes(s))).map((s) => (gone.includes(s) ? { ...s, alert: undefined } : s));
+    await this.ctx.storage.put('subs', this.subs);
   }
 
   // One sentence: Claude reads it, then every change is checked and saved together, with how to undo them.
@@ -325,6 +348,9 @@ export class Board {
     const writes = [this.ctx.storage.put(puts)];
     if (next.drop && next.drop.length) writes.push(this.ctx.storage.delete(next.drop.map((id) => 'photo:' + id)));
     await Promise.all(writes);
+    if (o.op === 'think' && typeof o.role === 'string' && RING_RE.test(o.role)) {
+      try { await this.sendHeart(o.role, next.board.thinks[0]); } catch (e) { /* the heart is saved either way */ }
+    }
     return this.reply(next.board);
   }
 
