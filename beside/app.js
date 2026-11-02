@@ -90,15 +90,24 @@
   const app = { state: '', log: [], states: [], guestPeers: 0, hostPeers: 0 };
   window.__beside = app; // for the automated tests
   netReady(); // ask the own call server early, so it's known by the time someone presses a button
+  // Not in a call (start, join, ended): the tabs. In a call (waiting, live, watching): the call, full screen.
+  const SHELL = ['idle', 'join', 'ended'];
   function show(state) {
+    const prev = app.state;
+    const into = SHELL.includes(prev) && !SHELL.includes(state);
+    const back = !!prev && !SHELL.includes(prev) && SHELL.includes(state);
+    const snap = into ? tvSnap() : null; // before the tabs go
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
     document.querySelectorAll('[data-state]').forEach((el) => {
       if (el.dataset.state === 'check') return; // the check panel is an overlay
+      if (el.hasAttribute('data-shell')) { el.hidden = !SHELL.includes(state); return; } // the Calls tab, for host or guest
       el.hidden = !el.dataset.state.split(' ').includes(state);
     });
     boardPlace(state);
+    if (into) tvOpen(snap);
+    else if (back) tvClose();
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
     else { closeMore(); soundOpen(false); document.body.classList.remove('idle'); }
     if (!isGuest) hostTitle();
@@ -110,30 +119,202 @@
   let boardOn = false;
   function boardRoom() { return isGuest ? guestCode : hostCode(); }
   function boardName() { return (isGuest ? cleanName(store.get('beside.name') || ($('nameInput') && $('nameInput').value) || '') : myName()) || (isGuest ? 'Guest' : 'Host'); }
+  // The board draws each part where the tabs want it: Home (hello, skies, latest heart, countdown, next plan),
+  // Plans (Say it, calendar, to-dos), Hearts (send one, history).
+  function boardMountNow() {
+    window.BesideBoard.mount($('boardMount'), {
+      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', go: (t) => setTab(t), onRender: boardRendered,
+      targets: { hello: $('bHello'), skies: $('bSkies'), homeThink: $('bHomeThink'), countdown: $('bHomeCount'), next: $('bHomeNext'), plans: $('boardMount'), hearts: $('bHearts'), note: $('bNote'), shared: $('bShared') },
+    });
+  }
   function boardPlace(state) {
     const z = $('boardZone'), m = $('boardMount');
     if (!z || !m || !window.BesideBoard) return;
-    const home = state === 'idle' || state === 'join' || state === 'ended';
+    const home = SHELL.includes(state);
     z.hidden = !home;
     document.body.classList.toggle('has-board', home);
     if (home) {
-      if (m.parentNode !== z) z.appendChild(m);
-      try { window.BesideBoard.mount(m, { room: boardRoom(), name: boardName() }); boardOn = true; } catch (e) { boardOn = false; }
+      boardSheetBack();
+      try { boardMountNow(); boardOn = true; } catch (e) { boardOn = false; }
     }
     if (!home && state !== 'live' && state !== 'watching') boardSheet(false);
   }
+  // In a call, More opens the countdown, to-dos and calendar: those parts move into the sheet, then back.
+  const SHEET_PARTS = ['bHomeCount', 'boardMount'];
+  const sheetMarks = new Map();
+  function boardSheetBack() {
+    sheetMarks.forEach((mark, id) => { const el = $(id); if (el && mark.parentNode && el.nextSibling !== mark) mark.parentNode.insertBefore(el, mark); });
+  }
   function boardSheet(on) {
-    const sh = $('boardSheet'), body = $('boardSheetBody'), m = $('boardMount'), z = $('boardZone');
+    const sh = $('boardSheet'), body = $('boardSheetBody'), m = $('boardMount');
     if (!sh || !body || !m || !window.BesideBoard) return;
     if (on) {
       closeMore();
-      body.appendChild(m);
-      try { window.BesideBoard.mount(m, { room: boardRoom(), name: boardName() }); window.BesideBoard.refresh(); } catch (e) {}
+      SHEET_PARTS.forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        if (!sheetMarks.has(id)) { const mark = document.createComment(id); el.parentNode.insertBefore(mark, el.nextSibling); sheetMarks.set(id, mark); }
+        body.appendChild(el);
+      });
+      try { boardMountNow(); window.BesideBoard.refresh(); } catch (e) {}
       sh.hidden = false;
     } else {
       sh.hidden = true;
-      if (z && m.parentNode !== z) z.appendChild(m);
+      boardSheetBack();
     }
+  }
+  // Who is who: Mo's figure lives in London, Semal's in LA. The Ring button says their name once it's known.
+  function boardRendered(pp) {
+    app.people = pp;
+    const n = isGuest ? theirName : pp.them;
+    text('homeRingText', n ? 'Ring ' + n : 'Ring them');
+  }
+
+  // ---------- TABS ----------
+  const TABS = ['home', 'plans', 'calls', 'hearts'];
+  const tabEl = (t) => $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+  const tabScroll = {};
+  app.tab = 'home';
+  function setTab(name, instant) {
+    if (!TABS.includes(name)) return;
+    const prev = app.tab;
+    if (prev !== name) tabScroll[prev] = window.scrollY;
+    app.tab = name;
+    TABS.forEach((t) => {
+      const p = tabEl(t), b = $('tb-' + t);
+      if (p) p.hidden = t !== name;
+      if (b) { b.setAttribute('aria-selected', String(t === name)); b.tabIndex = t === name ? 0 : -1; }
+    });
+    const bar = document.querySelector('.tabbar-in');
+    if (bar) bar.style.setProperty('--i', TABS.indexOf(name));
+    const p = tabEl(name);
+    if (p && prev !== name && !instant) {
+      p.style.setProperty('--dir', TABS.indexOf(name) > TABS.indexOf(prev) ? '1' : '-1');
+      p.classList.remove('tab-in');
+      void p.offsetWidth;
+      p.classList.add('tab-in');
+    }
+    if (prev !== name) window.scrollTo(0, tabScroll[name] || 0);
+  }
+  function tabsBoot() {
+    document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.go)));
+    const bar = document.querySelector('.tabbar-in');
+    if (bar) bar.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      const t = TABS[(TABS.indexOf(app.tab) + d + TABS.length) % TABS.length];
+      setTab(t);
+      const b = $('tb-' + t);
+      if (b) b.focus();
+    });
+    setTab('home', true);
+  }
+
+  // ---------- MOTION: the TV opens into the call, and the call shrinks back into it ----------
+  const still = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const rectOf = (r) => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+  // A copy of what's on screen, with nothing in it a person (or a test) could find or press.
+  let copies = 0;
+  function quietCopy(el) {
+    const c = el.cloneNode(true);
+    // Pictures keep their knit and check patterns, under new names so they never clash with the originals.
+    const tag = '-q' + (++copies);
+    c.querySelectorAll('pattern[id]').forEach((x) => { x.id += tag; });
+    c.querySelectorAll('[fill^="url(#"]').forEach((x) => { x.setAttribute('fill', x.getAttribute('fill').replace(/\)$/, tag + ')')); });
+    [c, ...c.querySelectorAll('*')].forEach((x) => {
+      if (x.tagName === 'pattern') return;
+      ['id', 'data-state', 'data-shell', 'data-check-open', 'data-go', 'for', 'name'].forEach((a) => x.removeAttribute(a));
+      if (x.classList) x.classList.remove('ring-me');
+    });
+    c.setAttribute('aria-hidden', 'true');
+    c.inert = true;
+    return c;
+  }
+  function tvSnap() {
+    if (still()) return null;
+    const box = $('tvBox');
+    const scr = box && box.querySelector('.tv-screen');
+    const panel = tabEl(app.tab);
+    if (app.tab === 'calls' && scr && box.getClientRects().length) {
+      const pr = panel.getBoundingClientRect();
+      const bar = document.querySelector('.tabbar');
+      return { panel: quietCopy(panel), panelRect: rectOf(pr), bar: bar ? quietCopy(bar) : null, screen: rectOf(scr.getBoundingClientRect()), tv: true };
+    }
+    const a = document.activeElement;
+    const r = a && a !== document.body && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
+    return { screen: r && r.width ? rectOf(r) : { left: innerWidth / 2 - 60, top: innerHeight / 2 - 40, width: 120, height: 80 } };
+  }
+  const clip = (r) => 'inset(' + Math.max(0, r.top).toFixed(1) + 'px ' + Math.max(0, innerWidth - r.left - r.width).toFixed(1) + 'px ' + Math.max(0, innerHeight - r.top - r.height).toFixed(1) + 'px ' + Math.max(0, r.left).toFixed(1) + 'px round ' + (r.round || 6) + 'px)';
+  const FULL = () => ({ left: 0, top: 0, width: innerWidth, height: innerHeight, round: 0.01 });
+  let tvFx = null;
+  function tvDone() { if (tvFx) { tvFx.remove(); tvFx = null; } }
+  function tvOpen(snap) {
+    tvDone();
+    if (!snap || !document.body.animate) return;
+    const fx = document.createElement('div');
+    fx.className = 'tvfx';
+    fx.setAttribute('aria-hidden', 'true');
+    tvFx = fx;
+    let lead = 0;
+    if (snap.tv) {
+      const pane = document.createElement('div');
+      pane.className = 'tvfx-pane';
+      const pr = snap.panelRect;
+      Object.assign(snap.panel.style, { position: 'absolute', left: pr.left + 'px', top: pr.top + 'px', width: pr.width + 'px', margin: '0' });
+      snap.panel.hidden = false;
+      pane.append(snap.panel);
+      if (snap.bar) pane.append(snap.bar);
+      fx.append(pane);
+      lead = 820; // he lifts the remote, the TV clicks on, she leans in
+      requestAnimationFrame(() => { const room = snap.panel.querySelector('.tv-room'); if (room) room.classList.add('tv-go'); });
+      pane.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: lead + 500, easing: 'ease-in-out', fill: 'forwards' });
+    }
+    const scr = document.createElement('div');
+    scr.className = 'tvfx-screen';
+    fx.append(scr);
+    document.body.append(fx);
+    const from = { ...snap.screen, round: snap.tv ? 3 : 32 };
+    scr.animate([
+      { clipPath: clip(from), opacity: snap.tv ? 0 : 1, backgroundColor: '#E8A87C' },
+      { clipPath: clip(from), opacity: 1, backgroundColor: '#E8A87C', offset: lead ? lead / (lead + 700) : 0.001 },
+      { clipPath: clip(FULL()), opacity: 1, backgroundColor: '#1C1712' },
+    ], { duration: lead + 700, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
+    const end = fx.animate([{ opacity: 1 }, { opacity: 1, offset: (lead + 700) / (lead + 1050) }, { opacity: 0 }], { duration: lead + 1050, fill: 'forwards' });
+    end.onfinish = () => { if (tvFx === fx) tvDone(); };
+  }
+  function tvClose() {
+    tvDone();
+    if (still() || !document.body.animate) return;
+    const fx = document.createElement('div');
+    fx.className = 'tvfx';
+    fx.setAttribute('aria-hidden', 'true');
+    tvFx = fx;
+    const scr = document.createElement('div');
+    scr.className = 'tvfx-screen';
+    fx.append(scr);
+    document.body.append(fx);
+    const tv = app.tab === 'calls' && $('tvBox') && $('tvBox').querySelector('.tv-screen');
+    const r = tv && tv.getClientRects().length ? { ...rectOf(tv.getBoundingClientRect()), round: 3 } : { left: innerWidth / 2 - 50, top: innerHeight / 2 - 32, width: 100, height: 64, round: 18 };
+    scr.animate([
+      { clipPath: clip(FULL()), backgroundColor: '#1C1712', opacity: 1 },
+      { clipPath: clip(r), backgroundColor: tv ? '#2A2D35' : '#1C1712', opacity: 1, offset: 0.8 },
+      { clipPath: clip(r), backgroundColor: '#2A2D35', opacity: 0 },
+    ], { duration: 760, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).onfinish = () => { if (tvFx === fx) tvDone(); };
+  }
+
+  // While it rings, their figure peeks in from the edge and hops.
+  let ringFigT = 0;
+  function ringHop() {
+    const el = $('ringFig');
+    if (!el || !window.BesideFigures) return;
+    const me = window.BesideBoard ? window.BesideBoard.people().me : 'mo';
+    el.innerHTML = window.BesideFigures.figure(me === 'mo' ? 'semal' : 'mo', { label: '' });
+    el.hidden = false;
+    el.classList.remove('go');
+    void el.offsetWidth;
+    el.classList.add('go');
+    clearTimeout(ringFigT);
+    ringFigT = setTimeout(() => { el.classList.remove('go'); el.hidden = true; }, 8000);
   }
   function on(id, ev, fn) { const el = $(id); if (el) el.addEventListener(ev, fn); }
   let noteTimer = 0;
@@ -1357,7 +1538,7 @@
     try {
       const j = await ringPost('/ring', { role: ringRole(), name: isGuest ? boardName() : (myName() || 'Your person') });
       const who = isGuest ? (theirName || 'them') : ((j.names && j.names[0]) || 'them');
-      if (j.sent > 0) note('Ringing ' + who + '…', 'info');
+      if (j.sent > 0) { note('Ringing ' + who + '…', 'info'); ringHop(); }
       else if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
       else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay');
     } catch (e) { note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
@@ -1840,7 +2021,7 @@
     return location.origin + location.pathname + '#' + H.code + (n ? '-' + encodeURIComponent(n) : '');
   }
   function renderLink() {
-    ['linkText', 'moreLinkText'].forEach((id) => {
+    ['linkText', 'moreLinkText', 'idleLinkText'].forEach((id) => {
       const el = $(id);
       if (!el) return;
       const parts = (location.host + location.pathname).replace(/[^/]*$/, '').replace(/\/$/, '').split('/');
@@ -1921,7 +2102,7 @@
     });
     H.video = track;
   }
-  function setStartBusy(b) { ['startBtn', 'videoBtn', 'shareStartBtn', 'endedAction'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
+  function setStartBusy(b) { ['startBtn', 'videoBtn', 'shareStartBtn', 'endedAction', 'homeRingBtn', 'callVideoBtn', 'callVoiceBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
   // Three ways to start: a video call, a voice call, or a call that starts by sharing a tab or window.
   async function hostStart(mode) {
@@ -2025,6 +2206,7 @@
       H.idRetries = 0;
       app.hostReady = true;
       text('liveHint', '');
+      if (H.ringOnReady && Date.now() - H.ringOnReady < 30000) { H.ringOnReady = 0; ringThem($('ringBtn')); }
       if (bc) bc.postMessage('live!');
     });
     peer.on('connection', (conn) => {
@@ -2496,6 +2678,7 @@
   function hostCleanup() {
     const wasLive = app.state === 'live';
     H.stopping = true;
+    H.ringOnReady = 0;
     ytClose(true);
     clearInterval(H.lagTimer);
     clearInterval(T.timer);
@@ -2591,7 +2774,7 @@
   const hostId = PREFIX + guestCode;
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
 
-  function setJoinBusy(b) { ['joinBtn', 'joinNoMicBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
+  function setJoinBusy(b) { ['joinBtn', 'joinNoMicBtn', 'callJoinBtn', 'callJoinNoMicBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
   async function guestJoin(withMic) {
     if (!peerLibOk() || G.joining || (G.peer && !G.peer.destroyed)) return; // double tap
     G.joining = true;
@@ -3373,6 +3556,14 @@
     if (saved && $('nameInput')) $('nameInput').value = saved;
     on('startBtn', 'click', () => hostStart('voice'));
     on('videoBtn', 'click', () => hostStart('video'));
+    on('callVoiceBtn', 'click', () => hostStart('voice'));
+    on('callVideoBtn', 'click', () => hostStart('video'));
+    on('homeRingBtn', 'click', () => { H.ringOnReady = Date.now(); hostStart('voice'); });
+    on('callJoinBtn', 'click', () => guestJoin(true));
+    on('callJoinNoMicBtn', 'click', () => guestJoin(false));
+    on('endedClose', 'click', () => { const c = $('endedClose').closest('.endcard'); if (c) c.hidden = true; });
+    if ($('tvBox') && window.BesideFigures) $('tvBox').innerHTML = window.BesideFigures.tvRoom();
+    tabsBoot();
     on('shareStartBtn', 'click', () => hostStart('share'));
     if ($('shareStartBtn')) $('shareStartBtn').hidden = !CAN_SHARE;
     on('micStartToggle', 'click', () => {
@@ -3383,8 +3574,8 @@
       const sw = el.querySelector('.switch');
       if (sw) sw.classList.toggle('off', !onNow);
     });
-    ['copyBtn', 'moreCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
-    ['shareBtn', 'moreShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
+    ['copyBtn', 'moreCopyBtn', 'idleCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
+    ['shareBtn', 'moreShareBtn', 'idleShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
     ['mineBtn', 'mineIdleBtn'].forEach((id) => on(id, 'click', () => copyMine($(id))));
     on('boardBtn', 'click', () => boardSheet(true));
     on('nameInput', 'change', () => { if (boardOn && app.state === 'join') boardPlace('join'); });
