@@ -1272,6 +1272,8 @@
     // their initial (or a plain figure) while their camera is off
     const ini = $('avatarInitial');
     if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
+    // the board draws their character there instead, when it knows who they are (an event, nothing else)
+    if (name !== V.faceName) { V.faceName = name; document.dispatchEvent(new CustomEvent('beside:face', { detail: { name: name || '' } })); }
     text('avatarName', name || (isGuest ? 'Your host' : 'Your guest'));
     text('callTitle', titleText());
     const mine = isGuest ? G.screenTrack : H.video;
