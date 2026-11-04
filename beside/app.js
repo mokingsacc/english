@@ -2598,6 +2598,10 @@
   }
   // The video's sound has a lane to everyone (an old host's guest has none).
   function soundLane() { return isGuest ? !!G.mediaSender && G.hostVer >= 3 && !!G.ctx : !!H.ctx; }
+  function soundWhy() {
+    if (soundLane()) return 'Videos play with their sound.';
+    return isGuest && IS_IOS ? 'Videos you share from an iPhone or iPad play without sound.' : 'Videos play without sound, because their Beside is out of date.';
+  }
   function shareRender() {
     const why = shareWhy();
     const set = (opt, btn, whyId, reason, ok) => {
@@ -2614,9 +2618,7 @@
     if (inp) inp.disabled = !!why.link;
     const paste = $('sharePaste');
     if (paste) paste.hidden = !!why.link || !(navigator.clipboard && navigator.clipboard.readText);
-    set('shareMediaOpt', 'shareMediaBtn', 'shareMediaWhy', why.media, soundLane()
-      ? 'They see it full size. Videos play with their sound.'
-      : 'They see it full size. Videos play without sound, because their Beside is out of date.');
+    set('shareMediaOpt', 'shareMediaBtn', 'shareMediaWhy', why.media, 'They see it full size. ' + soundWhy());
     set('shareFileOpt', 'shareFileBtn', 'shareFileWhy', why.file, 'It goes to the chat. Files up to 25 MB.');
     // My screen: only where it works. Elsewhere the sheet just says why.
     const sb = $('shareScreen');
@@ -2799,7 +2801,7 @@
     CV.timer = setInterval(() => { if (v.readyState >= 2) canvasDraw(v, v.videoWidth, v.videoHeight); }, 33);
     v.addEventListener('ended', () => layout());
     shareStream(s);
-    if (!soundLane()) note('The video plays without sound, because their Beside is out of date.', 'info');
+    if (!soundLane()) note(soundWhy(), 'info');
     else if (quiet && CV.sound) note('The video is playing without sound. Tap it twice to play it with sound.', 'info');
   }
   function videoToggle() {
@@ -3985,15 +3987,16 @@
       G.tries = G.quiet = G.reopenedAt = 0;
       // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
       ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = outMuted(el); el.play().catch(() => {}); } });
-      // Everyone who can share back holds two silent sound lanes ready: the mic's (if joining without it) and the
-      // shared tab's. The audio engine starts inside the tap, so it is allowed to run.
+      // Computers that can share back hold two silent sound lanes ready: the mic's (if joining without it) and the
+      // shared tab's. The audio engine starts inside the tap, so it is allowed to run. (Not iPhone and iPad: no
+      // audio engine track is ever sent from there, as that made the voice crackle. Their videos go without sound.)
       // Clear voice needs the engine too, so anyone joining with a mic starts it here.
       // Everyone gets it: your volumes for their voice and the video play through it on iPhone and iPad.
       if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       if (G.ctx) {
         G.ctx.resume().catch(() => {});
-        if (CAN_LANE && !G.silentA) G.silentA = silentTrack(G.ctx);
-        if (CAN_LANE && !G.silentB) G.silentB = silentTrack(G.ctx);
+        if (CAN_SHARE && !G.silentA) G.silentA = silentTrack(G.ctx);
+        if (CAN_SHARE && !G.silentB) G.silentB = silentTrack(G.ctx);
       }
       guestVoiceClose();
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
