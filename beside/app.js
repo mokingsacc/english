@@ -2749,8 +2749,11 @@
     const s = canvasMake('photo', w, h, 5);
     if (!s) { URL.revokeObjectURL(url); note('This browser can’t show a photo live. Send it as a file instead.', 'info'); return; }
     CV.url = url;
-    CV.img = img;
-    const draw = () => canvasDraw(img, img.naturalWidth, img.naturalHeight);
+    // Scaled down once, so each redraw is cheap (a phone photo can be 48 megapixels).
+    const pre = document.createElement('canvas'); pre.width = w; pre.height = h;
+    try { pre.getContext('2d').drawImage(img, 0, 0, w, h); } catch (e) {}
+    CV.img = pre;
+    const draw = () => canvasDraw(pre, w, h);
     draw();
     CV.timer = setInterval(draw, 250); // drawn again a few times a second, so the picture keeps arriving
     shareStream(s);
@@ -2827,7 +2830,10 @@
     if (CV.kind !== 'browse' || !CV.canvas || CV.decoding || typeof b64 !== 'string') return false;
     CV.decoding = true;
     const img = CV.img || (CV.img = new Image());
-    img.onload = () => {
+    img.src = 'data:image/jpeg;base64,' + b64;
+    // Decoded away from the page's main work, then drawn.
+    const dec = img.decode ? img.decode() : new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    dec.then(() => {
       CV.decoding = false;
       const c = CV.canvas;
       if (CV.kind !== 'browse' || !c) return;
@@ -2835,9 +2841,7 @@
       if (!w || !h) return;
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
       try { CV.x.drawImage(img, 0, 0); CV.frames++; } catch (e) {}
-    };
-    img.onerror = () => { CV.decoding = false; };
-    img.src = 'data:image/jpeg;base64,' + b64;
+    }, () => { CV.decoding = false; });
     return true;
   };
   // From the app: its browser's Stop sharing was pressed.
