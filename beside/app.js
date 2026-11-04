@@ -53,6 +53,9 @@
   // to a web page, which left the page stuck. They watch and talk instead.
   const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const CAN_SHARE = !IS_IOS && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  // Every device can share a photo, a video or (in the Beside app) a web page: each is drawn on a canvas whose
+  // picture rides the same screen lane a shared tab uses. Only the canvas is sent, never the screen.
+  const CAN_LANE = (() => { try { return typeof HTMLCanvasElement !== 'undefined' && !!HTMLCanvasElement.prototype.captureStream; } catch (e) { return false; } })();
   const NO_SHARE = IS_IOS
     ? 'iPhone and iPad can watch and talk, but can’t share. Open this page in Chrome on your Mac to share.'
     : 'This browser can’t share its screen, only watch. Open this page in Chrome on a computer to share.';
@@ -110,7 +113,7 @@
     if (into) tvOpen(snap);
     else if (back) tvClose();
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); soundOpen(false); document.body.classList.remove('idle'); }
+    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -1272,10 +1275,10 @@
     text('avatarName', name || (isGuest ? 'Your host' : 'Your guest'));
     text('callTitle', titleText());
     const mine = isGuest ? G.screenTrack : H.video;
-    text('shareLabel', amSharing() ? 'You’re sharing ' + surfaceName(mine) : titleText());
+    text('shareLabel', amSharing() ? shareWhat(mine) : titleText());
     document.body.dataset.alone = alone ? '1' : '';
     const gs = $('gScreenBtn');
-    if (gs) gs.hidden = !(CAN_SHARE && isGuest && G.hostVer >= 2 && G.screenSender && app.state === 'watching');
+    if (gs) gs.hidden = !(isGuest && G.hostVer >= 2 && app.state === 'watching');
     const sb = $('soundBtn');
     if (sb) { sb.hidden = !inCallWithSomeone(); if (sb.hidden) soundOpen(false); }
     chatButton();
@@ -1288,6 +1291,7 @@
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
   function swapTap(e) {
+    if (CV.kind === 'video' && amSharing() && e.target && e.target.closest && e.target.closest('#screenTile')) { videoToggle(); return; }
     // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
     if (V.pair) {
       const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
@@ -1309,7 +1313,7 @@
     const m = $('moreSheet');
     if (!m) return;
     const ch = $('changeBtn');
-    if (ch) ch.hidden = !amSharing() || isGuest;
+    if (ch) ch.hidden = !amSharing() || isGuest || !!CV.kind;
     m.hidden = false;
     wakeControls();
     const x = $('moreClose');
@@ -1950,6 +1954,9 @@
       body.appendChild(b);
     }
     if (!mine) incoming(name, ': ' + t);
+    // A message that is just a link (not YouTube, which has Watch together): a banner with an Open button.
+    const only = String(t).trim().match(/^https?:\/\/[^\s<>"']+$/);
+    if (!mine && only && !ytId(t)) linkBanner(name, only[0]);
   }
   // Something arrived: count it while the chat is closed, and show one line above the dock for 4 s.
   function incoming(name, rest) {
@@ -1977,13 +1984,17 @@
     const t = inp.value.trim().slice(0, 2000);
     if (!t || !chatAvailable()) return;
     inp.value = '';
+    chatPost(t);
+    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 699px)').matches) chatOpen(false);
+  }
+  function chatPost(t) {
     const msg = { t: 'chat', id: rid(), text: t };
     if (isGuest) tell(G.conn, msg);
     else toGuests({ ...msg, from: H.me, name: myName() });
     chatAdd(true, '', t);
-    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 699px)').matches) chatOpen(false);
   }
   function chatReset() {
+    linkBanner('');
     if (C.open) chatOpen(false);
     C.unread = 0;
     badge();
@@ -2543,6 +2554,351 @@
     v.hidden = false;
   }
 
+  // ---------- SHARE ----------
+  // One Share button in every call, on every device. Its sheet offers only what works here, and says in one
+  // sentence why anything else doesn't: a link (YouTube plays together; in the Beside iPhone and iPad app other
+  // pages open in its own browser and they see that page live; elsewhere the link goes to the chat with an Open
+  // button), a photo or video (drawn on a canvas that rides the screen lane), a file (the chat), and on a computer
+  // the screen itself. Only Beside's own picture is ever sent: never the whole screen, never notifications.
+  const CV = { kind: '', canvas: null, x: null, stream: null, timer: 0, url: '', media: null, snd: null, sound: false, img: null, decoding: false, frames: 0 };
+  const LB = { url: '', timer: 0 };
+  // The Beside app (Shell.swift) says it has the in-app browser with BesideNative.browse.
+  function canBrowse() { return NATIVE() && !!window.BesideNative.browse && CAN_LANE; }
+  function nativeSay(msg) {
+    try { const mh = window.webkit && window.webkit.messageHandlers; if (mh && mh.beside) { mh.beside.postMessage(msg); return true; } } catch (e) {}
+    return false;
+  }
+  function shareIsOpen() { const m = $('shareSheet'); return !!m && !m.hidden; }
+  function shareOpen(on) {
+    const m = $('shareSheet');
+    if (!m) return;
+    if (!on) { if (!m.hidden) { m.hidden = true; const b = $(isGuest ? 'gScreenBtn' : 'screenBtn'); if (b && !b.hidden) b.focus(); } return; }
+    closeMore();
+    shareRender();
+    m.hidden = false;
+    wakeControls();
+    const x = $('shareClose');
+    if (x) x.focus();
+  }
+  // What this device can share now. '' means it can; otherwise the one sentence the sheet shows instead.
+  function shareWhy() {
+    const someone = inCallWithSomeone();
+    const lane = isGuest ? !!G.screenSender && G.hostVer >= 2 : true;
+    const wait = 'You can share this once they’re in the call.';
+    const old = 'Their Beside is out of date. Ask them to reload the page, then try again.';
+    return {
+      link: !someone ? wait : '',
+      media: !CAN_LANE ? 'This browser can’t show a photo or video live. Send it as a file instead.'
+        : !lane ? old : !someone ? wait : '',
+      file: !someone ? wait : !chatAvailable() ? old : '',
+      screen: CAN_SHARE ? (isGuest && !G.screenSender ? old : !someone && isGuest ? wait : '')
+        : IS_IOS ? 'iPhone and iPad can’t share their screen. A link, a photo or a video works instead.'
+          : 'Sharing your screen needs Chrome on a computer.',
+    };
+  }
+  // The video's sound has a lane to everyone (an old host's guest has none).
+  function soundLane() { return isGuest ? !!G.mediaSender && G.hostVer >= 3 && !!G.ctx : !!H.ctx; }
+  function shareRender() {
+    const why = shareWhy();
+    const set = (opt, btn, whyId, reason, ok) => {
+      const b = $(btn);
+      if (b) b.disabled = !!reason;
+      text(whyId, reason || ok);
+      const o = $(opt);
+      if (o) o.classList.toggle('off', !!reason);
+    };
+    set('shareLinkOpt', 'shareLinkGo', 'shareLinkWhy', why.link, canBrowse()
+      ? 'YouTube links play together. Other pages open here, and they see them live. Videos inside web pages show as still pictures, so use YouTube for videos.'
+      : 'YouTube links play together. Other links go to the chat, and they get an Open button.');
+    const inp = $('shareLinkInput');
+    if (inp) inp.disabled = !!why.link;
+    const paste = $('sharePaste');
+    if (paste) paste.hidden = !!why.link || !(navigator.clipboard && navigator.clipboard.readText);
+    set('shareMediaOpt', 'shareMediaBtn', 'shareMediaWhy', why.media, soundLane()
+      ? 'They see it full size. Videos play with their sound.'
+      : 'They see it full size. Videos play without sound, because their Beside is out of date.');
+    set('shareFileOpt', 'shareFileBtn', 'shareFileWhy', why.file, 'It goes to the chat. Files up to 25 MB.');
+    // My screen: only where it works. Elsewhere the sheet just says why.
+    const sb = $('shareScreen');
+    if (sb) { sb.hidden = !CAN_SHARE; sb.disabled = !!why.screen; }
+    text('shareScreenWhy', why.screen || 'Shows one tab or one window. Never the whole screen.');
+  }
+  // A pasted link: the address itself, or the first link inside some pasted words. "example.com" gets https://.
+  function shareUrl(raw) {
+    const t = String(raw || '').trim();
+    let u = (t.match(/https?:\/\/[^\s<>"']+/i) || [''])[0];
+    if (!u) u = t.split(/\s+/).find((w) => /^[\w-]+(\.[\w-]+)*\.[a-z]{2,}(:\d+)?([/?#]\S*)?$/i.test(w)) || '';
+    if (u && !/^https?:/i.test(u)) u = 'https://' + u;
+    u = u.replace(/[.,!?;:)\]]+$/, '');
+    if (!u) return '';
+    try { const x = new URL(u); return /^https?:$/.test(x.protocol) && x.hostname ? x.href : ''; } catch (e) { return ''; }
+  }
+  function shareLinkGo() {
+    const inp = $('shareLinkInput');
+    const why = shareWhy();
+    if (why.link) { text('shareLinkWhy', why.link); return; }
+    const u = shareUrl(inp && inp.value);
+    if (!u) { text('shareLinkWhy', 'That isn’t a link. Copy the page’s address, then tap Paste.'); return; }
+    if (inp) inp.value = '';
+    shareOpen(false);
+    if (ytId(u)) {
+      ytWatch(u);
+      if (chatAvailable()) chatPost(u);
+      return;
+    }
+    if (canBrowse() && !why.media) { shareBrowse(u); return; }
+    if (!chatAvailable()) { note('Their Beside is out of date, so the link can’t go. Ask them to reload the page.', 'info'); return; }
+    chatPost(u);
+    note('Link sent. They can open it from the chat.', 'info');
+  }
+  async function sharePaste() {
+    const inp = $('shareLinkInput');
+    try {
+      const t = await navigator.clipboard.readText();
+      if (inp) inp.value = (t || '').trim();
+      if (!shareUrl(t)) text('shareLinkWhy', 'There’s no link to paste. Copy the page’s address first.');
+    } catch (e) {
+      text('shareLinkWhy', 'Paste isn’t allowed here. Tap the box, then paste the link into it.');
+      if (inp) inp.focus();
+    }
+  }
+  // The picture of a share: a canvas (in the page, too small to see) sent as the screen lane.
+  function canvasMake(kind, w, h, fps) {
+    canvasStop();
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.setAttribute('aria-hidden', 'true');
+    c.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    const x = c.getContext('2d');
+    if (!x) return null;
+    x.fillStyle = '#000';
+    x.fillRect(0, 0, w, h);
+    let s = null;
+    try { s = c.captureStream(fps); } catch (e) { s = null; }
+    if (!s || !s.getVideoTracks()[0]) return null;
+    document.body.appendChild(c);
+    Object.assign(CV, { kind, canvas: c, x, stream: s, frames: 0 });
+    return s;
+  }
+  // Ends the canvas share's own parts (timers, the video, the in-app browser). The call's lanes are put back by
+  // hostUnshare or guestUnshare. fromApp: the app's browser closed itself, so it isn't told again.
+  function canvasStop(fromApp) {
+    if (!CV.kind) return;
+    const kind = CV.kind;
+    clearInterval(CV.timer);
+    if (CV.media) { try { CV.media.pause(); CV.media.removeAttribute('src'); CV.media.load(); } catch (e) {} }
+    if (CV.snd) { [CV.snd.src, CV.snd.dest].forEach((n) => { try { n.disconnect(); } catch (e) {} }); }
+    if (CV.stream) CV.stream.getTracks().forEach((t) => t.stop());
+    if (CV.canvas) CV.canvas.remove();
+    if (CV.url) URL.revokeObjectURL(CV.url);
+    Object.assign(CV, { kind: '', canvas: null, x: null, stream: null, timer: 0, url: '', media: null, snd: null, sound: false, img: null, decoding: false, frames: 0 });
+    if (kind === 'browse' && !fromApp) nativeSay({ t: 'browse', on: false });
+  }
+  // Fits a picture of w×h into at most 1280 on its long side.
+  function fitSize(w, h) {
+    const k = Math.min(1, 1280 / Math.max(w || 1, h || 1));
+    return [Math.max(2, Math.round((w || 16) * k / 2) * 2), Math.max(2, Math.round((h || 9) * k / 2) * 2)];
+  }
+  function canvasDraw(src, sw, sh) {
+    const c = CV.canvas, x = CV.x;
+    if (!c || !x || !sw || !sh) return;
+    const k = Math.min(c.width / sw, c.height / sh);
+    const w = sw * k, h = sh * k;
+    x.fillStyle = '#000';
+    x.fillRect(0, 0, c.width, c.height);
+    try { x.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h); CV.frames++; } catch (e) {}
+  }
+  function canvasWords(words) {
+    const c = CV.canvas, x = CV.x;
+    if (!c || !x) return;
+    x.fillStyle = '#201A13';
+    x.fillRect(0, 0, c.width, c.height);
+    x.fillStyle = '#F0E7D8';
+    x.font = '600 ' + Math.round(c.width / 22) + 'px -apple-system, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(words, c.width / 2, c.height / 2);
+  }
+  // Whatever the canvas shows goes out on the screen lane, as a shared tab would.
+  function shareStream(s) {
+    if (isGuest) guestUse(s);
+    else if (app.state === 'live') useDisplay(s);
+    else { canvasStop(); return; }
+    layout();
+  }
+  function sharePick(file) {
+    if (!file) return;
+    const why = shareWhy();
+    if (why.media) { note(why.media, 'info'); return; }
+    if (/^video\//.test(file.type || '') || /\.(mov|mp4|m4v|webm)$/i.test(file.name || '')) shareVideo(file);
+    else sharePhoto(file);
+  }
+  async function sharePhoto(file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    try {
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      note('This photo can’t be shown here. Try another one, or send it as a file.', 'info');
+      return;
+    }
+    const [w, h] = fitSize(img.naturalWidth, img.naturalHeight);
+    const s = canvasMake('photo', w, h, 5);
+    if (!s) { URL.revokeObjectURL(url); note('This browser can’t show a photo live. Send it as a file instead.', 'info'); return; }
+    CV.url = url;
+    CV.img = img;
+    const draw = () => canvasDraw(img, img.naturalWidth, img.naturalHeight);
+    draw();
+    CV.timer = setInterval(draw, 250); // drawn again a few times a second, so the picture keeps arriving
+    shareStream(s);
+  }
+  async function shareVideo(file) {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.preload = 'auto';
+    v.src = url;
+    const loaded = new Promise((res, rej) => {
+      v.addEventListener('loadeddata', res, { once: true });
+      v.addEventListener('error', rej, { once: true });
+      setTimeout(rej, 15000);
+    });
+    // iPhone only loads a video once it plays. Started straight after the pick, so it may play with sound.
+    let quiet = false;
+    try { await v.play(); } catch (e) {
+      if (e && e.name === 'NotAllowedError') { v.muted = true; quiet = true; try { await v.play(); } catch (e2) {} }
+    }
+    try { await loaded; } catch (e) {
+      try { v.pause(); } catch (e2) {}
+      URL.revokeObjectURL(url);
+      note('This video can’t play here. Try another one, or send it as a file.', 'info');
+      return;
+    }
+    const [w, h] = fitSize(v.videoWidth, v.videoHeight);
+    const s = canvasMake('video', w, h, 30);
+    if (!s) { v.pause(); URL.revokeObjectURL(url); note('This browser can’t show a video live. Send it as a file instead.', 'info'); return; }
+    CV.url = url;
+    CV.media = v;
+    // Its sound: through the call's audio engine to the video-sound lane, and to your own speaker.
+    const ctx = isGuest ? G.ctx : H.ctx;
+    if (soundLane() && ctx) {
+      try {
+        const src = ctx.createMediaElementSource(v);
+        const dest = ctx.createMediaStreamDestination();
+        src.connect(dest);
+        src.connect(ctx.destination);
+        CV.snd = { src, dest };
+        const a = dest.stream.getAudioTracks()[0];
+        if (a) { s.addTrack(a); CV.sound = true; }
+      } catch (e) { CV.snd = null; }
+    }
+    if (!CV.sound) v.muted = true;
+    // Safari has no video.captureStream: each frame is drawn onto the canvas instead.
+    CV.timer = setInterval(() => { if (v.readyState >= 2) canvasDraw(v, v.videoWidth, v.videoHeight); }, 33);
+    v.addEventListener('ended', () => layout());
+    shareStream(s);
+    if (!soundLane()) note('The video plays without sound, because their Beside is out of date.', 'info');
+    else if (quiet && CV.sound) note('The video is playing without sound. Tap it twice to play it with sound.', 'info');
+  }
+  function videoToggle() {
+    const v = CV.media;
+    if (!v) return;
+    if (v.paused || v.ended) { v.muted = !CV.sound; v.play().catch(() => {}); } else v.pause();
+    setTimeout(layout, 50);
+  }
+  // A web page in the app's own browser: the app sends snapshots of only that browser (window.__besideFrame).
+  function shareBrowse(u) {
+    if (CV.kind === 'browse' && amSharing()) { nativeSay({ t: 'browse', on: true, url: u }); return; }
+    const s = canvasMake('browse', 960, 540, 10);
+    if (!s) { note('This can’t share a web page live. The link went to the chat instead.', 'info'); chatPost(u); return; }
+    canvasWords('Opening the page…');
+    // Until the first picture comes, and to keep the lane alive if the page sits still.
+    CV.timer = setInterval(() => { if (!CV.frames) canvasWords('Opening the page…'); else if (CV.img && CV.img.complete && !CV.decoding) { try { CV.x.drawImage(CV.img, 0, 0); } catch (e) {} } }, 500);
+    if (!nativeSay({ t: 'browse', on: true, url: u })) { canvasStop(true); chatPost(u); return; }
+    shareStream(s);
+  }
+  // From the app: one snapshot of its browser, a base64 JPEG. Drawn as it is; a frame that comes while the last
+  // one is still being read is skipped, so the call never falls behind.
+  window.__besideFrame = function (b64) {
+    if (CV.kind !== 'browse' || !CV.canvas || CV.decoding || typeof b64 !== 'string') return false;
+    CV.decoding = true;
+    const img = CV.img || (CV.img = new Image());
+    img.onload = () => {
+      CV.decoding = false;
+      const c = CV.canvas;
+      if (CV.kind !== 'browse' || !c) return;
+      const w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return;
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      try { CV.x.drawImage(img, 0, 0); CV.frames++; } catch (e) {}
+    };
+    img.onerror = () => { CV.decoding = false; };
+    img.src = 'data:image/jpeg;base64,' + b64;
+    return true;
+  };
+  // From the app: its browser's Stop sharing was pressed.
+  window.__besideBrowse = function (what) {
+    if (what !== 'stop' || CV.kind !== 'browse') return;
+    canvasStop(true);
+    shareStop();
+  };
+  function shareStop() {
+    if (isGuest) guestUnshare(); else hostUnshare();
+  }
+  // The dock's Share button: "Share" opens the sheet; while you share it says Stop sharing ("Stop" on a phone).
+  function shareBtns() {
+    const on = amSharing();
+    ['screenBtn', 'gScreenBtn'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+      el.setAttribute('aria-label', on ? 'Stop sharing' : 'Share');
+      el.title = on ? 'Stop sharing' : 'Share a link, a photo, a video or a file';
+      const lab = el.querySelector('.label-t');
+      if (lab) lab.innerHTML = on ? 'Stop<span class="w"> sharing</span>' : 'Share';
+    });
+  }
+  function shareWhat(track) {
+    if (CV.kind && CV.stream && track && CV.stream.getVideoTracks()[0] === track) {
+      if (CV.kind === 'video') return CV.media && (CV.media.paused || CV.media.ended) ? 'Your video is paused. Tap it to play.' : 'You’re sharing a video. Tap it to pause.';
+      return CV.kind === 'photo' ? 'You’re sharing a photo' : 'You’re sharing a web page';
+    }
+    return 'You’re sharing ' + surfaceName(track);
+  }
+  // Someone sent a link in the chat: a banner with an Open button (a browser only opens a new tab after a tap).
+  function linkBanner(name, url) {
+    const b = $('linkBanner');
+    if (!b) return;
+    clearTimeout(LB.timer);
+    if (!url) { b.hidden = true; LB.url = ''; return; }
+    LB.url = url;
+    let where = url;
+    try { where = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+    text('linkBannerWho', name || 'They');
+    text('linkBannerUrl', where);
+    b.hidden = false;
+    LB.timer = setTimeout(() => { b.hidden = true; }, 30000);
+  }
+  function linkBannerOpen() {
+    const u = LB.url;
+    linkBanner('');
+    if (u) { try { window.open(u, '_blank', 'noopener'); } catch (e) {} }
+  }
+  function shareWire() {
+    on('shareClose', 'click', () => shareOpen(false));
+    on('shareSheet', 'click', (e) => { if (e.target === $('shareSheet')) shareOpen(false); });
+    on('shareLinkForm', 'submit', (e) => { e.preventDefault(); shareLinkGo(); });
+    on('sharePaste', 'click', sharePaste);
+    on('shareMediaBtn', 'click', () => { const f = $('shareMediaInput'); if (f) f.click(); });
+    on('shareMediaInput', 'change', (e) => { const f = e.target; const file = f.files && f.files[0]; f.value = ''; shareOpen(false); sharePick(file); });
+    on('shareFileBtn', 'click', () => { shareOpen(false); chatOpen(true); const f = $('fileInput'); if (f) f.click(); });
+    on('shareScreen', 'click', () => { shareOpen(false); if (isGuest) guestShare(); else hostShare(); });
+    on('linkBannerOpen', 'click', linkBannerOpen);
+    on('linkBannerClose', 'click', () => linkBanner(''));
+  }
+
   // ---------- HOST ----------
   // Mo starts a call with one tap; nothing is shared until Share screen. Every lane of the call exists from the
   // first offer ([audio, screen, camera]); a blank track holds a lane while it has nothing to carry.
@@ -2618,7 +2974,7 @@
     const t = stream && stream.getVideoTracks()[0];
     try { return !!t && t.getSettings().displaySurface === 'monitor'; } catch (e) { return false; }
   }
-  const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Share screen again.';
+  const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Share, then My screen.';
   function displayError(e) {
     const browser = IS_CHROMIUM ? 'Chrome' : 'your browser';
     if (e && /system/i.test(e.message || '')) {
@@ -2626,8 +2982,8 @@
     }
     if (e && e.name === 'NotAllowedError') {
       return IS_CHROMIUM
-        ? 'Nothing was shared. Press Share screen and pick a tab or a window.'
-        : 'Nothing was shared. Press Share screen, choose Allow, then pick a window.';
+        ? 'Nothing was shared. Press Share, then My screen, and pick a tab or a window.'
+        : 'Nothing was shared. Press Share, then My screen, choose Allow, then pick a window.';
     }
     return 'Screen sharing didn’t start (' + ((e && e.name) || 'unknown') + '). Try again, or use Chrome.';
   }
@@ -2979,7 +3335,7 @@
     }
     conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g) hostData(g, d); });
     tell(conn, { cam: !!H.cam });
-    tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE, video: !!H.cam });
+    tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE || CAN_LANE, video: !!H.cam });
     tell(conn, roomMsg());
     // A guest on the old Beside never says hello: it can watch and talk, nothing more.
     setTimeout(() => {
@@ -3158,7 +3514,7 @@
       if (g.ver >= 2) tell(g.conn, roomMsg());
     }
     roomSound();
-    setPressed('screenBtn', amSharing(), 'Stop sharing', 'Share screen');
+    shareBtns();
     guestStatus();
   }
   // ----- sound: the shared video's sound rides its own lane to everyone but its sharer -----
@@ -3274,6 +3630,7 @@
     const prev = H.display;
     H.display = s;
     useVideoTrack(s.getVideoTracks()[0]);
+    if (s === CV.stream) { try { H.video.contentHint = CV.kind === 'video' ? 'motion' : 'detail'; } catch (e) {} }
     s.getAudioTracks().forEach((t) => { try { t.contentHint = 'music'; } catch (e) {} });
     if (prev) prev.getTracks().forEach((t) => t.stop()); // video and tab sound of the old choice
     if (H.sharer === H.me) { V.pin = ''; H.shareN = (H.shareN || 0) + 1; roomScreen(); } else takeOver(H.me);
@@ -3284,8 +3641,9 @@
     H.display = null;
     H.video = null;
     if (d) d.getTracks().forEach((t) => t.stop());
+    if (d && d === CV.stream) canvasStop();
     if (H.sharer === H.me && !keepSharer) { H.sharer = ''; V.pin = ''; roomScreen(); }
-    setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
+    shareBtns();
     layout();
     if (msg) note(msg, 'info');
   }
@@ -3331,7 +3689,7 @@
     if (mode === H.mode) return;
     H.mode = mode;
     store.set('beside.mode', H.mode);
-    if (H.video) H.video.contentHint = H.mode;
+    if (H.video && !CV.kind) H.video.contentHint = H.mode;
     for (const g of H.guests.values()) tuneScreen(g.screenSender);
     modeLabel();
   }
@@ -3343,6 +3701,7 @@
     H.stopping = true;
     H.ringOnReady = 0;
     ytClose(true);
+    canvasStop();
     clearInterval(H.lagTimer);
     clearInterval(T.timer);
     for (const id of [...H.guests.keys()]) hostDropGuest(id);
@@ -3366,7 +3725,7 @@
     autoPip(false);
     chatReset();
     setPressed('camBtn', false, 'Turn my camera off', 'Turn my camera on');
-    setPressed('screenBtn', false, 'Stop sharing', 'Share screen');
+    shareBtns();
     app.hostReady = false;
     stayAwake(false);
     if (wasLive && bc) bc.postMessage('off');
@@ -3626,15 +3985,15 @@
       G.tries = G.quiet = G.reopenedAt = 0;
       // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
       ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = outMuted(el); el.play().catch(() => {}); } });
-      // Computers that can share back hold two silent sound lanes ready: the mic's (if joining without it) and the
+      // Everyone who can share back holds two silent sound lanes ready: the mic's (if joining without it) and the
       // shared tab's. The audio engine starts inside the tap, so it is allowed to run.
       // Clear voice needs the engine too, so anyone joining with a mic starts it here.
       // Everyone gets it: your volumes for their voice and the video play through it on iPhone and iPad.
       if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       if (G.ctx) {
         G.ctx.resume().catch(() => {});
-        if (CAN_SHARE && !G.silentA) G.silentA = silentTrack(G.ctx);
-        if (CAN_SHARE && !G.silentB) G.silentB = silentTrack(G.ctx);
+        if (CAN_LANE && !G.silentA) G.silentA = silentTrack(G.ctx);
+        if (CAN_LANE && !G.silentB) G.silentB = silentTrack(G.ctx);
       }
       guestVoiceClose();
       if (G.mic) { G.mic.getTracks().forEach((t) => t.stop()); G.mic = null; }
@@ -3727,11 +4086,11 @@
     if (G.call) { const old = G.call; G.call = null; try { old.close(); } catch (e) {} }
     G.call = call;
     // Answer with the mic and the camera lane (the camera, or the blank that holds its place).
-    // A computer that can share also answers on the second video lane (its screen, blank until it shares).
+    // Anyone who can share (a tab, a photo, a video, a web page) also answers on the second video lane (its screen, blank until it shares).
     if (G.display) guestUnshare(true);
     const slot = G.cam ? G.cam.getVideoTracks()[0] : G.blank;
-    if (CAN_SHARE && slot && !G.screenBlank) G.screenBlank = blankTrack();
-    const scr = CAN_SHARE && slot ? G.screenBlank : null;
+    if (CAN_LANE && slot && !G.screenBlank) G.screenBlank = blankTrack();
+    const scr = CAN_LANE && slot ? G.screenBlank : null;
     const mic = guestVoiceTrack();
     const voice = mic || (G.silentB && G.silentA) || null; // with a tab's sound to come, the voice lane must be held first
     const media = voice && G.silentB ? G.silentB : null;
@@ -3825,7 +4184,7 @@
         if (newer) { try { newer.close(); } catch (e) {} }
       }
       opened = true;
-      tell(conn, { t: 'hello', v: VER, name: cleanName(store.get('beside.name') || ''), share: CAN_SHARE });
+      tell(conn, { t: 'hello', v: VER, name: cleanName(store.get('beside.name') || ''), share: CAN_SHARE || CAN_LANE });
       G.tries = G.quiet = 0;
       clearTimeout(G.openTimer);
       clearTimeout(G.retry);
@@ -4078,8 +4437,9 @@
     if (s && t && G.vctx && G.vctx.state !== 'running' && G.vctx.state !== 'closed') G.vctx.resume().catch(() => {});
   }
   function guestFace() { layout(); }
-  // A guest on a computer can share one tab or window back. It rides the second video lane of the same call;
-  // the host decides who shares (the newest share wins) and passes it on to the others.
+  // A guest can share back: one tab or window (a computer), or a photo, a video or a web page (every device). It
+  // rides the second video lane of the same call; the host decides who shares (the newest share wins) and passes
+  // it on to the others.
   async function guestShare() {
     if (G.sharing || G.display || !G.screenSender || G.hostVer < 2 || app.state !== 'watching') return;
     G.sharing = true;
@@ -4094,25 +4454,40 @@
         return;
       }
       if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
-      const t = s.getVideoTracks()[0];
-      if (!t || app.state !== 'watching' || !G.screenSender) { s.getTracks().forEach((x) => x.stop()); return; }
-      try { t.contentHint = 'detail'; } catch (e) {}
-      try { await G.screenSender.replaceTrack(t); } catch (e) { s.getTracks().forEach((x) => x.stop()); note('Sharing didn’t start. Try again.', 'info'); return; }
-      tuneScreen(G.screenSender);
-      // The tab's sound rides its own lane; an old host has none, so it isn't sent.
-      const a = s.getAudioTracks()[0];
-      if (a && G.mediaSender && G.hostVer >= 3) {
-        try { a.contentHint = 'music'; } catch (e) {}
-        G.mediaSender.replaceTrack(a).catch(() => {});
-      } else s.getAudioTracks().forEach((x) => x.stop());
-      G.display = s;
-      G.screenTrack = t;
-      t.addEventListener('ended', () => { if (G.screenTrack === t) guestUnshare(); }); // Stop in the browser's bar
-      tell(G.conn, { t: 'share', on: true });
-      V.pin = '';
-      setPressed('gScreenBtn', true, 'Stop sharing', 'Share screen');
-      layout();
+      await guestUse(s);
     } finally { G.sharing = false; }
+  }
+  // Puts a picture (and its sound, if any) on this guest's share lanes, in place of whatever was shared before.
+  async function guestUse(s) {
+    const t = s.getVideoTracks()[0];
+    if (!t || app.state !== 'watching' || !G.screenSender) { s.getTracks().forEach((x) => x.stop()); if (s === CV.stream) canvasStop(); return false; }
+    try { t.contentHint = s === CV.stream && CV.kind === 'video' ? 'motion' : 'detail'; } catch (e) {}
+    try { await G.screenSender.replaceTrack(t); } catch (e) {
+      s.getTracks().forEach((x) => x.stop());
+      if (s === CV.stream) canvasStop();
+      note('Sharing didn’t start. Try again.', 'info');
+      return false;
+    }
+    tuneScreen(G.screenSender);
+    // The sound rides its own lane; an old host has none, so it isn't sent.
+    const a = s.getAudioTracks()[0];
+    if (a && G.mediaSender && G.hostVer >= 3) {
+      try { a.contentHint = 'music'; } catch (e) {}
+      G.mediaSender.replaceTrack(a).catch(() => {});
+    } else {
+      s.getAudioTracks().forEach((x) => { if (s !== CV.stream) x.stop(); });
+      if (G.mediaSender && G.silentB) G.mediaSender.replaceTrack(G.silentB).catch(() => {});
+    }
+    const prev = G.display;
+    G.display = s;
+    G.screenTrack = t;
+    if (prev && prev !== s) prev.getTracks().forEach((x) => x.stop());
+    t.addEventListener('ended', () => { if (G.screenTrack === t) guestUnshare(); }); // Stop in the browser's bar
+    tell(G.conn, { t: 'share', on: true });
+    V.pin = '';
+    shareBtns();
+    layout();
+    return true;
   }
   function guestUnshare(quiet) {
     const d = G.display;
@@ -4122,8 +4497,9 @@
     if (G.screenSender && G.screenBlank) G.screenSender.replaceTrack(G.screenBlank).catch(() => {});
     if (G.mediaSender && G.silentB) G.mediaSender.replaceTrack(G.silentB).catch(() => {});
     d.getTracks().forEach((t) => t.stop());
+    if (d === CV.stream) canvasStop();
     if (!quiet) tell(G.conn, { t: 'share', on: false });
-    setPressed('gScreenBtn', false, 'Stop sharing', 'Share screen');
+    shareBtns();
     layout();
   }
   async function guestCam() {
@@ -4225,7 +4601,7 @@
     if (!isGuest && !watchers().length) return false;
     const ck = document.querySelector('[data-state="check"]');
     const sp = $('soundPop');
-    if (moreOpen() || (sp && !sp.hidden) || (ck && !ck.hidden) || document.body.classList.contains('chat-open')) return false;
+    if (moreOpen() || shareIsOpen() || (sp && !sp.hidden) || (ck && !ck.hidden) || document.body.classList.contains('chat-open')) return false;
     return true;
   }
 
@@ -4294,7 +4670,7 @@
 
     if (!window.isSecureContext) basics.set('bad', 'This page must be opened with https:// at the start. Use the link exactly as it was sent.');
     else if (!window.RTCPeerConnection) basics.set('bad', 'This browser is too old for calls. Update it, or use Chrome or Safari.');
-    else if (!isGuest && !CAN_SHARE) basics.set('warn', 'Calls work here. Sharing your screen needs Chrome on a computer.');
+    else if (!isGuest && !CAN_SHARE) basics.set('warn', 'Calls work here. Share links, photos and videos with the Share button. Sharing your screen needs Chrome on a computer.');
     else basics.set('ok', '', browserName());
 
     const micP = (async () => {
@@ -4480,9 +4856,10 @@
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
     on('layoutBtn', 'click', () => setLayout(V.mode === 'split' ? 'focus' : 'split'));
-    on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else hostShare(); });
+    on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else shareOpen(true); });
     on('gCamBtn', 'click', guestCam);
-    on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else guestShare(); });
+    on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else shareOpen(true); });
+    shareWire();
     on('changeBtn', 'click', () => { closeMore(); hostChange(); });
     on('stopBtn', 'click', () => hostStop());
     document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => hostMode(b.dataset.mode)));
@@ -4557,6 +4934,7 @@
       if (vw && !vw.hidden) vw.hidden = true;
       else if (sheet && !sheet.hidden) closeSheet();
       else if (sp && !sp.hidden) soundOpen(false);
+      else if (shareIsOpen()) shareOpen(false);
       else if (moreOpen()) closeMore();
       else if (C.open) chatOpen(false);
     });
@@ -4607,7 +4985,7 @@
     if (sheet) sheet.hidden = true;
     if ($('hostName')) $('hostName').value = myName();
     const sb = $('screenBtn');
-    if (sb) sb.hidden = !CAN_SHARE;
+    if (sb) sb.hidden = false; // Share: links, photos, videos and files work everywhere
     if (isGuest) {
       const n = theirName;
       if (n) {
