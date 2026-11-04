@@ -1366,6 +1366,20 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
   document.addEventListener('visibilitychange', seen);
   seen();
 
+  // In a call with their camera off: their character in the circle in place of their letter. Only for Mo and
+  // Semal (by name, or the other person's name on this board); anyone else keeps their letter.
+  document.addEventListener('beside:face', (e) => {
+    const el = document.getElementById('avatarFig');
+    const F = FIG();
+    if (!el) return;
+    const n = String((e.detail && e.detail.name) || '').trim().toLowerCase();
+    let who = F && n ? Object.keys(F.NAME).find((k) => F.NAME[k].toLowerCase() === n) : '';
+    if (!who && F && n && S && theirName(S.lastView).trim().toLowerCase() === n) who = whoThem();
+    if ((el.dataset.who || '') === (who || '')) return;
+    el.dataset.who = who || '';
+    el.innerHTML = who ? '<span class="who-fig-in">' + F.figure(who, { pose: 'head', label: '' }) + '</span>' : '';
+  });
+
   window.BesideBoard = {
     mount,
     refresh() { if (S) { poll(); schedule(); } },
