@@ -1380,8 +1380,8 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
     el.innerHTML = who ? '<span class="who-fig-in">' + F.figure(who, { pose: 'head', label: '' }) + '</span>' : '';
   });
 
-  // The house on Home (app.js draws it): both rooms' time, weather and light, the countdown, the next plan and the
-  // list. The light is off late at night there (11 pm to 6 am).
+  // The house on Home (app.js draws it): both rooms' time, weather and light, the countdown, the next plan, the
+  // list and the day's hearts. The light is off late at night there (11 pm to 6 am).
   function house() {
     const b = S ? S.lastView || view() : empty(); // no board yet: the clocks still come from local time
     const F = FIG();
@@ -1403,6 +1403,8 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
       next: up ? { title: up.title, day: fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short' }).format(up.at) + ' ' + fmt(up.allDay ? 'UTC' : HERE, { day: 'numeric' }).format(up.at) } : null,
       todos: b.todos.filter((t) => !t.done).map((t) => t.text),
       month: monthOf(now, b.events),
+      // the hearts sent in the last 24 hours, oldest first, each on its sender's wall
+      hearts: b.thinks.filter((t) => t.at && now - t.at < DAY).sort((x, y) => x.at - y.at).map((t) => ({ id: String(t.id), at: t.at, who: whoOf(t.from) })),
     };
   }
   // This month for the wall calendar: its name, the Monday-first offset of day 1, the day count, today and plan days.

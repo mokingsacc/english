@@ -203,6 +203,8 @@
     on('ndCal', 'click', () => boardSheet(true, 'cal'));
     on('ndFridge', 'click', () => boardSheet(true, 'todo'));
     on('ndChain', 'click', () => boardSheet(true, 'count'));
+    let rz = 0;
+    addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(houseDraw, 150); }); // the hearts find room again
   }
   function houseDraw() {
     houseBoot();
@@ -272,6 +274,62 @@
       }
       $('ndFridge').setAttribute('aria-label', 'To-do list: ' + (hs.todos.length ? hs.todos.length + ' to do' : 'nothing yet'));
     }
+    if (hs.loaded) {
+      ['mo', 'semal'].forEach((who) => heartWall($(ROOM_ID[who]), (hs.hearts || []).filter((x) => x.who === who).slice(-30)));
+      heartsReady = true; // the hearts already there on opening just sit; later ones pop on
+    }
+  }
+  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a small heart on the sender's wall,
+  // behind their figure. Each one's spot comes from its id, so it stays put; it never covers the window, clock,
+  // picture, calendar, fridge, lamp, the paper chain or a face. A new one pops on (not with reduced motion).
+  const HEART_SVG = '<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21.2C5.6 16.4 1 12.5 1 7.4 1 3.9 3.7 1.2 7 1.2c2 0 3.8 1 5 2.6 1.2-1.6 3-2.6 5-2.6 3.3 0 6 2.7 6 6.2 0 5.1-4.6 9-11 13.8z"/></svg>';
+  const heartSeen = new Set();
+  let heartsReady = false;
+  function seeded(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+  function heartWall(room, list) {
+    const layer = room && room.querySelector('.nd-hearts');
+    if (!layer) return;
+    const fresh = new Set(heartsReady ? list.filter((x) => !heartSeen.has(x.id)).map((x) => x.id) : []);
+    list.forEach((ht) => heartSeen.add(ht.id));
+    const W = room.clientWidth, H = room.clientHeight;
+    const key = list.map((x) => x.id).join(',') + '|' + W + 'x' + H;
+    if (!W || layer.dataset.k === key) return;
+    layer.dataset.k = key;
+    const R = room.getBoundingClientRect();
+    const box = (e, pad, part) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.top - R.top + r.height * (part || 1) + pad }; };
+    const keep = [...room.querySelectorAll('.nd-win, .nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => box(e, 4));
+    const fig = room.querySelector('.nd-fig');
+    if (fig) keep.push(box(fig, 4, 0.3)); // the face and hat; the body may stand in front of hearts
+    const chain = $('ndChain');
+    if (chain) keep.push(box(chain, 2));
+    const s = Math.max(10, Math.min(22, W * 0.05));
+    const top = 6, bottom = room.querySelector('.nd-floor') ? box(room.querySelector('.nd-floor'), 0).t - 4 : H * 0.88;
+    const hit = (x, y, b) => x < b.r && x + s > b.l && y < b.b && y + s > b.t;
+    const placed = [];
+    const out = [];
+    list.forEach((ht) => {
+      const rnd = seeded(ht.id + ':' + ht.at);
+      let spot = null;
+      for (let i = 0; i < 80 && !spot; i++) {
+        const x = 4 + rnd() * (W - s - 8), y = top + rnd() * Math.max(0, bottom - top - s);
+        if (keep.some((b) => hit(x, y, b))) continue;
+        if (i < 40 && placed.some((p) => Math.abs(p.x - x) < s * 0.9 && Math.abs(p.y - y) < s * 0.9)) continue;
+        spot = { x, y };
+      }
+      if (!spot) return;
+      placed.push(spot);
+      const el = document.createElement('i');
+      el.className = 'nd-heart' + (fresh.has(ht.id) ? ' pop' : '');
+      el.dataset.id = ht.id;
+      el.style.cssText = 'left:' + (spot.x / W * 100).toFixed(2) + '%;top:' + (spot.y / H * 100).toFixed(2) + '%;width:' + s.toFixed(1) + 'px;--r:' + Math.round(rnd() * 30 - 15) + 'deg';
+      el.innerHTML = HEART_SVG;
+      out.push(el);
+    });
+    layer.replaceChildren(...out);
   }
 
   // ---------- TABS ----------
