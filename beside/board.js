@@ -1402,7 +1402,17 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
       countdown: c ? { title: c.title, days: Math.max(1, Math.ceil((c.at - now) / DAY)), today: keyOf(c.at, HERE) === keyOf(now, HERE), past: c.at < now && keyOf(c.at, HERE) !== keyOf(now, HERE) } : null,
       next: up ? { title: up.title, day: fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short' }).format(up.at) + ' ' + fmt(up.allDay ? 'UTC' : HERE, { day: 'numeric' }).format(up.at) } : null,
       todos: b.todos.filter((t) => !t.done).map((t) => t.text),
+      month: monthOf(now, b.events),
     };
+  }
+  // This month for the wall calendar: its name, the Monday-first offset of day 1, the day count, today and plan days.
+  function monthOf(now, events) {
+    const p = parts(now, HERE);
+    const pre = p.y + '-' + pad(p.mo) + '-';
+    const first = (new Date(Date.UTC(p.y, p.mo - 1, 1)).getUTCDay() + 6) % 7;
+    const count = new Date(Date.UTC(p.y, p.mo, 0)).getUTCDate();
+    const plans = [...new Set(events.map(evKey).filter((k) => k.startsWith(pre)).map((k) => +k.slice(8)))];
+    return { name: fmt(HERE, { month: 'long' }).format(now), first, count, today: p.d, plans };
   }
 
   window.BesideBoard = {

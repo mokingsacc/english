@@ -238,17 +238,39 @@
       ch.style.setProperty('--chain', c && !c.past && !c.today ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) + '%' : '60%');
       ch.setAttribute('aria-label', !c ? 'Countdown: set one' : c.past ? 'Countdown: ' + c.title + ' has been' : 'Countdown: ' + tag + ' to ' + c.title);
     }
-    text('ndCalDay', hs.next ? hs.next.day : '');
-    text('ndCalWhat', hs.next ? hs.next.title : 'Calendar');
-    if ($('ndCal')) $('ndCal').setAttribute('aria-label', hs.next ? 'Calendar: next, ' + hs.next.title + ', ' + hs.next.day : 'Calendar');
+    const m = hs.month;
+    text('ndCalMonth', m.name);
+    text('ndCalNext', hs.next ? hs.next.day + ', ' + hs.next.title : '');
+    const grid = $('ndCalGrid');
+    const gk = [m.name, m.first, m.count, m.today, m.plans.join(',')].join('|');
+    if (grid && grid.dataset.k !== gk) {
+      grid.dataset.k = gk;
+      const cell = (t, cls) => { const i = document.createElement('i'); i.textContent = t; if (cls) i.className = cls; return i; };
+      const cells = 'MTWTFSS'.split('').map((d) => cell(d, 'wd'));
+      for (let i = 0; i < m.first; i++) cells.push(cell('', ''));
+      for (let d = 1; d <= m.count; d++) cells.push(cell(d, [d === m.today ? 't' : d < m.today ? 'o' : '', m.plans.includes(d) ? 'p' : ''].filter(Boolean).join(' ')));
+      grid.replaceChildren(...cells);
+    }
+    if ($('ndCal')) $('ndCal').setAttribute('aria-label', 'Calendar, ' + m.name + (hs.next ? '. Next: ' + hs.next.title + ', ' + hs.next.day : ''));
     const notes = $('ndNotes');
     if (notes) {
-      const key = hs.todos.slice(0, 3).join('|');
+      const top = hs.todos.slice(0, 3);
+      const key = top.join('|') || '-';
       if (notes.dataset.k !== key) {
         notes.dataset.k = key;
-        notes.replaceChildren(...hs.todos.slice(0, 3).map((t) => { const i = document.createElement('i'); i.textContent = t; return i; }));
+        if (!top.length) {
+          const n = document.createElement('span'); n.className = 'nd-none'; n.textContent = 'Nothing yet. Tap to add.';
+          notes.replaceChildren(n);
+        } else {
+          notes.replaceChildren(...top.map((t) => {
+            const row = document.createElement('span'); row.className = 'nd-todo';
+            const sp = document.createElement('span'); sp.textContent = t;
+            row.append(document.createElement('i'), sp);
+            return row;
+          }));
+        }
       }
-      $('ndFridge').setAttribute('aria-label', 'To-do list: ' + (hs.todos.length ? hs.todos.length + ' to do' : 'nothing to do'));
+      $('ndFridge').setAttribute('aria-label', 'To-do list: ' + (hs.todos.length ? hs.todos.length + ' to do' : 'nothing yet'));
     }
   }
 
