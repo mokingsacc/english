@@ -16,9 +16,9 @@
   const HAIR_SEMAL = '#3B2A22';
   const CHINO = '#C9A67A', CHINO_SEAM = '#B08D62';      // his tan chinos
   const DENIM = '#2E3F5E', DENIM_SEAM = '#45597D';      // her dark blue jeans
-  // Heights, in proportion: she stands about four fifths of his height, so the top of her head meets the bottom of
-  // his beanie. Each grows or shrinks from where it stands (feet, or the seat), so every scene keeps its ground line.
-  const MO_SIZE = 1.06, SEMAL_SIZE = 0.867, SEMAL_SEATED = 0.8;
+  // Heights, in proportion: she stands just a little shorter than him (Mo, 5 Nov 2026: "bigger ... but just
+  // slightly smaller than me"), about nine tenths of his height. Each grows or shrinks from where it stands (feet, or the seat), so every scene keeps its ground line.
+  const MO_SIZE = 1.06, SEMAL_SIZE = 0.985, SEMAL_SEATED = 0.91;
   const sized = (x, y, k, body) => `<g transform="translate(${x} ${y}) scale(${k}) translate(${-x} ${-y})">${body}</g>`;
 
   // Knit and check, for one picture (s makes the ids unique on the page).
@@ -77,7 +77,7 @@ ${o.hands ? `<g class="semal-hands"><circle cx="108" cy="149" r="5.5" fill="${SK
   // Where each one stands in the pair box, for drawing them alone. Both boxes are the same height, so drawn alone
   // side by side they keep their heights. The head crops follow each one's size.
   const BOX = { mo: '23 18 102 188', semal: '92 18 102 188' };
-  const HEAD = { mo: '42 22 64 64', semal: '118 56 50 50' };
+  const HEAD = { mo: '42 22 64 64', semal: '114.5 36 57 57' };
 
   // One person, wrapped so motion can be added: .fig-move (bob, hop) holds .fig-pose (lean), which holds the drawing.
   const wrap = (who, body) => `<g class="fig-move fig-${who}" data-fig="${who}"><g class="fig-pose">${body}</g></g>`;
