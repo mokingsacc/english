@@ -689,6 +689,14 @@ button:disabled{opacity:.55;cursor:default}
 .nd-room::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 6%,rgba(255,226,170,.55),transparent 60%);pointer-events:none}
 .nd-room[data-light=off]{--wall:#2C3252;--stripe:rgba(255,255,255,.04);--floor:#463C57;--trim:#4E4766;--frame:#4D4766}
 .nd-room[data-light=off]::before{opacity:0}
+/* The heart wall: each heart sent in the last 24 hours, on the sender's wall, behind their figure */
+.nd-hearts{position:absolute;inset:0;pointer-events:none}
+.nd-heart{position:absolute;display:block;aspect-ratio:24/22;transform:rotate(var(--r,0deg));color:#C8573C;opacity:.9}
+.nd-room[data-who=semal] .nd-heart{color:#D0614C}
+.nd-heart svg{display:block;width:100%;height:100%;fill:currentColor}
+.nd-room[data-light=off] .nd-heart{filter:brightness(.7)}
+.nd-heart.pop{animation:ndheartpop .7s cubic-bezier(.3,1.5,.5,1) both}
+@keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:.9}}
 .nd-floor{position:absolute;left:0;right:0;bottom:0;height:10cqh;background:var(--floor);border-top:5px solid var(--trim)}
 /* the light: a lamp hanging from the ceiling, lit or not */
 .nd-lamp{position:absolute;top:0;left:var(--lx,50%);width:24px;margin-left:-12px;height:calc(6cqh + 14px);pointer-events:none}
@@ -751,7 +759,7 @@ button:disabled{opacity:.55;cursor:default}
 .nd-cal,.nd-fridge,.nd-chain,.nd-fig{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .nd-cal{position:absolute;left:4cqw;top:49cqh;width:min(48cqw,30cqh);container-type:inline-size;padding:0 0 3cqw;border-radius:3px;background:#FFF9EF;box-shadow:0 3px 8px -4px rgba(40,20,10,.5);display:block;line-height:1.2;text-align:center;color:#3B2C24;transition:transform .25s var(--ease)}
 .nd-cal-m{display:block;padding:3cqw 0 2.4cqw;border-radius:3px 3px 0 0;background:#A8462A;color:#FFF6E6;font-size:13cqw;font-weight:700;white-space:nowrap}
-.nd-cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.8cqw 1cqw;padding:2.6cqw 2.6cqw 1cqw;font-size:8.4cqw;font-weight:600;font-variant-numeric:tabular-nums}
+.nd-cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.8cqw .6cqw;padding:2.6cqw 2cqw 1cqw;font-size:10px;font-size:8.4cqw;letter-spacing:-.02em;font-weight:600;font-variant-numeric:tabular-nums}
 .nd-cal-g i{position:relative;font-style:normal;line-height:1.3}
 .nd-cal-g .wd{color:#A8462A;font-size:7.6cqw;font-weight:700}
 .nd-cal-g .o{opacity:.4}
@@ -797,12 +805,12 @@ button:disabled{opacity:.55;cursor:default}
 /* A wide room (iPad on its side, the Mac): the calendar goes up beside the window and the fridge stands tall in the
    middle, so both are bigger. Each figure stands under its window. */
 @container (min-aspect-ratio:6/5){
-  .nd-win{width:min(40cqw,61cqh)}
-  .nd-cal{left:calc(9cqw + min(40cqw,61cqh));top:13cqh;width:min(26cqw,50cqh)}
+  .nd-win{width:min(36cqw,58cqh)}
+  .nd-cal{left:calc(9cqw + min(36cqw,58cqh));top:13cqh;width:min(30cqw,52cqh)}
   .nd-fridge{left:calc(8cqw + var(--pw));width:min(26cqw,40cqh);height:62cqh}
   .nd-fridge::after{box-shadow:0 calc(62cqh * .3) 0 #B8B1A5}
-  .nd-fig{right:auto;left:calc(6cqw + min(40cqw,61cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
-  .nd-room[data-who=semal] .nd-fig{left:auto;right:calc(6cqw + min(40cqw,61cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
+  .nd-fig{right:auto;left:calc(6cqw + min(36cqw,58cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
+  .nd-room[data-who=semal] .nd-fig{left:auto;right:calc(6cqw + min(36cqw,58cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
 }
 /* ───────────────────────── Next Door: in a call, one room and one sofa ───────────────────────── */
 /* Just the two of you, nothing shared: the wall has folded down, their camera fills the big window, yours is a
@@ -889,6 +897,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <div class="nd-flats bb-figs">
         <div class="nd-room" id="ndRoomMo" data-who="mo">
           <span class="nd-lamp" aria-hidden="true"></span>
+          <span class="nd-hearts" aria-hidden="true"></span>
           <div class="nd-win" aria-hidden="true">
             <svg class="w-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg>
             <svg class="w-moon" viewBox="0 0 20 20"><path d="M11 2 A8 8 0 1 0 18 13 A6.3 6.3 0 1 1 11 2 Z"/></svg>
@@ -910,6 +919,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
         <span class="nd-wall" aria-hidden="true"></span>
         <div class="nd-room" id="ndRoomSemal" data-who="semal">
           <span class="nd-lamp" aria-hidden="true"></span>
+          <span class="nd-hearts" aria-hidden="true"></span>
           <div class="nd-win" aria-hidden="true">
             <svg class="w-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg>
             <svg class="w-moon" viewBox="0 0 20 20"><path d="M11 2 A8 8 0 1 0 18 13 A6.3 6.3 0 1 1 11 2 Z"/></svg>
@@ -1233,8 +1243,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
-<script src="board.js?v=12"></script>
+<script src="board.js?v=13"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=41"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
