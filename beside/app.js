@@ -279,7 +279,7 @@
       heartsReady = true; // the hearts already there on opening just sit; later ones pop on
     }
   }
-  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a small heart on the sender's wall,
+  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a small heart on the wall of the one it was sent to,
   // behind their figure. Each one's spot comes from its id, so it stays put; it never covers the window, clock,
   // picture, calendar, fridge, lamp, the paper chain or a face. A new one pops on (not with reduced motion).
   const HEART_SVG = '<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21.2C5.6 16.4 1 12.5 1 7.4 1 3.9 3.7 1.2 7 1.2c2 0 3.8 1 5 2.6 1.2-1.6 3-2.6 5-2.6 3.3 0 6 2.7 6 6.2 0 5.1-4.6 9-11 13.8z"/></svg>';

@@ -1403,8 +1403,9 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
       next: up ? { title: up.title, day: fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short' }).format(up.at) + ' ' + fmt(up.allDay ? 'UTC' : HERE, { day: 'numeric' }).format(up.at) } : null,
       todos: b.todos.filter((t) => !t.done).map((t) => t.text),
       month: monthOf(now, b.events),
-      // the hearts sent in the last 24 hours, oldest first, each on its sender's wall
-      hearts: b.thinks.filter((t) => t.at && now - t.at < DAY).sort((x, y) => x.at - y.at).map((t) => ({ id: String(t.id), at: t.at, who: whoOf(t.from) })),
+      // the hearts sent in the last 24 hours, oldest first, each landing on the wall of the one it was sent to
+      // (Mo, 5 Nov 2026: "when i send a heart it should land on her wall and vice versa")
+      hearts: b.thinks.filter((t) => t.at && now - t.at < DAY).sort((x, y) => x.at - y.at).map((t) => ({ id: String(t.id), at: t.at, who: whoOf(t.from) === 'mo' ? 'semal' : 'mo' })),
     };
   }
   // This month for the wall calendar: its name, the Monday-first offset of day 1, the day count, today and plan days.
