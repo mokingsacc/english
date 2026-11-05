@@ -653,6 +653,15 @@
     snow: '<path d="M7 15a4 4 0 0 1 .5-8A5 5 0 0 1 17 8a3.5 3.5 0 0 1 0 7z"/><path d="M8 19h.01M12 20h.01M16 19h.01"/>',
   };
   const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  // "Drizzle, 11°C": the weather words for one place, or nothing before the weather has come.
+  function wxWords(p, w) {
+    if (!w || typeof w.temperature_2m !== 'number') return '';
+    const deg = p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
+    return (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + p.unit;
+  }
+  // What each window shows, finer than wxKind, so it matches the words: drizzle and thunder get their own.
+  const winKind = (c) => (typeof c !== 'number' ? 'none' : c <= 1 ? 'clear' : c === 2 ? 'part' : c === 3 ? 'cloud' : c <= 48 ? 'fog' : c <= 57 ? 'drizzle'
+    : c <= 67 || (c >= 80 && c <= 82) ? 'rain' : c >= 95 ? 'thunder' : 'snow');
   const clockText = (t, z) => fmt(z, { hour: 'numeric', minute: '2-digit' }).formatToParts(t).filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();
   function drawSkies(now) {
     const el = S.ui.clocks;
@@ -683,11 +692,7 @@
       const night = pod === 'night' || (w && w.is_day === 0);
       const grey = !night && /^(rain|snow|fog|cloud)$/.test(kind);
       const skyName = night ? 'night' : grey ? 'grey' : pod;
-      let wx = '';
-      if (w && typeof w.temperature_2m === 'number') {
-        const deg = r.p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
-        wx = (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + r.p.unit;
-      }
+      const wx = wxWords(r.p, w);
       const mine = r.who === whoMe();
       const nm = mine ? 'You' : nameFor(r.who, b);
       if (r.whoEl.textContent !== nm) r.whoEl.textContent = nm;
@@ -716,12 +721,7 @@
     if (S.split) { drawSkies(now); return; }
     el.replaceChildren(...PLACES.map((p) => {
       const t = parts(now, p.z);
-      const w = WX.now[p.z];
-      let wx = '';
-      if (w && typeof w.temperature_2m === 'number') {
-        const deg = p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
-        wx = (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + p.unit;
-      }
+      const wx = wxWords(p, WX.now[p.z]);
       return h('div', { class: 'bb-clock' + (p.z === HERE ? ' bb-mine' : '') },
         h('span', { class: 'bb-clock-place', text: p.label }),
         h('b', { class: 'bb-clock-time', text: fmt(p.z, { hour: 'numeric', minute: '2-digit' }).format(now) }),
@@ -1380,11 +1380,36 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
     el.innerHTML = who ? '<span class="who-fig-in">' + F.figure(who, { pose: 'head', label: '' }) + '</span>' : '';
   });
 
+  // The house on Home (app.js draws it): both rooms' time, weather and light, the countdown, the next plan and the
+  // list. The light is off late at night there (11 pm to 6 am).
+  function house() {
+    if (!S) return null;
+    const b = S.lastView || view();
+    const now = Date.now();
+    const rooms = PLACES.map((p) => {
+      const who = p.z === LA ? 'semal' : 'mo';
+      const t = parts(now, p.z);
+      const w = WX.now[p.z];
+      const night = w && typeof w.is_day === 'number' ? w.is_day === 0 : t.h < 6 || t.h >= 19;
+      return { who, mine: who === whoMe(), name: nameFor(who, b), place: p.label, time: timeIn(now, p.z), h: t.h, mi: t.mi,
+        words: wxWords(p, w), kind: w ? winKind(w.weather_code) : 'none', night, late: t.h >= 23 || t.h < 6 };
+    });
+    const c = b.countdown;
+    const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
+    return {
+      loaded: S.loaded, rooms,
+      countdown: c ? { title: c.title, days: Math.max(0, Math.ceil((c.at - now) / DAY)) } : null,
+      next: up ? { title: up.title, day: fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short' }).format(up.at) + ' ' + fmt(up.allDay ? 'UTC' : HERE, { day: 'numeric' }).format(up.at) } : null,
+      todos: b.todos.filter((t) => !t.done).map((t) => t.text),
+    };
+  }
+
   window.BesideBoard = {
     mount,
     refresh() { if (S) { poll(); schedule(); } },
     // Which figure is this person's (Mo's home is London, Semal's is LA), and the other one's name if known.
     people() { return { me: whoMe(), them: S ? theirName(S.lastView) : '' }; },
     celebrate() { if (S) celebrate(); },
+    house,
   };
 })();

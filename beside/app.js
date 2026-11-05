@@ -113,7 +113,7 @@
     if (into) tvOpen(snap);
     else if (back) tvClose();
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); }
+    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); roomOff(); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -143,21 +143,29 @@
     }
     if (!home && state !== 'live' && state !== 'watching') boardSheet(false);
   }
-  // In a call, More opens the countdown, to-dos and calendar: those parts move into the sheet, then back.
-  const SHEET_PARTS = ['bHomeCount', 'boardMount'];
+  // In a call, More opens the countdown, to-dos and calendar: those parts move into the sheet, then back. On Home,
+  // the house's calendar, fridge and paper chain each open just their part the same way.
+  const SHEET_PARTS = { all: ['bHomeCount', 'boardMount'], count: ['bHomeCount'], cal: ['[data-sec=cal]'], todo: ['[data-sec=todo]'] };
+  const SHEET_TITLE = { all: 'Together', count: 'Countdown', cal: 'Calendar', todo: 'To-do' };
+  const partEl = (k) => (k.charAt(0) === '[' ? document.querySelector('#boardMount ' + k + ', #boardSheetBody ' + k) : $(k));
   const sheetMarks = new Map();
   function boardSheetBack() {
-    sheetMarks.forEach((mark, id) => { const el = $(id); if (el && mark.parentNode && el.nextSibling !== mark) mark.parentNode.insertBefore(el, mark); });
+    sheetMarks.forEach((mark, k) => { const el = partEl(k); if (el && mark.parentNode && el.nextSibling !== mark) mark.parentNode.insertBefore(el, mark); });
   }
-  function boardSheet(on) {
+  function boardSheet(on, part) {
     const sh = $('boardSheet'), body = $('boardSheetBody'), m = $('boardMount');
     if (!sh || !body || !m || !window.BesideBoard) return;
     if (on) {
       closeMore();
-      SHEET_PARTS.forEach((id) => {
-        const el = $(id);
+      boardSheetBack();
+      const which = SHEET_PARTS[part] ? part : 'all';
+      text('boardTitle', SHEET_TITLE[which]);
+      body.classList.toggle('bboard', which !== 'all'); // one part alone keeps the board's own look
+      body.classList.toggle('bb-tabs', which !== 'all');
+      SHEET_PARTS[which].forEach((k) => {
+        const el = partEl(k);
         if (!el) return;
-        if (!sheetMarks.has(id)) { const mark = document.createComment(id); el.parentNode.insertBefore(mark, el.nextSibling); sheetMarks.set(id, mark); }
+        if (!sheetMarks.has(k)) { const mark = document.createComment(k); el.parentNode.insertBefore(mark, el.nextSibling); sheetMarks.set(k, mark); }
         body.appendChild(el);
       });
       try { boardMountNow(); window.BesideBoard.refresh(); } catch (e) {}
@@ -172,6 +180,75 @@
     app.people = pp;
     const n = isGuest ? theirName : pp.them;
     text('homeRingText', n ? 'Ring ' + n : 'Ring them');
+    houseDraw();
+  }
+
+  // ---------- HOME: the house (Next Door) ----------
+  // Two rooms, a thin wall between: each with its own clock, a window with that city's weather and day or night, and a
+  // light that is off late at night there. The calendar, the fridge and the paper chain open their part of the board.
+  // Tap your own figure and it waves (only on this screen: the board has no wave message to send).
+  const ROOM_ID = { mo: 'ndRoomMo', semal: 'ndRoomSemal' };
+  const HAND = { mo: ['#1B1D23', '#E2AE88'], semal: ['#1C1D22', '#E7B48F'] };
+  let houseOn = false;
+  function houseBoot() {
+    if (houseOn || !$('house') || !window.BesideFigures) return;
+    houseOn = true;
+    ['mo', 'semal'].forEach((who) => {
+      const b = $(who === 'mo' ? 'ndFigMo' : 'ndFigSemal');
+      b.innerHTML = window.BesideFigures.figure(who, { label: '' }) + '<svg class="nd-hand" viewBox="0 0 30 30" aria-hidden="true"><rect x="3" y="12" width="9" height="17" rx="4.5" fill="' + HAND[who][0] + '"/><circle cx="7.5" cy="9" r="6" fill="' + HAND[who][1] + '"/></svg>';
+      b.addEventListener('click', () => { b.classList.remove('wave'); void b.offsetWidth; b.classList.add('wave'); });
+      b.addEventListener('animationend', (e) => { if (e.target === b) b.classList.remove('wave'); });
+    });
+    on('ndCal', 'click', () => boardSheet(true, 'cal'));
+    on('ndFridge', 'click', () => boardSheet(true, 'todo'));
+    on('ndChain', 'click', () => boardSheet(true, 'count'));
+  }
+  function houseDraw() {
+    houseBoot();
+    const hs = houseOn && window.BesideBoard && window.BesideBoard.house ? window.BesideBoard.house() : null;
+    if (!hs) return;
+    let late = '';
+    hs.rooms.forEach((r) => {
+      const room = $(ROOM_ID[r.who]);
+      if (!room) return;
+      room.dataset.light = r.late ? 'off' : 'on';
+      const win = room.querySelector('.nd-win');
+      win.dataset.sky = r.night ? 'night' : /^(cloud|fog|drizzle|rain|snow|thunder)$/.test(r.kind) ? 'grey' : 'day';
+      win.dataset.wx = r.kind;
+      const hr = room.querySelector('.h-hr'), mn = room.querySelector('.h-mn');
+      hr.style.transform = 'rotate(' + ((r.h % 12) * 30 + r.mi / 2) + 'deg)';
+      mn.style.transform = 'rotate(' + r.mi * 6 + 'deg)';
+      const nm = r.name || (r.who === 'mo' ? 'Mo' : 'Semal');
+      const id = r.who === 'mo' ? 'Mo' : 'Semal';
+      text('ndTime' + id, nm + ', ' + r.time.toLowerCase());
+      text('ndWx' + id, r.words || r.place);
+      const fig = $('ndFig' + id);
+      fig.disabled = !r.mine;
+      fig.setAttribute('aria-label', r.mine ? 'Wave' : nm + ' in ' + r.place);
+      if (!r.mine && r.late) late = 'It is late at night for ' + nm + '. A heart will wait for them.';
+    });
+    const lt = $('ndLate');
+    if (lt) { lt.textContent = late; lt.hidden = !late; }
+    const c = hs.countdown;
+    const tag = c ? (c.days === 0 ? 'Today' : c.days === 1 ? '1 day' : c.days + ' days') : 'Countdown';
+    text('ndTag', tag);
+    const ch = $('ndChain');
+    if (ch) {
+      ch.style.setProperty('--chain', c ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) + '%' : '60%');
+      ch.setAttribute('aria-label', c ? 'Countdown: ' + tag + ' to ' + c.title : 'Countdown: set one');
+    }
+    text('ndCalDay', hs.next ? hs.next.day : '');
+    text('ndCalWhat', hs.next ? hs.next.title : 'Calendar');
+    if ($('ndCal')) $('ndCal').setAttribute('aria-label', hs.next ? 'Calendar: next, ' + hs.next.title + ', ' + hs.next.day : 'Calendar');
+    const notes = $('ndNotes');
+    if (notes) {
+      const key = hs.todos.slice(0, 3).join('|');
+      if (notes.dataset.k !== key) {
+        notes.dataset.k = key;
+        notes.replaceChildren(...hs.todos.slice(0, 3).map((t) => { const i = document.createElement('i'); i.textContent = t; return i; }));
+      }
+      $('ndFridge').setAttribute('aria-label', 'To-do list: ' + (hs.todos.length ? hs.todos.length + ' to do' : 'nothing to do'));
+    }
   }
 
   // ---------- TABS ----------
@@ -1132,7 +1209,7 @@
   function layoutButton() {
     const b = $('layoutBtn');
     if (!b) return;
-    b.hidden = !V.pair;
+    b.hidden = !V.pair || V.room; // in the room both of you are always there: you in the photo, them in the window
     const toFocus = V.mode === 'split';
     const lab = toFocus ? 'Focus: show one of you big' : 'Split: show you both, half and half';
     if (b.dataset.to !== (toFocus ? 'focus' : 'split')) {
@@ -1248,6 +1325,8 @@
     const smalls = halves ? [] : V.pair ? [big === self ? them : self] : mini.win && big === screen ? [] : visible.filter((el) => el !== big);
     root.dataset.faces = ytOn && smalls.length ? '1' : '';
     root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
+    // Next Door: just one other person and nothing shared, so the call is one room (see roomLook).
+    roomLook(root, !alone && !screen && !ytOn && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1));
     root.querySelectorAll('.tile').forEach((el) => {
       if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
       el.hidden = true;
@@ -1291,9 +1370,53 @@
     renderTalk();
   }
 
+  // ---------- NEXT DOOR: the call as one room ----------
+  // When the call connects, the wall between your rooms folds down (a plain fade with reduced motion). Their camera
+  // fills the big window, yours is the framed photo on the sill, and the two of you sit on one sofa, seen from
+  // behind. Double tap anywhere but the controls: it zooms until only they fill the screen; double tap to go back.
+  // More people, a shared screen or a video together keep the usual view.
+  function roomLook(root, on) {
+    if (on && !V.room) {
+      const so = $('ndSofa');
+      if (so && !so.firstChild && window.BesideFigures) so.innerHTML = window.BesideFigures.sofaBack({ label: '' });
+      if (!V.folded) { V.folded = true; foldWall(); }
+    }
+    V.room = on;
+    root.classList.toggle('nd-room', on);
+    if (!on) setZoom(false);
+  }
+  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-room'); setZoom(false); }
+  function foldWall() {
+    const f = $('ndFold');
+    if (!f || !f.animate) return;
+    app.folds = (app.folds || 0) + 1;
+    f.classList.add('go');
+    const done = () => f.classList.remove('go');
+    if (still()) { f.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards' }).onfinish = done; return; }
+    f.querySelector('b').animate([{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-90deg)', opacity: 1, offset: 0.8 }, { transform: 'rotateX(-90deg)', opacity: 0 }],
+      { duration: 1000, easing: 'cubic-bezier(.55,0,.35,1)', fill: 'forwards' });
+    f.querySelectorAll('i').forEach((el) => el.animate([{ opacity: 0.94 }, { opacity: 0.94, offset: 0.4 }, { opacity: 0 }], { duration: 1000, easing: 'ease-in-out', fill: 'forwards' }).onfinish = done);
+  }
+  function setZoom(on) {
+    const r = $('watchRoot');
+    app.zoomed = !!on && !!r && r.classList.contains('nd-room');
+    if (r) r.classList.toggle('nd-zoom', app.zoomed);
+  }
+  // Our own double tap (touch, pen or mouse): Safari on iPhone and iPad sends no dblclick for a quick double tap.
+  let dtap = null;
+  function zoomTap(e) {
+    const r = $('watchRoot');
+    if (!V.room || !r || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (e.target && e.target.closest && e.target.closest('button, input, a, .dock, .hud .top, .soundpop, .peek, .hear, .ytbox')) { dtap = null; return; }
+    const now = Date.now();
+    if (dtap && now - dtap.t < 400 && Math.hypot(e.clientX - dtap.x, e.clientY - dtap.y) < 40) { dtap = null; setZoom(!app.zoomed); return; }
+    dtap = { t: now, x: e.clientX, y: e.clientY };
+  }
+
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
   function swapTap(e) {
     if (CV.kind === 'video' && amSharing() && e.target && e.target.closest && e.target.closest('#screenTile')) { videoToggle(); return; }
+    if (V.room) return; // in the room a tap is half of a double tap
     // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
     if (V.pair) {
       const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
@@ -1951,7 +2074,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn quiet ytgo';
-      b.textContent = '▶ Watch together';
+      b.textContent = 'Watch together';
       b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 699px)').matches) chatOpen(false); });
       body.appendChild(b);
     }
@@ -4881,6 +5004,7 @@
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
     on('watchRoot', 'click', swapTap);
+    on('watchRoot', 'pointerup', zoomTap);
     wirePointing();
     on('chatBtn', 'click', () => chatOpen(!C.open));
     on('peek', 'click', () => { const p = $('peek'); if (!p) return; p.hidden = true; if (p.dataset.chat) chatOpen(true); });
