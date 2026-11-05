@@ -1035,7 +1035,7 @@
   const DUCK = 0.25; // about -12 dB under a voice
   function savedVol(k, max) { const v = parseFloat(store.get(k)); return v >= 0 && v <= max ? v : 1; }
   const SND = { voice: savedVol('beside.vol.voice', 1.5), media: savedVol('beside.vol.media', 1), duck: store.get('beside.duck') !== '0' };
-  const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0 };
+  const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0, rest: false, slept: null };
   function voiceEls() { return isGuest ? [$('voice')] : [...H.guests.values()].map((g) => g.audio); }
   function outEls() {
     const els = isGuest ? [[$('voice'), 'voice', G.lift]] : [...H.guests.values()].map((g) => [g.audio, 'voice', g.lift]);
@@ -1054,7 +1054,7 @@
   function outLane(el, kind, lift) {
     const ctx = outCtx();
     const tr = el.srcObject && el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks()[0] || null : null;
-    lift = kind === 'voice' && tuneFor(lift) ? lift : '';
+    lift = kind === 'voice' && !OUT.rest && tuneFor(lift) ? lift : '';
     let l = OUT.map.get(el);
     if (l && (l.ctx !== ctx || l.track !== tr || l.lift !== lift)) { outDrop(l); l = null; }
     if (!l) {
@@ -1095,18 +1095,39 @@
   // Does this lane need the engine? On Safari, iPhone, iPad and the app, always; elsewhere a voice does only to
   // be lifted or to go above 100%.
   function outEngine(l) {
-    if (!l.gain || !engineOk(l.ctx)) return false;
+    if (!l.gain || OUT.rest || !engineOk(l.ctx)) return false;
     return ENGINE_OUT || (l.kind === 'voice' && (!!l.chain || SND.voice > 1));
+  }
+  // Mo, 5 Nov 2026: "when im watching a youtube video on the app together then there is crackles, both when we're
+  // speaking and when the video is playing". While the audio engine runs, an iPhone or iPad plays all of the app's
+  // sound, the video's too, in tiny slices of under 3 ms; with YouTube and two cameras busy it falls behind, and
+  // everything crackles. YouTube ignores its volume there anyway. So while a video is open together on an iPhone
+  // or iPad, voices play through the page (at full volume, not lifted, no green ring) and the engine rests, unless
+  // the call's own sound still passes through it (three or more people, or a video file you share). It starts again
+  // when the video closes.
+  function outRest() { return IS_IOS && !!W.id; }
+  function outIdle() {
+    const ctx = outCtx();
+    const busy = !!CV.snd || (isGuest ? !!G.vctx && G.vctx === G.ctx : app.hostVoice === 'mix');
+    if (OUT.rest && !busy) {
+      if (ctx && ctx.state === 'running') { OUT.slept = ctx; ctx.suspend().catch(() => {}); }
+    } else if (OUT.slept) {
+      const c = OUT.slept;
+      OUT.slept = null;
+      if (c === ctx && c.state === 'suspended' && (app.state === 'live' || app.state === 'watching')) c.resume().catch(() => {});
+    }
   }
   // Should this element be muted (its sound plays through the engine instead)?
   function outMuted(el) { const l = OUT.map.get(el); return !!l && l.route === 'engine'; }
   function applyVolumes() {
+    OUT.rest = outRest();
     const live = new Set();
     outEls().forEach(([el, kind, lift]) => { live.add(el); outApply(outLane(el, kind, lift)); });
     [...OUT.map.values()].forEach((l) => { if (!live.has(l.el)) outDrop(l); });
     ytVolume();
     outWatch();
     soundUi();
+    outIdle();
   }
   // Every 50 ms in a call: the duck follows who is talking (in fast, out slowly), and a lane whose engine stopped
   // goes back to the page.
@@ -1129,13 +1150,17 @@
         else if (l.kind === 'media' && (smooth || l.route === 'page')) outApply(l, true);
       });
       ytVolume();
+      if (outRest() !== OUT.rest) applyVolumes(); else outIdle();
     }, 50);
   }
-  // YouTube plays in its own frame: its player sets the video's sound (and the duck).
+  // YouTube plays in its own frame: its player sets the video's sound (and the duck). Its volume jumps at once,
+  // so it moves at most 4 steps of 100 each 50 ms: a big jump clicks (Mo, 5 Nov 2026). A full duck takes under 1 s.
+  const YT_STEP = 4;
   function ytVolume() {
     const p = W.p;
     if (!p || !W.ready || typeof p.setVolume !== 'function') return;
-    const v = Math.round(100 * SND.media * OUT.duck);
+    const want = Math.round(100 * SND.media * OUT.duck);
+    const v = W.vol < 0 ? want : W.vol + Math.max(-YT_STEP, Math.min(YT_STEP, want - W.vol));
     if (v === W.vol) return;
     try {
       p.setVolume(v);
@@ -1196,8 +1221,9 @@
       const now = Date.now();
       const src = [[H.me, H.micAn]].concat([...H.guests.values()].filter((g) => g.live).map((g) => [g.id, g.an]));
       const ids = [];
+      const run = H.ctx.state === 'running'; // a resting engine's meters hold their last sound
       src.forEach(([id, an]) => {
-        if (loud(an) > 0.02) T.last.set(id, now);
+        if (run && loud(an) > 0.02) T.last.set(id, now);
         if (now - (T.last.get(id) || 0) < 1300) ids.push(id);
       });
       if (setTalk(ids)) toGuests({ t: 'talk', ids });
@@ -5077,7 +5103,7 @@
       const vo = $('voice'), me = $('media');
       if (me && me.srcObject) { me.muted = outMuted(me); me.play().catch(() => {}); }
       if (vo) { vo.muted = outMuted(vo); vo.play().then(tapHide, () => {}); }
-      if (G.ctx && G.ctx.state === 'suspended') G.ctx.resume().catch(() => {});
+      if (G.ctx && G.ctx.state === 'suspended' && OUT.slept !== G.ctx) G.ctx.resume().catch(() => {});
       wakeControls();
     });
     on('checkBtn', 'click', runChecks);
@@ -5103,7 +5129,7 @@
     on('moveNot', 'click', () => { MV.dismissed = true; moveCardHide(); });
     on('nameInput', 'change', () => { if (app.state === 'join') moveProbe(moveFound); });
     document.addEventListener('pointerdown', () => {
-      if (H.ctx && H.ctx.state === 'suspended') H.ctx.resume().catch(() => {});
+      if (H.ctx && H.ctx.state === 'suspended' && OUT.slept !== H.ctx) H.ctx.resume().catch(() => {}); // not while it rests
       // Safari can refuse to play a guest's voice until a click on the page.
       for (const g of H.guests.values()) {
         if (g.audio && g.audio.paused && g.audio.srcObject) {
