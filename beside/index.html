@@ -781,26 +781,26 @@ button:disabled{opacity:.55;cursor:default}
 /* Just the two of you, nothing shared: the wall has folded down, their camera fills the big window, yours is a
    small framed photo on the sill, and you sit together on one sofa, seen from behind. Double tap: only them. */
 .ndscene,.ndsofa,.ndfold{display:none}
-#watchRoot.nd-room{container-type:size;touch-action:manipulation;-webkit-user-select:none;user-select:none;
+#watchRoot.nd-call{container-type:size;touch-action:manipulation;-webkit-user-select:none;user-select:none;
   --sw:min(80cqw,50cqh);--sh:calc(var(--sw) * .51);--sb:calc(max(18px,env(safe-area-inset-bottom)) + 74px);
   --wt:calc(max(14px,env(safe-area-inset-top)) + 70px);--wbot:calc(var(--sb) + var(--sh) * .66);
   --wh:calc(100cqh - var(--wt) - var(--wbot));--ww:min(calc(100cqw - 36px),calc(var(--wh) * 1.6));--wl:calc(50cqw - var(--ww) / 2)}
-#watchRoot.nd-room .ndscene,#watchRoot.nd-room .ndsofa{display:block}
+#watchRoot.nd-call .ndscene,#watchRoot.nd-call .ndsofa{display:block}
 .ndscene{position:absolute;inset:0;z-index:0;background:radial-gradient(circle at 8% 70%,rgba(255,206,140,.45),transparent 45%),linear-gradient(#8E6A52,#6E4F3E);transition:opacity .5s var(--ease)}
 .ndscene::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(var(--sb) + var(--sh) * .42);background:#5E4234;border-top:6px solid #4E372B}
 .nd-cwin{position:absolute;top:calc(var(--wt) - 8px);left:calc(var(--wl) - 8px);width:calc(var(--ww) + 16px);height:calc(var(--wh) + 16px);border-radius:6px;background:#7A5843;box-shadow:0 14px 30px -14px rgba(0,0,0,.6)}
 .nd-csill{position:absolute;top:calc(var(--wt) + var(--wh) + 4px);left:calc(var(--wl) - 18px);width:calc(var(--ww) + 36px);height:11px;border-radius:3px;background:#8C6750}
 .ndscene .nd-chain{top:calc(var(--wt) - 30px);width:100%;max-width:none;height:18px;pointer-events:none}
-#watchRoot.nd-room .bigslot{top:var(--wt);left:var(--wl);width:var(--ww);height:var(--wh);right:auto;bottom:auto;display:block;padding:0;border-radius:3px;overflow:hidden;background:#1E2236;
+#watchRoot.nd-call .bigslot{top:var(--wt);left:var(--wl);width:var(--ww);height:var(--wh);right:auto;bottom:auto;display:block;padding:0;border-radius:3px;overflow:hidden;background:#1E2236;
   transition:top .55s var(--ease),left .55s var(--ease),width .55s var(--ease),height .55s var(--ease),border-radius .55s}
-#watchRoot.nd-room .bigslot > .tile{position:absolute;inset:0}
-#watchRoot.nd-room .tile.big.face video,#watchRoot.nd-room .tile.half video{object-fit:cover}
-#watchRoot.nd-room .tile.avatar{padding:12px}
+#watchRoot.nd-call .bigslot > .tile{position:absolute;inset:0}
+#watchRoot.nd-call .bigslot > .tile.half:not(.self) video{object-fit:contain} /* their whole face, letterboxed on the window's dark glass */
+#watchRoot.nd-call .tile.avatar{padding:12px}
 /* your camera: a little framed photo on the sill (in Split it stays in the window's corner too) */
-#watchRoot.nd-room .bubbles{top:auto;right:auto;left:calc(var(--wl) + var(--ww) - clamp(64px,18cqw,150px) - 10px);bottom:calc(var(--wbot) + 8px);transition:opacity .4s}
-#watchRoot.nd-room .tile.small.self,#watchRoot.nd-room .bigslot > .tile.half.self{width:clamp(64px,18cqw,150px);aspect-ratio:5/6;border-radius:3px;border:5px solid #EDE1CC;box-shadow:0 8px 18px -8px rgba(0,0,0,.7);transform:rotate(-3deg);background:#2A221B}
-#watchRoot.nd-room .bigslot > .tile.half.self{inset:auto 10px 8px auto;z-index:2;height:auto;transition:opacity .4s}
-#watchRoot.nd-room .tile.half > .label,#watchRoot.nd-room .tile.half.talking::after{display:none}
+#watchRoot.nd-call .bubbles{top:auto;right:auto;left:calc(var(--wl) + var(--ww) - clamp(64px,18cqw,150px) - 10px);bottom:calc(var(--wbot) + 8px);transition:opacity .4s}
+#watchRoot.nd-call .tile.small.self,#watchRoot.nd-call .bigslot > .tile.half.self{width:clamp(64px,18cqw,150px);aspect-ratio:5/6;border-radius:3px;border:5px solid #EDE1CC;box-shadow:0 8px 18px -8px rgba(0,0,0,.7);transform:rotate(-3deg);background:#2A221B}
+#watchRoot.nd-call .bigslot > .tile.half.self{inset:auto 10px 8px auto;z-index:2;height:auto;transition:opacity .4s}
+#watchRoot.nd-call .tile.half > .label,#watchRoot.nd-call .tile.half.talking::after{display:none}
 .ndsofa{position:absolute;z-index:2;left:50%;bottom:var(--sb);width:var(--sw);height:var(--sh);transform:translateX(-50%);pointer-events:none;transition:opacity .45s var(--ease),transform .55s var(--ease)}
 .ndsofa svg{display:block;width:100%;height:100%}
 .ndsofa .tv-arm{display:none}
@@ -811,6 +811,11 @@ button:disabled{opacity:.55;cursor:default}
 #watchRoot.nd-zoom .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
 #watchRoot.nd-zoom .ndscene,#watchRoot.nd-zoom .bubbles,#watchRoot.nd-zoom .bigslot > .tile.half.self{opacity:0;pointer-events:none}
 #watchRoot.nd-zoom .ndsofa{opacity:0;transform:translateX(-50%) translateY(35%)}
+/* an iPhone with the chat open, or on its side: too little room for the scene, so it is zoomed in */
+@media (max-width:700px){body.chat-open #watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
+  body.chat-open #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
+@media (max-height:500px){#watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
+  #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
 /* the wall between your rooms folds down when the call starts */
 .ndfold{position:absolute;inset:0;z-index:3;pointer-events:none;perspective:900px}
 .ndfold.go{display:block}
@@ -1199,8 +1204,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
-<script src="board.js?v=10"></script>
+<script src="board.js?v=11"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=38"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

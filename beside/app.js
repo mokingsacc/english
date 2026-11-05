@@ -100,7 +100,7 @@
     const into = SHELL.includes(prev) && !SHELL.includes(state);
     const back = !!prev && !SHELL.includes(prev) && SHELL.includes(state);
     const snap = into ? tvSnap() : null; // before the tabs go
-    if (into) { ['inviteSheet', 'soundSheet'].forEach((id) => { const sh = $(id); if (sh) sh.hidden = true; }); }
+    if (into) { ['inviteSheet', 'soundSheet'].forEach((id) => { const sh = $(id); if (sh) sh.hidden = true; }); boardSheet(false); }
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
@@ -113,7 +113,7 @@
     if (into) tvOpen(snap);
     else if (back) tvClose();
     if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); roomOff(); }
+    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); if (SHELL.includes(state)) roomOff(); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -140,6 +140,7 @@
     if (home) {
       boardSheetBack();
       try { boardMountNow(); boardOn = true; } catch (e) { boardOn = false; }
+      houseDraw(); // the clocks and times, even with no board
     }
     if (!home && state !== 'live' && state !== 'watching') boardSheet(false);
   }
@@ -230,12 +231,12 @@
     const lt = $('ndLate');
     if (lt) { lt.textContent = late; lt.hidden = !late; }
     const c = hs.countdown;
-    const tag = c ? (c.days === 0 ? 'Today' : c.days === 1 ? '1 day' : c.days + ' days') : 'Countdown';
+    const tag = !c ? 'Countdown' : c.today ? 'Today' : c.past ? c.title : c.days === 1 ? '1 day' : c.days + ' days';
     text('ndTag', tag);
     const ch = $('ndChain');
     if (ch) {
-      ch.style.setProperty('--chain', c ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) + '%' : '60%');
-      ch.setAttribute('aria-label', c ? 'Countdown: ' + tag + ' to ' + c.title : 'Countdown: set one');
+      ch.style.setProperty('--chain', c && !c.past && !c.today ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) + '%' : '60%');
+      ch.setAttribute('aria-label', !c ? 'Countdown: set one' : c.past ? 'Countdown: ' + c.title + ' has been' : 'Countdown: ' + tag + ' to ' + c.title);
     }
     text('ndCalDay', hs.next ? hs.next.day : '');
     text('ndCalWhat', hs.next ? hs.next.title : 'Calendar');
@@ -1382,10 +1383,11 @@
       if (!V.folded) { V.folded = true; foldWall(); }
     }
     V.room = on;
-    root.classList.toggle('nd-room', on);
+    root.classList.toggle('nd-call', on);
     if (!on) setZoom(false);
   }
-  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-room'); setZoom(false); }
+  // Back on Home (a reconnect keeps the room, its zoom, and does not fold the wall again).
+  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-call'); setZoom(false); }
   function foldWall() {
     const f = $('ndFold');
     if (!f || !f.animate) return;
@@ -1399,7 +1401,7 @@
   }
   function setZoom(on) {
     const r = $('watchRoot');
-    app.zoomed = !!on && !!r && r.classList.contains('nd-room');
+    app.zoomed = !!on && !!r && r.classList.contains('nd-call');
     if (r) r.classList.toggle('nd-zoom', app.zoomed);
   }
   // Our own double tap (touch, pen or mouse): Safari on iPhone and iPad sends no dblclick for a quick double tap.
@@ -5092,7 +5094,8 @@
     // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
       const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #bigSlot .tile.half');
-      if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); }
+      // Every click in that 700 ms is swallowed, so the second tap of a double tap never presses a bar button.
+      if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); return; }
       wokeAt = 0;
     }, true);
     document.addEventListener('visibilitychange', () => {

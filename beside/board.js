@@ -1383,22 +1383,23 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
   // The house on Home (app.js draws it): both rooms' time, weather and light, the countdown, the next plan and the
   // list. The light is off late at night there (11 pm to 6 am).
   function house() {
-    if (!S) return null;
-    const b = S.lastView || view();
+    const b = S ? S.lastView || view() : empty(); // no board yet: the clocks still come from local time
+    const F = FIG();
     const now = Date.now();
     const rooms = PLACES.map((p) => {
       const who = p.z === LA ? 'semal' : 'mo';
       const t = parts(now, p.z);
       const w = WX.now[p.z];
       const night = w && typeof w.is_day === 'number' ? w.is_day === 0 : t.h < 6 || t.h >= 19;
-      return { who, mine: who === whoMe(), name: nameFor(who, b), place: p.label, time: timeIn(now, p.z), h: t.h, mi: t.mi,
+      return { who, mine: who === whoMe(), name: S ? nameFor(who, b) : F ? F.NAME[who] : '', place: p.label, time: timeIn(now, p.z), h: t.h, mi: t.mi,
         words: wxWords(p, w), kind: w ? winKind(w.weather_code) : 'none', night, late: t.h >= 23 || t.h < 6 };
     });
     const c = b.countdown;
     const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
     return {
-      loaded: S.loaded, rooms,
-      countdown: c ? { title: c.title, days: Math.max(0, Math.ceil((c.at - now) / DAY)) } : null,
+      loaded: !!(S && S.loaded), rooms,
+      // today: on the day itself; past: the day has gone, so the chain shows its name, not "Today" for good
+      countdown: c ? { title: c.title, days: Math.max(1, Math.ceil((c.at - now) / DAY)), today: keyOf(c.at, HERE) === keyOf(now, HERE), past: c.at < now && keyOf(c.at, HERE) !== keyOf(now, HERE) } : null,
       next: up ? { title: up.title, day: fmt(up.allDay ? 'UTC' : HERE, { weekday: 'short' }).format(up.at) + ' ' + fmt(up.allDay ? 'UTC' : HERE, { day: 'numeric' }).format(up.at) } : null,
       todos: b.todos.filter((t) => !t.done).map((t) => t.text),
     };
