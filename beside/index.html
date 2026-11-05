@@ -668,6 +668,161 @@ button:disabled{opacity:.55;cursor:default}
 .ringfig.go .fig-move{animation:hop 1.8s ease-in-out .7s infinite}
 @keyframes peekin{from{transform:translateX(110%) rotate(-8deg)}to{transform:translateX(0) rotate(-8deg)}}
 @keyframes hop{0%,58%,100%{transform:translateY(0)}68%{transform:translateY(-9px)}78%{transform:translateY(0)}86%{transform:translateY(-4px)}94%{transform:translateY(0)}}
+/* ───────────────────────── Next Door: Home is one house, two rooms ───────────────────────── */
+/* Mo's London room on the left, Semal's LA room on the right, a thin wall between. Each window shows that city's
+   weather and day or night; each room's light is off late at night there. The pictures keep fixed colours. */
+.house{position:relative;min-width:0;padding-top:clamp(40px,7vw,64px)}
+.nd-roof{position:absolute;top:0;left:-2px;right:-2px;width:calc(100% + 4px);height:clamp(48px,8vw,72px);display:block}
+.nd-chimney{position:absolute;top:2px;right:16%;width:22px;height:34px;background:#8A5A48;box-shadow:0 -6px 0 -1px #6F4537}
+.nd-smoke{position:absolute;top:-22px;right:calc(16% + 2px);width:18px;height:22px}
+.nd-smoke i{position:absolute;left:4px;bottom:0;width:10px;height:10px;border-radius:50%;background:#D8CFC3;animation:ndsmoke 5s ease-out infinite}
+.nd-smoke i + i{animation-delay:-2.5s}
+@keyframes ndsmoke{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:.9}100%{transform:translate(6px,-22px) scale(1.5);opacity:0}}
+.nd-flats{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 8px minmax(0,1fr);height:clamp(280px,40svh,440px);padding:6px 8px 0;background:#5A4236;border-radius:0 0 4px 4px;box-shadow:0 10px 0 -2px #4A3329}
+.nd-wall{background:#5A4236}
+.nd-room{--wall:#CBD4D0;--stripe:rgba(255,255,255,.18);--floor:#B98E67;--trim:#EEE6DA;--frame:#F1EBE1;
+  position:relative;container-type:size;overflow:hidden;background:var(--wall);
+  background-image:repeating-linear-gradient(90deg,transparent 0 14px,var(--stripe) 14px 16px)}
+.nd-room[data-who=semal]{--wall:#E8D3B5;--stripe:rgba(255,255,255,.22)}
+.nd-room::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 6%,rgba(255,226,170,.55),transparent 60%);pointer-events:none}
+.nd-room[data-light=off]{--wall:#2C3252;--stripe:rgba(255,255,255,.04);--floor:#463C57;--trim:#4E4766;--frame:#4D4766}
+.nd-room[data-light=off]::before{opacity:0}
+.nd-floor{position:absolute;left:0;right:0;bottom:0;height:10cqh;background:var(--floor);border-top:5px solid var(--trim)}
+/* the light: a lamp hanging from the ceiling, lit or not */
+.nd-lamp{position:absolute;top:0;left:var(--lx,50%);width:24px;margin-left:-12px;height:calc(6cqh + 14px);pointer-events:none}
+.nd-lamp::before{content:"";position:absolute;left:11px;top:0;width:2px;height:6cqh;background:#5A4236}
+.nd-lamp::after{content:"";position:absolute;left:0;bottom:0;width:24px;height:14px;background:#F6D9AE;clip-path:polygon(25% 0,75% 0,100% 100%,0 100%);filter:drop-shadow(0 4px 6px rgba(255,214,140,.9))}
+.nd-room[data-light=off] .nd-lamp::after{background:#544C6C;filter:none}
+.nd-room[data-who=mo]{--lx:42%}
+.nd-room[data-who=semal]{--lx:58%}
+/* the window */
+.nd-win{position:absolute;top:11cqh;height:34cqh;width:min(62cqw,61cqh);left:8cqw;overflow:hidden;--sky:#9CC3DD;--low:#D5E6EC;--far:#7F8C95;--cloud:#F2F4F5;
+  background:linear-gradient(var(--sky),var(--low));border:5px solid var(--frame);box-shadow:0 7px 0 -1px var(--trim)}
+.nd-room[data-who=semal] .nd-win{left:auto;right:8cqw}
+.nd-win::before,.nd-win::after{content:"";position:absolute;z-index:3;background:var(--frame)}
+.nd-win::before{left:calc(50% - 2px);top:0;bottom:0;width:4px}
+.nd-win::after{top:calc(48% - 2px);left:0;right:0;height:4px}
+.nd-win > *{position:absolute;display:block;pointer-events:none}
+.nd-win[data-sky=grey]{--sky:#AEB9BE;--low:#CDD4D6;--cloud:#DDE2E4}
+.nd-win[data-wx=thunder]{--sky:#717986;--low:#99A0A8;--cloud:#B4BAC0}
+.nd-win[data-sky=night]{--sky:#1C2342;--low:#323B63;--far:#141932;--cloud:#545B78}
+.w-sun,.w-moon{top:12%;right:14%;width:clamp(16px,26%,40px);aspect-ratio:1;display:none}
+.w-sun{fill:#F2C46F}
+.w-moon{fill:#F1E6C8}
+.w-stars{inset:0 0 50% 0;width:100%;height:50%;fill:#F1E6C8;display:none}
+.nd-win[data-sky=day]:is([data-wx=clear],[data-wx=part],[data-wx=none]) .w-sun{display:block}
+.nd-win[data-sky=night]:is([data-wx=clear],[data-wx=part],[data-wx=none]) :is(.w-moon,.w-stars){display:block}
+.w-cloud{top:16%;left:4%;width:62%;height:auto;fill:var(--cloud);display:none;animation:nddrift 14s ease-in-out infinite alternate}
+.w-cloud.c2{top:34%;left:auto;right:-8%;width:54%;animation-duration:18s;animation-direction:alternate-reverse}
+.nd-win[data-wx=part] .w-cloud.c1,.nd-win:is([data-wx=cloud],[data-wx=drizzle],[data-wx=rain],[data-wx=thunder],[data-wx=snow]) .w-cloud{display:block}
+@keyframes nddrift{from{transform:translateX(-6%)}to{transform:translateX(8%)}}
+.w-far{left:0;bottom:0;width:100%;height:26%;fill:var(--far)}
+.w-palm{left:4%;bottom:0;height:62%;width:auto;aspect-ratio:60/90;fill:var(--far)}
+.w-fall{inset:0;width:100%;height:100%;display:none}
+.w-fall rect{animation:ndfall 1s linear infinite}
+.nd-win:is([data-wx=rain],[data-wx=thunder]) .w-rain,.nd-win[data-wx=drizzle] .w-drizzle,.nd-win[data-wx=snow] .w-snow{display:block}
+.w-drizzle rect{animation-duration:2.6s}
+.w-snow rect{animation-duration:12s}
+@keyframes ndfall{from{transform:translateY(0)}to{transform:translateY(240px)}}
+.w-fog{left:-30%;width:160%;height:14%;border-radius:999px;background:rgba(236,240,241,.7);display:none;animation:ndfog 16s ease-in-out infinite alternate}
+.w-fog.f1{top:38%}.w-fog.f2{top:64%;animation-direction:alternate-reverse}
+.nd-win[data-wx=fog] .w-fog{display:block}
+.nd-win[data-sky=night] .w-fog{background:rgba(120,128,160,.55)}
+@keyframes ndfog{from{transform:translateX(-10%)}to{transform:translateX(10%)}}
+.w-flash{inset:0;background:#FFFFFF;opacity:0;display:none;z-index:2;animation:ndflash 7s linear infinite}
+.nd-win[data-wx=thunder] .w-flash{display:block}
+@keyframes ndflash{0%,90%,94%,97%,100%{opacity:0}92%{opacity:.75}95.5%{opacity:.45}}
+/* the clock, the calendar, the fridge */
+.nd-clock{position:absolute;top:13cqh;right:6cqw;width:clamp(26px,9cqh,40px);aspect-ratio:1}
+.nd-room[data-who=semal] .nd-clock{right:auto;left:6cqw}
+.nd-clock svg{display:block;width:100%;height:100%}
+.nd-clock circle{fill:#FBF7F0;stroke:#5A4236;stroke-width:2.4}
+.nd-room[data-light=off] .nd-clock circle{fill:#CFCBE0;stroke:#2A2440}
+.nd-clock path{stroke:#5A4236;stroke-width:2.6;stroke-linecap:round;transform-origin:20px 20px}
+.nd-cal,.nd-fridge,.nd-chain,.nd-fig{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.nd-cal{position:absolute;top:calc(14cqh + clamp(30px,10cqh,46px));right:5cqw;width:clamp(42px,16cqw,76px);padding:12px 2px 5px;border-radius:3px;background:#FFF9EF;box-shadow:0 3px 8px -4px rgba(40,20,10,.5);display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.1;text-align:center;transform:rotate(2deg);transition:transform .25s var(--ease)}
+.nd-cal::before{content:"";position:absolute;top:0;left:0;right:0;height:9px;border-radius:3px 3px 0 0;background:#A8462A}
+.nd-cal b{font-size:clamp(9px,2.6cqh,12px);font-weight:700;letter-spacing:.04em;color:#A8462A;text-transform:uppercase}
+.nd-cal span{max-width:100%;padding:0 2px;font-family:var(--font-display);font-size:clamp(11px,3.4cqh,16px);color:#3B2C24;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd-fridge{position:absolute;left:6cqw;bottom:calc(10cqh - 2px);width:clamp(46px,22cqw,96px);height:42cqh;border-radius:8px 8px 4px 4px;background:linear-gradient(90deg,#F3F1EC,#E1DDD5);box-shadow:inset 0 -3px 0 rgba(0,0,0,.08),0 4px 10px -6px rgba(0,0,0,.5);transition:transform .25s var(--ease)}
+.nd-fridge::before{content:"";position:absolute;left:0;right:0;top:30%;height:2px;background:#C9C3B8}
+.nd-fridge::after{content:"";position:absolute;right:6px;top:12%;width:3px;height:12%;border-radius:2px;background:#B8B1A5;box-shadow:0 calc(42cqh * .3) 0 #B8B1A5}
+.nd-room[data-light=off] .nd-fridge{filter:brightness(.62) saturate(.8)}
+.nd-notes{position:absolute;left:8%;right:14%;top:36%;display:flex;flex-direction:column;gap:4px}
+.nd-notes i{padding:3px 3px 0;border-bottom:3px solid transparent;font-style:normal;font-size:clamp(8px,2.4cqh,11px);line-height:1.15;color:#3B2C24;text-align:left;background:#F6E27A;box-shadow:0 2px 3px -2px rgba(0,0,0,.4);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;transform:rotate(-2deg)}
+.nd-notes i:nth-child(2){background:#F4B9A8;transform:rotate(2deg)}
+.nd-notes i:nth-child(3){background:#BFD9B0;transform:rotate(-1deg)}
+/* the paper chain across both rooms counts down the days */
+.nd-chain{position:absolute;z-index:4;top:8px;left:50%;width:var(--chain,80%);max-width:calc(100% - 20px);transform:translateX(-50%);height:42px;display:block}
+.nd-chain svg{display:block;width:100%;height:18px}
+.nd-tag{position:absolute;left:50%;top:14px;transform:translateX(-50%) rotate(-4deg);padding:2px 8px;border-radius:3px;background:#FFF6E6;color:#6B3B2A;font-family:var(--font-display);font-size:13px;line-height:1.3;white-space:nowrap;box-shadow:0 2px 6px -3px rgba(0,0,0,.5)}
+/* the two of you; tap yours and it waves */
+.nd-fig{position:absolute;bottom:5cqh;height:44cqh;aspect-ratio:102/188;left:31cqw;padding:0;transform-origin:50% 100%}
+.nd-room[data-who=semal] .nd-fig{left:auto;right:9cqw}
+.nd-fig svg.fig{display:block;width:100%;height:100%}
+.nd-fig .fig-move{animation:figbob 4s ease-in-out infinite}
+.nd-room[data-who=semal] .nd-fig .fig-move{animation-delay:-2s}
+.nd-fig:disabled{cursor:default}
+.nd-room[data-light=off] .nd-fig{filter:brightness(.7)}
+.nd-fig.wave{animation:ndwave 1.4s var(--ease)}
+.nd-fig .nd-hand{position:absolute;right:-16%;top:30%;width:34%;height:auto;aspect-ratio:1;transform-origin:20% 90%;opacity:0;pointer-events:none}
+.nd-fig.wave .nd-hand{animation:ndhand 1.4s var(--ease)}
+@keyframes ndwave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(3deg)}40%,80%{transform:rotate(-2deg)}}
+@keyframes ndhand{0%{opacity:0;transform:rotate(0)}12%{opacity:1}25%,55%{transform:rotate(-24deg)}40%,70%{transform:rotate(14deg)}85%{opacity:1;transform:rotate(0)}100%{opacity:0}}
+.nd-cal:active,.nd-fridge:active{transform:scale(.96)}
+.nd-cal:focus-visible,.nd-fridge:focus-visible,.nd-chain:focus-visible,.nd-fig:focus-visible{outline:2px solid var(--clay);outline-offset:3px;border-radius:6px}
+.nd-words{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 16px;padding:14px 4px 0}
+.nd-words > div{min-width:0;display:flex;flex-direction:column}
+.nd-words b{font-family:var(--font-display);font-weight:400;font-size:clamp(18px,4.6vw,22px);line-height:1.2;color:var(--ink);overflow-wrap:anywhere}
+.nd-words span{font-size:14px;color:var(--ink-2)}
+.nd-late{padding:6px 4px 0;font-size:15px;color:var(--ink-2)}
+@media (min-width:700px){.nd-room[data-who=mo] .nd-fig{left:38cqw}.nd-room[data-who=semal] .nd-fig{right:16cqw}}
+/* ───────────────────────── Next Door: in a call, one room and one sofa ───────────────────────── */
+/* Just the two of you, nothing shared: the wall has folded down, their camera fills the big window, yours is a
+   small framed photo on the sill, and you sit together on one sofa, seen from behind. Double tap: only them. */
+.ndscene,.ndsofa,.ndfold{display:none}
+#watchRoot.nd-call{container-type:size;touch-action:manipulation;-webkit-user-select:none;user-select:none;
+  --sw:min(80cqw,50cqh);--sh:calc(var(--sw) * .51);--sb:calc(max(18px,env(safe-area-inset-bottom)) + 74px);
+  --wt:calc(max(14px,env(safe-area-inset-top)) + 70px);--wbot:calc(var(--sb) + var(--sh) * .66);
+  --wh:calc(100cqh - var(--wt) - var(--wbot));--ww:min(calc(100cqw - 36px),calc(var(--wh) * 1.6));--wl:calc(50cqw - var(--ww) / 2)}
+#watchRoot.nd-call .ndscene,#watchRoot.nd-call .ndsofa{display:block}
+.ndscene{position:absolute;inset:0;z-index:0;background:radial-gradient(circle at 8% 70%,rgba(255,206,140,.45),transparent 45%),linear-gradient(#8E6A52,#6E4F3E);transition:opacity .5s var(--ease)}
+.ndscene::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(var(--sb) + var(--sh) * .42);background:#5E4234;border-top:6px solid #4E372B}
+.nd-cwin{position:absolute;top:calc(var(--wt) - 8px);left:calc(var(--wl) - 8px);width:calc(var(--ww) + 16px);height:calc(var(--wh) + 16px);border-radius:6px;background:#7A5843;box-shadow:0 14px 30px -14px rgba(0,0,0,.6)}
+.nd-csill{position:absolute;top:calc(var(--wt) + var(--wh) + 4px);left:calc(var(--wl) - 18px);width:calc(var(--ww) + 36px);height:11px;border-radius:3px;background:#8C6750}
+.ndscene .nd-chain{top:calc(var(--wt) - 30px);width:100%;max-width:none;height:18px;pointer-events:none}
+#watchRoot.nd-call .bigslot{top:var(--wt);left:var(--wl);width:var(--ww);height:var(--wh);right:auto;bottom:auto;display:block;padding:0;border-radius:3px;overflow:hidden;background:#1E2236;
+  transition:top .55s var(--ease),left .55s var(--ease),width .55s var(--ease),height .55s var(--ease),border-radius .55s}
+#watchRoot.nd-call .bigslot > .tile{position:absolute;inset:0}
+#watchRoot.nd-call .bigslot > .tile.half:not(.self) video{object-fit:contain} /* their whole face, letterboxed on the window's dark glass */
+#watchRoot.nd-call .tile.avatar{padding:12px}
+/* your camera: a little framed photo on the sill (in Split it stays in the window's corner too) */
+#watchRoot.nd-call .bubbles{top:auto;right:auto;left:calc(var(--wl) + var(--ww) - clamp(64px,18cqw,150px) - 10px);bottom:calc(var(--wbot) + 8px);transition:opacity .4s}
+#watchRoot.nd-call .tile.small.self,#watchRoot.nd-call .bigslot > .tile.half.self{width:clamp(64px,18cqw,150px);aspect-ratio:5/6;border-radius:3px;border:5px solid #EDE1CC;box-shadow:0 8px 18px -8px rgba(0,0,0,.7);transform:rotate(-3deg);background:#2A221B}
+#watchRoot.nd-call .bigslot > .tile.half.self{inset:auto 10px 8px auto;z-index:2;height:auto;transition:opacity .4s}
+#watchRoot.nd-call .tile.half > .label,#watchRoot.nd-call .tile.half.talking::after{display:none}
+.ndsofa{position:absolute;z-index:2;left:50%;bottom:var(--sb);width:var(--sw);height:var(--sh);transform:translateX(-50%);pointer-events:none;transition:opacity .45s var(--ease),transform .55s var(--ease)}
+.ndsofa svg{display:block;width:100%;height:100%}
+.ndsofa .tv-arm{display:none}
+.ndsofa .fig-move{animation:figbob 4s ease-in-out infinite}
+.ndsofa .fig-semal{animation-delay:-2s}
+.ndsofa .fig-semal > .fig-pose{transform:rotate(-4deg);transform-box:fill-box;transform-origin:50% 100%}
+/* zoomed in: only the other person, the whole screen */
+#watchRoot.nd-zoom .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
+#watchRoot.nd-zoom .ndscene,#watchRoot.nd-zoom .bubbles,#watchRoot.nd-zoom .bigslot > .tile.half.self{opacity:0;pointer-events:none}
+#watchRoot.nd-zoom .ndsofa{opacity:0;transform:translateX(-50%) translateY(35%)}
+/* an iPhone with the chat open, or on its side: too little room for the scene, so it is zoomed in */
+@media (max-width:700px){body.chat-open #watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
+  body.chat-open #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
+@media (max-height:500px){#watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
+  #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
+/* the wall between your rooms folds down when the call starts */
+.ndfold{position:absolute;inset:0;z-index:3;pointer-events:none;perspective:900px}
+.ndfold.go{display:block}
+.ndfold i{position:absolute;top:0;bottom:0;width:50%}
+.ndfold .l{left:0;background:#36405E}
+.ndfold .r{right:0;background:#E2C097}
+.ndfold b{position:absolute;left:calc(50% - 6px);top:calc(var(--wt) - 40px);bottom:calc(var(--sb) * .5);width:12px;background:#5A4236;transform-origin:50% 100%}
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
 /* nobody is looking (window minimised, another tab, phone locked): every animation waits, to save battery */
@@ -675,6 +830,12 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+        <pattern id="ndRain" width="22" height="24" patternUnits="userSpaceOnUse"><path d="M6 2l-2 7M17 14l-2 7" stroke="#EEF3F5" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round"/></pattern>
+        <pattern id="ndDrizzle" width="26" height="30" patternUnits="userSpaceOnUse"><path d="M7 4l-1 4M20 19l-1 4" stroke="#EEF3F5" stroke-opacity=".8" stroke-width="1.1" stroke-linecap="round"/></pattern>
+        <pattern id="ndSnow" width="24" height="30" patternUnits="userSpaceOnUse"><circle cx="6" cy="6" r="1.8" fill="#FFFFFF"/><circle cx="17" cy="20" r="1.5" fill="#FFFFFF"/></pattern>
+        <pattern id="ndChainP" width="64" height="18" patternUnits="userSpaceOnUse"><g fill="none" stroke-width="2.6"><ellipse cx="8" cy="9" rx="6.5" ry="3.6" stroke="#C8573C"/><ellipse cx="24" cy="9" rx="3.4" ry="5.6" stroke="#E2B04A"/><ellipse cx="40" cy="9" rx="6.5" ry="3.6" stroke="#7FA07A"/><ellipse cx="56" cy="9" rx="3.4" ry="5.6" stroke="#D98F6B"/></g></pattern>
+      </defs></svg>
 <div class="note" id="note" role="status" aria-live="polite" hidden></div>
 
 <!-- NOT IN A CALL: the tabs. Home, Plans, Calls, Hearts. The board (board.js) draws its parts into the b* boxes. -->
@@ -695,9 +856,56 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <p><b>First, paste your Beside link.</b> Use the link you were sent, or your own room link (on your Mac: More, then Use this room on my iPad or iPhone).</p>
       <div class="linkask-row"><input id="linkAskInput" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://sitbeside.pages.dev/#…" aria-label="Your Beside link"><button class="btn primary" id="linkAskGo">Open</button></div>
     </div>
+    <div class="house" id="house">
+      <svg class="nd-roof" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L200 3 L400 60 Z" fill="#8C4B3B"/><path d="M0 60 L200 3 L400 60" fill="none" stroke="#6F3A2E" stroke-width="6" vector-effect="non-scaling-stroke"/></svg>
+      <span class="nd-chimney" aria-hidden="true"></span><span class="nd-smoke" aria-hidden="true"><i></i><i></i></span>
+      <div class="nd-flats bb-figs">
+        <div class="nd-room" id="ndRoomMo" data-who="mo">
+          <span class="nd-lamp" aria-hidden="true"></span>
+          <div class="nd-win" aria-hidden="true">
+            <svg class="w-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg>
+            <svg class="w-moon" viewBox="0 0 20 20"><path d="M11 2 A8 8 0 1 0 18 13 A6.3 6.3 0 1 1 11 2 Z"/></svg>
+            <svg class="w-stars"><circle cx="14%" cy="30%" r="1.3"/><circle cx="34%" cy="62%" r="1"/><circle cx="52%" cy="22%" r="1.2"/><circle cx="24%" cy="84%" r="1"/><circle cx="62%" cy="74%" r="1.1"/></svg>
+            <svg class="w-cloud c1" viewBox="0 0 120 50"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z"/></svg>
+            <svg class="w-cloud c2" viewBox="0 0 120 50"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z"/></svg>
+            <svg class="w-far" viewBox="0 0 94 50" preserveAspectRatio="none"><path d="M0 50 V30 H10 V18 H16 V30 H30 V24 H50 V12 H56 V24 H72 V30 H86 V20 H92 V30 H94 V50 Z"/></svg>
+            <svg class="w-fall w-rain"><rect y="-240" width="100%" height="1400" fill="url(#ndRain)"/></svg>
+            <svg class="w-fall w-drizzle"><rect y="-240" width="100%" height="1400" fill="url(#ndDrizzle)"/></svg>
+            <svg class="w-fall w-snow"><rect y="-240" width="100%" height="1400" fill="url(#ndSnow)"/></svg>
+            <span class="w-fog f1"></span><span class="w-fog f2"></span><span class="w-flash"></span>
+          </div>
+          <span class="nd-clock" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path class="h-hr" d="M20 20 V11"/><path class="h-mn" d="M20 20 V7"/></svg></span>
+          <button type="button" class="nd-cal" id="ndCal" aria-label="Calendar"><b id="ndCalDay"></b><span id="ndCalWhat">Calendar</span></button>
+          <span class="nd-floor" aria-hidden="true"></span>
+          <button type="button" class="nd-fig" id="ndFigMo" data-who="mo" disabled></button>
+        </div>
+        <span class="nd-wall" aria-hidden="true"></span>
+        <div class="nd-room" id="ndRoomSemal" data-who="semal">
+          <span class="nd-lamp" aria-hidden="true"></span>
+          <div class="nd-win" aria-hidden="true">
+            <svg class="w-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg>
+            <svg class="w-moon" viewBox="0 0 20 20"><path d="M11 2 A8 8 0 1 0 18 13 A6.3 6.3 0 1 1 11 2 Z"/></svg>
+            <svg class="w-stars"><circle cx="18%" cy="26%" r="1.2"/><circle cx="40%" cy="58%" r="1.3"/><circle cx="30%" cy="18%" r="1"/><circle cx="56%" cy="40%" r="1"/><circle cx="12%" cy="70%" r="1.1"/></svg>
+            <svg class="w-cloud c1" viewBox="0 0 120 50"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z"/></svg>
+            <svg class="w-cloud c2" viewBox="0 0 120 50"><path d="M24 44 a14 14 0 0 1 2-28 a20 20 0 0 1 38-6 a16 16 0 0 1 30 10 a12 12 0 0 1 2 24 Z"/></svg>
+            <svg class="w-palm" viewBox="0 0 60 90"><path d="M15 90 Q18 56 27 31 L30 32 Q22 58 20 90 Z"/><path d="M28 30 Q10 22 0 32 Q14 26 28 33 Z M28 30 Q44 18 58 24 Q42 26 29 33 Z M28 30 Q18 10 6 8 Q20 16 27 31 Z M28 30 Q38 10 52 6 Q38 16 29 31 Z"/></svg>
+            <svg class="w-fall w-rain"><rect y="-240" width="100%" height="1400" fill="url(#ndRain)"/></svg>
+            <svg class="w-fall w-drizzle"><rect y="-240" width="100%" height="1400" fill="url(#ndDrizzle)"/></svg>
+            <svg class="w-fall w-snow"><rect y="-240" width="100%" height="1400" fill="url(#ndSnow)"/></svg>
+            <span class="w-fog f1"></span><span class="w-fog f2"></span><span class="w-flash"></span>
+          </div>
+          <span class="nd-clock" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path class="h-hr" d="M20 20 V11"/><path class="h-mn" d="M20 20 V7"/></svg></span>
+          <button type="button" class="nd-fridge" id="ndFridge" aria-label="To-do list"><span class="nd-notes" id="ndNotes"></span></button>
+          <span class="nd-floor" aria-hidden="true"></span>
+          <button type="button" class="nd-fig" id="ndFigSemal" data-who="semal" disabled></button>
+        </div>
+        <button type="button" class="nd-chain" id="ndChain" aria-label="Countdown"><svg aria-hidden="true"><rect width="100%" height="18" fill="url(#ndChainP)"/></svg><span class="nd-tag" id="ndTag">Countdown</span></button>
+      </div>
+      <div class="nd-words"><div><b id="ndTimeMo"></b><span id="ndWxMo"></span></div><div><b id="ndTimeSemal"></b><span id="ndWxSemal"></span></div></div>
+      <p class="nd-late" id="ndLate" hidden></p>
+    </div>
     <div class="home-grid">
       <div class="home-col">
-        <div id="bSkies"></div>
         <div class="acts" data-role="host">
           <button class="act-main" id="homeRingBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span class="act-words"><b id="homeRingText">Ring them</b><small>Rings their phone</small></span></button>
           <button class="act-round" id="videoBtn" aria-label="Video call" title="Video call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg></button>
@@ -713,7 +921,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       </div>
       <div class="home-col">
         <div id="bHomeThink"></div>
-        <div class="home-pair"><div id="bHomeCount"></div><div id="bHomeNext"></div></div>
+        <!-- the board still draws these; the house shows them now, and the chain opens the countdown -->
+        <div hidden><div id="bSkies"></div><div class="home-pair"><div id="bHomeCount"></div><div id="bHomeNext"></div></div></div>
       </div>
     </div>
   </div>
@@ -802,7 +1011,10 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <!-- CALL: host (live) and guest (watching) share one stage -->
 <section class="stage watch" data-state="live watching" hidden>
   <div class="viewport" id="watchRoot">
+    <div class="ndscene" aria-hidden="true"><span class="nd-chain"><svg><rect width="100%" height="18" fill="url(#ndChainP)"/></svg></span><span class="nd-cwin"></span><span class="nd-csill"></span></div>
     <div class="bigslot" id="bigSlot"></div>
+    <div class="ndsofa" id="ndSofa" aria-hidden="true"></div>
+    <div class="ndfold" id="ndFold" aria-hidden="true"><i class="l"></i><i class="r"></i><b></b></div>
     <div class="bubbles" id="bubbles"></div>
     <div class="ytbox" id="ytBox" hidden>
       <div class="ytwrap"><div class="ytframe" id="ytFrame"></div></div>
@@ -991,9 +1203,9 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="figures.js?v=5"></script>
-<script src="board.js?v=9"></script>
+<script src="figures.js?v=6"></script>
+<script src="board.js?v=11"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=37"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

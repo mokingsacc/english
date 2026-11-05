@@ -138,8 +138,20 @@ ${wrap('mo', drawMo('front', s))}${wrap('semal', drawSemal('front', s))}
 </svg>`;
   }
 
+  // In a call (Next Door): the two on one sofa, seen from behind, with nothing else around them.
+  function sofaBack(o) {
+    o = o || {};
+    const s = next();
+    return `<svg class="fig-scene fig-sofaback ${o.cls || ''}" viewBox="60 36 180 92" ${a11y(o.label === '' ? '' : (o.label || 'Mo and Semal on one sofa, seen from behind'))} focusable="false" preserveAspectRatio="xMidYMax meet">${defs(s)}
+<g transform="translate(0 12) scale(1 0.92)">${wrap('semal', drawSemal('back', s))}${wrap('mo', drawMo('back', s))}</g>
+<rect x="70" y="91" width="160" height="37" rx="14" fill="#B06A52"/>
+<path d="M150 95 V126" stroke="#9C5B45" stroke-width="1.6"/>
+<rect x="60" y="99" width="26" height="29" rx="10" fill="#9C5B45"/><rect x="214" y="99" width="26" height="29" rx="10" fill="#9C5B45"/>
+</svg>`;
+  }
+
   // A soft heart, for the one that floats across.
   const softHeart = (cls) => `<svg class="${cls || ''}" viewBox="-12 -12 24 24" aria-hidden="true" focusable="false"><path d="M0 9 C-9 3.5 -10 -2.5 -5.5 -5 C-2.8 -6.4 -0.8 -5 0 -3 C0.8 -5 2.8 -6.4 5.5 -5 C10 -2.5 9 3.5 0 9 Z" fill="#E8907A"/></svg>`;
 
-  window.BesideFigures = { drawMo, drawSemal, figure, pair, sofa, tvRoom, softHeart, NAME };
+  window.BesideFigures = { drawMo, drawSemal, figure, pair, sofa, tvRoom, sofaBack, softHeart, NAME };
 })();
