@@ -441,6 +441,9 @@ body.chat-open .stage.watch .viewport{right:360px}
 .viewer img{max-width:100%;max-height:calc(100dvh - 32px);border-radius:8px}
 body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:12px;z-index:6;display:grid;place-items:center;border:2px dashed rgba(240,231,216,.6);border-radius:20px;background:rgba(32,26,19,.55);color:#F0E7D8;font-size:20px;font-weight:600;pointer-events:none}
 /* pointing: a dot with the person's initial, on the same spot for everyone */
+/* a double tap switches between the room and the plain call, so it never zooms the page or selects text */
+#watchRoot{touch-action:manipulation}
+#watchRoot .tile,#watchRoot .bigslot,#watchRoot .bubbles{-webkit-user-select:none;user-select:none}
 #screenTile{touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #screenVideo{pointer-events:none}
 .dots{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;pointer-events:none}
@@ -1245,6 +1248,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="figures.js?v=6"></script>
 <script src="board.js?v=14"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>
