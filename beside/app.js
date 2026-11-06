@@ -1300,7 +1300,7 @@
   // ---------- VIEW (one call stage for both roles) ----------
   // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
   // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
-  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false };
+  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false, plain: store.get('beside.plaincall') === '1', roomOk: false, swapT: 0, noClick: 0 };
   // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
   // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
   const LAYOUT_ICON = {
@@ -1433,7 +1433,9 @@
     root.dataset.faces = ytOn && smalls.length ? '1' : '';
     root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
     // Next Door: just one other person and nothing shared, so the call is one room (see roomLook).
-    roomLook(root, !alone && !screen && !ytOn && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1));
+    V.roomOk = !alone && !screen && !ytOn && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1);
+    roomLook(root, V.roomOk && !V.plain);
+    app.zoomed = V.roomOk && V.plain; // the plain call is showing (for the automated tests)
     root.querySelectorAll('.tile').forEach((el) => {
       if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
       el.hidden = true;
@@ -1480,7 +1482,9 @@
   // ---------- NEXT DOOR: the call as one room ----------
   // When the call connects, the wall between your rooms folds down (a plain fade with reduced motion). Their camera
   // fills the big window, yours is the framed photo on the sill, and the two of you sit on one sofa, seen from
-  // behind. Double tap anywhere but the controls: it zooms until only they fill the screen; double tap to go back.
+  // behind. Double tap anywhere but the controls for the plain call screen from before the house (Mo, 6 Nov 2026:
+  // "when i double click on the screen i want exactly the same video call setting that was present before this
+  // whole re-design"); double tap again for the room. Each device remembers which one it last showed.
   // More people, a shared screen or a video together keep the usual view.
   function roomLook(root, on) {
     if (on && !V.room) {
@@ -1490,10 +1494,9 @@
     }
     V.room = on;
     root.classList.toggle('nd-call', on);
-    if (!on) setZoom(false);
   }
   // Back on Home (a reconnect keeps the room, its zoom, and does not fold the wall again).
-  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-call'); setZoom(false); }
+  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-call'); }
   function foldWall() {
     const f = $('ndFold');
     if (!f || !f.animate) return;
@@ -1505,26 +1508,35 @@
       { duration: 1000, easing: 'cubic-bezier(.55,0,.35,1)', fill: 'forwards' });
     f.querySelectorAll('i').forEach((el) => el.animate([{ opacity: 0.94 }, { opacity: 0.94, offset: 0.4 }, { opacity: 0 }], { duration: 1000, easing: 'ease-in-out', fill: 'forwards' }).onfinish = done);
   }
-  function setZoom(on) {
-    const r = $('watchRoot');
-    app.zoomed = !!on && !!r && r.classList.contains('nd-call');
-    if (r) r.classList.toggle('nd-zoom', app.zoomed);
+  function setPlain(on) {
+    V.plain = !!on;
+    store.set('beside.plaincall', V.plain ? '1' : '0');
+    layout();
   }
   // Our own double tap (touch, pen or mouse): Safari on iPhone and iPad sends no dblclick for a quick double tap.
   let dtap = null;
   function zoomTap(e) {
     const r = $('watchRoot');
-    if (!V.room || !r || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!V.roomOk || !r || (e.pointerType === 'mouse' && e.button !== 0)) return;
     if (e.target && e.target.closest && e.target.closest('button, input, a, .dock, .hud .top, .soundpop, .peek, .hear, .ytbox')) { dtap = null; return; }
     const now = Date.now();
-    if (dtap && now - dtap.t < 400 && Math.hypot(e.clientX - dtap.x, e.clientY - dtap.y) < 40) { dtap = null; setZoom(!app.zoomed); return; }
+    if (dtap && now - dtap.t < 400 && Math.hypot(e.clientX - dtap.x, e.clientY - dtap.y) < 40) {
+      dtap = null; clearTimeout(V.swapT); V.noClick = now + 450; // this tap's click is not a swap
+      setPlain(!V.plain);
+      return;
+    }
     dtap = { t: now, x: e.clientX, y: e.clientY };
   }
 
   // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
   function swapTap(e) {
     if (CV.kind === 'video' && amSharing() && e.target && e.target.closest && e.target.closest('#screenTile')) { videoToggle(); return; }
-    if (V.room) return; // in the room a tap is half of a double tap
+    if (V.room || Date.now() < V.noClick) return; // in the room a tap is half of a double tap
+    // In the plain call a tap still swaps, a moment later, unless it turns out to be half of a double tap.
+    if (V.roomOk) { clearTimeout(V.swapT); V.swapT = setTimeout(() => swapAct(e), 320); return; }
+    swapAct(e);
+  }
+  function swapAct(e) {
     // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
     if (V.pair) {
       const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
