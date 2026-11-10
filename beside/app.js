@@ -4943,8 +4943,9 @@
     const micRow = checkRow('mic', 'Microphone');
     const server = checkRow('server', 'Can reach the call server');
     const net = checkRow('net', 'Network allows direct calls');
+    const relayRow = checkRow('relay', 'Relay for blocked networks');
     const link = checkRow('link', isGuest ? 'Connection to ' + (theirName || 'them') : 'Connection to your friend');
-    [basics, micRow, server, net, link].forEach((r) => r.set('wait'));
+    [basics, micRow, server, net, relayRow, link].forEach((r) => r.set('wait'));
 
     if (!window.isSecureContext) basics.set('bad', 'This page must be opened with https:// at the start. Use the link exactly as it was sent.');
     else if (!window.RTCPeerConnection) basics.set('bad', 'This browser is too old for calls. Update it, or use Chrome or Safari.');
@@ -5019,6 +5020,30 @@
       } finally { if (pc) pc.close(); }
     })();
 
+    // The relay, really tried (Mo, 10 Nov 2026, after "Can't connect you two"): a connection that may only use the
+    // relay looks for a way in. Finding one means a blocked network can still carry the call from this device.
+    const relayP = (async () => {
+      if (srv) return relayRow.set('ok', '', 'Test mode');
+      if (!netReady()) await NET.p;
+      if (!NET.relay) { netAgain(); return relayRow.set('bad', 'Beside couldn’t get its relay ready. Calls still work when both networks allow direct calls. Close Beside, open it again and run this check once more.', 'Not ready'); }
+      let pc;
+      try {
+        pc = new RTCPeerConnection({ iceServers: NET.ice, iceTransportPolicy: 'relay' });
+        pc.createDataChannel('x');
+        let got = 0;
+        const done = new Promise((res) => {
+          pc.onicecandidate = (e) => { if (!e.candidate) res(); else if ((parseCand(e.candidate.candidate) || {}).typ === 'relay') { got++; setTimeout(res, 400); } };
+          setTimeout(res, 8000);
+        });
+        await pc.setLocalDescription(await pc.createOffer());
+        await done;
+        if (got) relayRow.set('ok', '', 'Ready');
+        else relayRow.set('bad', 'This network won’t let Beside reach its relay. If a call can’t connect, one of you should try another network.', 'Blocked');
+      } catch (e) {
+        relayRow.set('bad', 'Couldn’t test the relay (' + ((e && e.name) || 'unknown') + ').');
+      } finally { if (pc) pc.close(); }
+    })();
+
     const SLOW = 'The delay is high. Moving closer to the Wi-Fi router, or closing big downloads and other video calls, can help.';
     const linkP = (async () => {
       if (isGuest) {
@@ -5039,7 +5064,7 @@
       }
     })();
 
-    await Promise.all([micP, serverP, netP, linkP]);
+    await Promise.all([micP, serverP, netP, relayP, linkP]);
     const vals = Object.values(app.checks);
     const bad = vals.filter((c) => c.state === 'bad').length;
     const warn = vals.filter((c) => c.state === 'warn').length;
@@ -5048,7 +5073,7 @@
     if (el) {
       el.textContent = '';
       const b = document.createElement('b');
-      b.textContent = fine + ' of 5 fine';
+      b.textContent = fine + ' of 6 fine';
       el.append(b, bad ? ' · ' + bad + (bad === 1 ? ' problem' : ' problems') : warn ? ' · 1 note' : ' · nothing to fix');
     }
     app.checkDone = true;
