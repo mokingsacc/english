@@ -22,7 +22,7 @@
   const OWN = srv ? (spare ? at(srv, '/') : null) : (/(^|\.)sitbeside\.pages\.dev$/.test(location.hostname) ? { host: location.hostname, port: 443, path: '/peerjs/', secure: true } : null);
   const FREE = srv ? at(spare || srv, '/') : {};
   // NET.own: the own server answered its health check. NET.ice: STUN, plus relay passwords when we got them.
-  const NET = { own: false, ice: srv ? [] : ICE, at: 0, p: null };
+  const NET = { own: false, ice: srv ? [] : ICE, at: 0, p: null, relay: false, relayAt: 0 };
   const opts = (free) => ({ ...(OWN && NET.own && !free ? OWN : FREE), config: { iceServers: NET.ice }, debug: 0 });
   async function getJSON(u, ms) {
     const c = new AbortController();
@@ -31,20 +31,44 @@
   }
   // Checked when the page opens, and again before a call if it's been a while (the passwords last 12 hours).
   // Returns true when ready; otherwise NET.p resolves once it is.
+  // Mo, 10 Nov 2026: "Can't connect you two ... It was working before". The relay carries a call across a network
+  // that blocks direct calls, and three things could leave a device without it: one slow answer to the password
+  // request meant no relay for six hours; a link left open for hours (our room) kept passwords past their 12
+  // hours; and a retry after a failed connection used the same old passwords. Now a missing relay is asked for
+  // again within a minute, every open link gets the newest passwords for its next connection (netPeers), they
+  // are renewed while a link is open (netKeep), and a failed connection asks for fresh ones before it retries.
   function netReady() {
     if (!OWN || NET.p) return !OWN;
-    if (NET.at && Date.now() - NET.at < (NET.own ? 6 * 3600e3 : 60e3)) return true;
-    const base = srv ? 'http://' + srv : '';
-    NET.p = Promise.all([getJSON(base + '/peerjs/health', 3000), srv ? null : getJSON('/peerjs/turn', 4000)]).then(([h, t]) => {
-      NET.own = !!(h && h.ok);
-      const relay = t && Array.isArray(t.iceServers) ? t.iceServers.filter((x) => x && x.username && x.credential) : [];
-      if (!srv) NET.ice = ICE.concat(relay);
-      app.net = { own: NET.own, relay: relay.length > 0 };
-      NET.at = Date.now();
-      NET.p = null;
-    });
+    const age = Date.now() - NET.at;
+    if (NET.at && age < (NET.own ? 6 * 3600e3 : 60e3)) {
+      if (!NET.relay && !srv && age > 60e3) netAsk(); // no relay yet: ask again quietly, nobody waits for it
+      return true;
+    }
+    netAsk();
     return false;
   }
+  function netAsk() {
+    if (!OWN || NET.p) return;
+    const base = srv ? 'http://' + srv : '';
+    NET.p = Promise.all([getJSON(base + '/peerjs/health', 3000), srv ? null : getJSON('/peerjs/turn', 6000)]).then(([h, t]) => {
+      NET.own = !!(h && h.ok);
+      const relay = t && Array.isArray(t.iceServers) ? t.iceServers.filter((x) => x && x.username && x.credential) : [];
+      // A request that failed keeps the passwords we have (they last 12 hours): better than none.
+      if (!srv && (relay.length || !NET.relay || Date.now() - NET.relayAt > 11 * 3600e3)) { NET.ice = ICE.concat(relay); NET.relay = relay.length > 0; if (NET.relay) NET.relayAt = Date.now(); }
+      app.net = { own: NET.own, relay: NET.relay };
+      NET.at = Date.now();
+      NET.p = null;
+      netPeers();
+    });
+  }
+  // PeerJS reads a link's settings each time it makes a connection, so an open link can be given new passwords.
+  function netPeers() {
+    [H.peer, H.spare, G.peer].forEach((p) => { if (p && !p.destroyed && p.options) p.options.config = { ...(p.options.config || {}), iceServers: NET.ice }; });
+  }
+  // While a link is open: renew in good time (every 10 minutes it checks; also when Beside comes back on screen).
+  function netKeep() { if ((H.peer && !H.peer.destroyed) || (G.peer && !G.peer.destroyed)) netReady(); }
+  // A connection just failed: get fresh relay passwords for the retry (at most every 20 s).
+  function netAgain() { if (!srv && Date.now() - NET.at > 20000) netAsk(); }
   function whenNet(fn) { if (netReady()) fn(); else NET.p.then(fn); }
   const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
   const NET_ERR = /^(network|server-error|socket-error|socket-closed)$/;
@@ -93,6 +117,7 @@
   const app = { state: '', log: [], states: [], guestPeers: 0, hostPeers: 0, mv: [] };
   window.__beside = app; // for the automated tests
   netReady(); // ask the own call server early, so it's known by the time someone presses a button
+  setInterval(netKeep, 10 * 60e3);
   // Not in a call (start, join, ended): the tabs. In a call (waiting, live, watching): the call, full screen.
   const SHELL = ['idle', 'join', 'ended'];
   function show(state) {
@@ -3502,6 +3527,7 @@
     H.knocks.set(conn.peer, at);
     if (prev && at - prev >= 10000 && at - prev <= 40000 && ![...H.guests.values()].some((g) => g.conn.peer === conn.peer)) {
       note((cleanName(conn.metadata && conn.metadata.name) || 'Someone') + KNOCK_FAIL + NET_WHY, 'stay');
+      netAgain();
     }
     conn.on('open', () => { H.knocks.delete(conn.peer); hostAddGuest(conn); });
     conn.on('close', () => hostDropGuest(conn.connectionId));
@@ -3569,7 +3595,7 @@
       hostVoicePick();
       iceProblem(pc,
         (never) => {
-          if (never) note((g.name || 'Your guest') + ' couldn’t connect. ' + NET_WHY, 'stay');
+          if (never) { note((g.name || 'Your guest') + ' couldn’t connect. ' + NET_WHY, 'stay'); netAgain(); }
           hostDropGuest(conn.connectionId); // after a drop the guest reconnects by itself
         },
         () => { text('liveHint', 'Connection is shaky. Reconnecting…'); },
@@ -4366,7 +4392,7 @@
           G.camOn = false;
           roomReset();
           guestFace();
-          if (never) wait('Can’t connect you two.', 'Trying again…', NET_WHY);
+          if (never) { wait('Can’t connect you two.', 'Trying again…', NET_WHY); netAgain(); }
           else { G.lost = G.dropped = true; lostText(); }
           G.tries = 0;
           guestRetry();
@@ -4420,7 +4446,7 @@
         else guestConnect();
         return;
       }
-      if (heard && age >= 15000) { wait('Can’t connect you two.', 'Trying again…', NET_WHY); guestRetry(); return; }
+      if (heard && age >= 15000) { wait('Can’t connect you two.', 'Trying again…', NET_WHY); netAgain(); guestRetry(); return; }
       G.openTimer = setTimeout(check, 1000);
     };
     clearTimeout(G.openTimer);
@@ -5223,6 +5249,7 @@
         return;
       }
       if (W.id) setTimeout(() => { ytSync(true); ytBar(); }, 300);
+      netKeep();
       if (inCall() || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
       resumeMedia();
     });
