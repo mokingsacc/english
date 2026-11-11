@@ -1,7 +1,7 @@
 // The shape can be built: every curb meets the circle as drawn, and a car can follow every movement with the
 // required clearances from curbs and lines.
 
-import { num, theLeg, sentence } from '../format.js';
+import { num, whole, theLeg, sentence } from '../format.js';
 
 export default {
   id: 'geometry',
@@ -28,7 +28,7 @@ export default {
     for (const L of ctx.geometry.legs) {
       items.push({
         leg: L.id, status: 'pass', value: L.entryWidthBuilt,
-        text: sentence(`${theLeg(L.name)} is ${num(L.entryWidthBuilt)} ft wide at the entry and ${num(L.exitWidthBuilt)} ft wide at the exit as built, measured from the end of the splitter island to the outer curb.`),
+        text: sentence(`${theLeg(L.name)} is ${num(L.entryWidthBuilt)} ft wide at the entry and ${num(L.exitWidthBuilt)} ft wide at the exit as built, measured square to the outer curb from where the splitter island meets the circle. Its curb radii are ${whole(L.entryRadiusBuilt)} ft at the entry and ${whole(L.exitRadiusBuilt)} ft at the exit.`),
       });
     }
     const status = failedMoves.length ? 'fail' : (ctx.warnings || []).length ? 'warn' : 'pass';
@@ -44,7 +44,9 @@ export default {
         : `The curbs and islands fit together, every curb meets the circle on a tangent, and a car can drive all ${n} movements keeping the required clearances from curbs and lines.`,
       fix: failedMoves.length
         ? 'Widen the entry or exit named in the problem, make the circulatory roadway wider, or reduce the splitter island width there.'
-        : null,
+        : (ctx.warnings || []).length
+          ? 'Each warning says which legs and values are involved and what to change.'
+          : null,
       where: {
         legs: [...new Set(failedMoves.map((m) => m.from))],
         movements: failedMoves.map((m) => m.id),

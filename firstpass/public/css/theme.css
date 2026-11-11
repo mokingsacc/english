@@ -1,0 +1,72 @@
+/* The dark CAD theme: colour and size tokens, the base font, buttons and fields. Every other sheet uses these tokens. */
+:root {
+  --c-frame: #2b323c;        /* title bar, tab strips, status bar */
+  --c-ribbon: #3b4351;       /* ribbon panels */
+  --c-ribbon-title: #323945; /* the strip under each ribbon panel */
+  --c-palette: #333b47;      /* palettes and windows */
+  --c-row: #3a424f;
+  --c-row-alt: #363e4a;
+  --c-cat: #2c333d;          /* category rows */
+  --c-line: #4a5563;
+  --c-line-soft: #414b58;
+  --c-ink: #e3e8ee;
+  --c-ink-dim: #a7b1bd;
+  --c-ink-faint: #7d8896;
+  --c-hover: #4a5668;
+  --c-press: #2b5f99;
+  --c-select: #275a92;       /* a selected row */
+  --c-accent: #2f80d1;
+  --c-ctx: #1d8a78;          /* contextual ribbon tabs */
+  --c-field: #1f252d;
+  --c-model: #212830;        /* model space */
+  --c-pass: #3ccf6e;
+  --c-warn: #ffcc00;
+  --c-fail: #ff4a3d;
+  --c-info: #6fb6ff;
+  --c-claude: #d9a6ff;
+  --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Consolas", "Cascadia Mono", "Menlo", "DejaVu Sans Mono", monospace;
+  --fs: 12px;
+
+  /* The Report a problem sheet (public/js/shared/report-sheet.js) reads these. */
+  --fp-line: var(--c-line);
+  --fp-panel: var(--c-palette);
+  --fp-ink: var(--c-ink);
+  --fp-font: var(--font);
+  --fp-field: var(--c-field);
+  --fp-button: #434d5b;
+  --fp-accent: var(--c-accent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--c-frame); color: var(--c-ink); font: var(--fs)/1.35 var(--font); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: default; }
+[hidden] { display: none !important; }
+.muted { color: var(--c-ink-dim); }
+.noscript { padding: 24px; }
+
+.icw { display: inline-flex; flex: none; align-items: center; justify-content: center; line-height: 0; }
+.ico { display: block; }
+
+.btn {
+  min-height: 26px; padding: 0 12px; border: 1px solid var(--c-line); border-radius: 2px;
+  background: #434d5b; color: var(--c-ink);
+}
+.btn:hover { background: var(--c-hover); }
+.btn.go { background: var(--c-accent); border-color: transparent; color: #fff; }
+.btn.go:hover { background: #3a8ee0; }
+
+input[type="text"], select {
+  height: 22px; padding: 0 5px; border: 1px solid var(--c-line); border-radius: 2px; background: var(--c-field); color: var(--c-ink);
+}
+input[type="text"]:focus, select:focus { outline: none; border-color: var(--c-accent); }
+:focus-visible { outline: 1px solid var(--c-accent); outline-offset: -1px; }
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--c-palette); }
+::-webkit-scrollbar-thumb { background: #56616f; border: 3px solid var(--c-palette); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #6b7786; }
+::-webkit-scrollbar-corner { background: var(--c-palette); }

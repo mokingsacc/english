@@ -83,7 +83,7 @@ test('evaluate is deterministic, whatever ran before it', () => {
   assert.equal(a, b);
 });
 
-test('a T shape and a skewed four-leg evaluate, and the literal skew is reported as too tight', () => {
+test('a T shape and the literal skew evaluate; corners that close up warn; legs too close fail in words', () => {
   const t = evaluate(shapes().t, {});
   assert.ok(t.ok);
   assert.equal(t.movements.length, 6);
@@ -93,15 +93,38 @@ test('a T shape and a skewed four-leg evaluate, and the literal skew is reported
   assert.equal(stem.R.R2, null);
   assert.ok(stem.V.V1 > 0);
 
-  const skew = evaluate(shapes().skew, {});
-  assert.ok(skew.ok, String(skew.problems));
-  assert.equal(skew.movements.length, 12);
-
+  // The literal skew from the first brief (bearings 0, 75, 180, 255 at the default sizes) now builds, and
+  // every movement fits, the right turns between the close legs included.
   const literal = defaultRoundabout();
   literal.legs = [0, 75, 180, 255].map((b) => defaultLeg(b));
-  const bad = evaluate(literal, {});
+  const skew = evaluate(literal, {});
+  assert.ok(skew.ok, String(skew.problems));
+  assert.equal(skew.movements.length, 12);
+  assert.ok(skew.movements.every((m) => m.ok));
+  assert.notEqual(skew.checks.find((c) => c.id === 'geometry').status, 'fail');
+
+  // Closer still (the North leg turned 20 degrees): the corner is built with shorter radii and the geometry
+  // check warns, naming the two legs and the radii.
+  const turned = evaluate(shapes().turned, {});
+  assert.ok(turned.ok, String(turned.problems));
+  const geo = turned.checks.find((c) => c.id === 'geometry');
+  assert.equal(geo.status, 'warn');
+  const warn = geo.items.filter((i) => i.status === 'warn');
+  assert.equal(warn.length, 1);
+  assert.match(warn[0].text, /^The East leg's entry curve and the North leg's exit curve meet with no circle between them, so they are built at \d+ ft and \d+ ft, not 50 ft and 65 ft\.$/);
+  assert.ok(geo.fix && geo.fix.length);
+  assert.equal(turned.headline.warns, 1);
+  assert.ok(turned.movements.every((m) => m.ok));
+  const E = turned.geometry.legs.find((L) => L.id === 'E'), N = turned.geometry.legs.find((L) => L.id === 'N');
+  assert.ok(E.entryRadiusBuilt < 50 && N.exitRadiusBuilt < 65);
+  assert.equal(turned.legs.find((L) => L.id === 'E').entryRadiusBuilt, E.entryRadiusBuilt);
+
+  // Too close for even the smallest radii: ok false, the two legs named and how far apart they need to be.
+  const close = defaultRoundabout();
+  close.legs[0].bearing = 30;
+  const bad = evaluate(close, {});
   assert.equal(bad.ok, false);
-  assert.match(bad.problems[0], /runs into the exit curb/);
+  assert.match(bad.problems[0], /^The East leg and the North leg are too close together\. .* Spread the two legs about 8 degrees further apart, or make that entry or exit narrower\.$/);
   assert.equal(bad.geometry, null);
   assert.equal(bad.checks.length, CHECKS.length);
   bad.checks.forEach(assertCheckShape);
@@ -109,6 +132,9 @@ test('a T shape and a skewed four-leg evaluate, and the literal skew is reported
   for (const c of bad.checks.slice(1)) assert.equal(c.status, 'info');
   assert.equal(bad.headline.fails, 1);
   assert.match(bad.headline.text, /cannot be built/);
+  // The 8 degrees is right: 8 degrees back, it builds.
+  close.legs[0].bearing = 22;
+  assert.ok(evaluate(close, {}).ok);
 });
 
 test('checks read the rules through the project settings', () => {

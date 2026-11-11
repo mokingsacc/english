@@ -32,7 +32,7 @@ test('every op, applied then undone, gives back the byte-identical project', asy
   const { t, ref } = await fresh();
   await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'icd', value: 150 }]);
   await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'center.x', value: 6636100 }, { op: 'set', option: 'A', path: 'center.y', value: 1976800 }]);
-  await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'legs.0.entryRadius', value: 50 }]);
+  await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'legs.0.entryRadius', value: 55 }]);
   await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'legs.*.exitRadius', value: 200 }]);
   await roundTrip(t, ref, [{ op: 'set', option: 'A', path: 'legs.E.name', value: 'Main Street' }]);
   await roundTrip(t, ref, [{ op: 'add_option', from: 'A' }]);
@@ -82,7 +82,7 @@ test('the resolved ops and their inverse are exact, in the store and in memory',
   assert.equal(r.ops.length, 1 + 4 + 1);
   assert.equal(JSON.stringify(applyResolved(r.doc, r.inverse)), JSON.stringify(doc));
   assert.equal(JSON.stringify(applyResolved(doc, invertOps(r.inverse))), JSON.stringify(r.doc));
-  assert.deepEqual(r.ops[1], { op: 'set', option: 'B', path: 'legs.N.entryRadius', value: 70, was: 65 });
+  assert.deepEqual(r.ops[1], { op: 'set', option: 'B', path: 'legs.N.entryRadius', value: 70, was: 50 });
 });
 
 test('values are checked against the parameters table and refused by label, in plain words', async () => {
@@ -129,8 +129,8 @@ test('a change records who, what, the ops, the inverse and a plain summary; one 
   const row = t.row('SELECT * FROM changes WHERE project_id = ?', ref.id);
   assert.equal(row.actor, 'claude');
   assert.equal(row.summary, 'Try a bigger entry radius');
-  assert.deepEqual(JSON.parse(row.ops), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 80, was: 65 }]);
-  assert.deepEqual(JSON.parse(row.inverse), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 65, was: 80 }]);
+  assert.deepEqual(JSON.parse(row.ops), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 80, was: 50 }]);
+  assert.deepEqual(JSON.parse(row.inverse), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 50, was: 80 }]);
   const own = await applyChange(t.DB, ref, { ops: [{ op: 'set', option: 'A', path: 'icd', value: 140 }], actor: 'user' });
   assert.equal(own.change.summary, 'Inscribed circle diameter set to 140 ft (was 130 ft)');
   const all = await applyChange(t.DB, ref, { ops: [{ op: 'set', option: 'A', path: 'legs.*.exitRadius', value: 180 }], actor: 'user' });

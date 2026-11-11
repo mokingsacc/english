@@ -70,7 +70,34 @@ test('random shapes from anywhere in the parameter ranges never throw', () => {
     assertSane(e, `trial ${trial}`);
     if (e.ok) built++;
   }
-  assert.ok(built >= 10, `only ${built} of the random shapes could be built`);
+  // Values picked from anywhere in their ranges seldom fit together (an 18 ft exit on a 70 ft circle, a 250 ft
+  // entry radius with a 16 ft entry), so nearly all of these are refused in words, which is what this tests.
+  assert.ok(built < 120);
+});
+
+test('random plausible shapes mostly build, and never throw', () => {
+  const rand = rng(7);
+  let built = 0;
+  for (let trial = 0; trial < 60; trial++) {
+    const r = defaultRoundabout();
+    r.icd = 110 + rand() * 90;
+    r.circWidth = 16 + rand() * 6;
+    const n = 3 + Math.floor(rand() * 3);
+    const start = rand() * 360;
+    r.legs = [];
+    for (let i = 0; i < n; i++) {
+      r.legs.push(Object.assign(defaultLeg(0, `L${i}`, `Leg ${i}`), {
+        bearing: (start + (360 * i) / n + (rand() - 0.5) * 16 + 360) % 360,
+        offsetLeft: (rand() - 0.5) * 8, approachSpeed: 25 + Math.round(rand() * 30),
+        entryRadius: 30 + rand() * 30, exitRadius: 40 + rand() * 30, entryWidth: 18 + rand() * 4, exitWidth: 20 + rand() * 4,
+        splitterWidth: 8 + rand() * 6, splitterLength: 60 + rand() * 60,
+      }));
+    }
+    const e = evaluate(r, {});
+    assertSane(e, `trial ${trial}`);
+    if (e.ok) built++;
+  }
+  assert.ok(built >= 40, `only ${built} of 60 plausible shapes could be built`);
 });
 
 test('random project settings within their ranges never throw', () => {

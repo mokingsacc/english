@@ -8,35 +8,40 @@ export function shapes() {
   const t = defaultRoundabout();
   t.legs = [0, 90, 270].map((b) => defaultLeg(b));
 
-  // The literal skew from the brief does not fit with the default curb radii on a 130 ft circle (see the
-  // geometry tests); this is the same skew on a 160 ft circle with smaller curb radii.
+  // The literal skew from the first brief, at the default sizes. Its legs 75 and 105 degrees apart leave too
+  // little circle at the two close corners, so those corners are built with shorter curb radii (a warning).
   const skew = defaultRoundabout();
-  skew.icd = 160;
-  skew.legs = [0, 75, 180, 255].map((b) => ({ ...defaultLeg(b), entryRadius: 60, exitRadius: 100 }));
+  skew.legs = [0, 75, 180, 255].map((b) => defaultLeg(b));
 
+  // The default with the North leg turned 20 degrees: the corner it closes up is built with shorter radii.
+  const turned = defaultRoundabout();
+  turned.legs[0].bearing = 20;
+
+  // Widths are measured square to the curb from the end of the splitter island, so each shape's widths are at
+  // least what its curb radii make with the lane beside the island kept at its approach width.
   const big = defaultRoundabout();
   big.icd = 300; big.circWidth = 24; big.apronWidth = 16;
-  big.legs.forEach((l) => { Object.assign(l, { entryRadius: 200, exitRadius: 300, splitterLength: 200, splitterWidth: 20, entryWidth: 20, exitWidth: 20 }); });
+  big.legs.forEach((l) => { Object.assign(l, { entryRadius: 60, exitRadius: 70, splitterLength: 200, splitterWidth: 20, entryWidth: 26, exitWidth: 26 }); });
 
   const small = defaultRoundabout();
   small.icd = 90; small.circWidth = 20; small.apronWidth = 10;
-  small.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14, exitWidth: 14, splitterLength: 40 }); });
+  small.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 40 }); });
 
   const offset = defaultRoundabout();
   offset.icd = 150;
-  offset.legs.forEach((l) => { l.exitRadius = 100; });
+  offset.legs.forEach((l) => { Object.assign(l, { exitRadius: 80, entryWidth: 20, exitWidth: 21 }); });
   Object.assign(offset.legs[0], { offsetLeft: 12 });
-  Object.assign(offset.legs[1], { offsetLeft: -8, bearing: 95 });
-  Object.assign(offset.legs[2], { approachSpeed: 30, entryRadius: 100 });
-  Object.assign(offset.legs[3], { entryWidth: 20, splitterWidth: 20, exitRadius: 80 });
+  Object.assign(offset.legs[1], { offsetLeft: -8, bearing: 95, exitWidth: 23 });
+  Object.assign(offset.legs[2], { approachSpeed: 30, entryRadius: 100, entryWidth: 22.5 });
+  Object.assign(offset.legs[3], { entryWidth: 20, splitterWidth: 20 });
 
   const six = defaultRoundabout();
   six.icd = 200; six.circWidth = 20;
   six.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({
-    ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 14, exitWidth: 14,
+    ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5,
   }));
 
-  return { default: def, t, skew, big, small, offset, six };
+  return { default: def, t, skew, turned, big, small, offset, six };
 }
 
 /** A small deterministic random number generator (mulberry32). */

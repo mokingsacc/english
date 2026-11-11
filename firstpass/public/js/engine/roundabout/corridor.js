@@ -47,19 +47,27 @@ export function movementChains(G, i, j) {
     line(A.P(A.sNose + reach, 0), A.nose, 'centerline'),
     line(A.nose, A.Se, 'splitter'),
   ];
-  const d = unit(sub(B.Sx, A.Se));
-  const leftOfChord = cross(d, sub(ORIGIN, A.Se));
+  const t1 = tangentAngleFromPoint(A.Se, G.Rc, false);
+  const t2 = tangentAngleFromPoint(B.Sx, G.Rc, true);
+  const P1 = polar(G.Rc, t1), P2 = polar(G.Rc, t2);
+  const leftOfChord = cross(unit(sub(B.Sx, A.Se)), sub(ORIGIN, A.Se));
   let hullTouchesIsland = false;
-  if (leftOfChord >= G.Rc) {
-    left.push(line(A.Se, B.Sx, 'hull'));
-  } else {
-    const t1 = tangentAngleFromPoint(A.Se, G.Rc, false);
-    const t2 = tangentAngleFromPoint(B.Sx, G.Rc, true);
-    const P1 = polar(G.Rc, t1), P2 = polar(G.Rc, t2);
+  if (leftOfChord < G.Rc) {
+    // The straight line from Se to Sx would cut the island: go round it on the two tangents.
     left.push(line(A.Se, P1, 'hull'));
     if (wrap2Pi(t2 - t1) > 1e-9) left.push(arc(P1, P2, ORIGIN, G.Rc, true, 'island'));
     left.push(line(P2, B.Sx, 'hull'));
     hullTouchesIsland = true;
+  } else {
+    // A right turn between near legs: the tangents cross before they reach the island. The path may use the
+    // circulatory roadway up to where they cross (the straight line from Se to Sx is no curb).
+    const d1 = unit(sub(P1, A.Se)), d2 = unit(sub(B.Sx, P2));
+    const den = cross(d1, d2);
+    const X = Math.abs(den) > 1e-12
+      ? { x: A.Se.x + d1.x * (cross(sub(P2, A.Se), d2) / den), y: A.Se.y + d1.y * (cross(sub(P2, A.Se), d2) / den) }
+      : null;
+    if (X) left.push(line(A.Se, X, 'hull'), line(X, B.Sx, 'hull'));
+    else left.push(line(A.Se, B.Sx, 'hull'));
   }
   left.push(line(B.Sx, B.nose, 'splitter'), line(B.nose, B.P(B.sNose + reach, 0), 'centerline'));
   return { right, left, hullTouchesIsland };

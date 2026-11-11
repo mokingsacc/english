@@ -1,14 +1,39 @@
 <!doctype html>
-<!-- Placeholder page for the dev server until the page (a later part) replaces it. -->
+<!-- First Pass: the CAD workspace page. The parts are built by public/js/app/main.js into the regions below. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>First Pass</title>
-<style>body{margin:0;padding:24px;background:#212830;color:#d8dee6;font:15px/1.5 system-ui,sans-serif}</style>
+<link rel="icon" href="icons/fp.svg" type="image/svg+xml">
+<link rel="modulepreload" href="js/app/main.js">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/frame.css">
+<link rel="stylesheet" href="css/palettes.css">
+<link rel="stylesheet" href="css/bottom.css">
+<link rel="stylesheet" href="css/overlays.css">
 </head>
 <body>
-<h1>First Pass</h1>
-<p>The page is not built yet. The server answers at /api, the connector at /mcp, and aerial photos at /tiles.</p>
+<div id="app" class="fp">
+  <header id="titlebar" class="titlebar"></header>
+  <nav id="ribbon" class="ribbon" aria-label="Ribbon"></nav>
+  <div id="work" class="work">
+    <aside id="toolspace" aria-label="Toolspace"></aside>
+    <main id="center" class="center">
+      <div id="doctabs" class="doctabs"></div>
+      <div id="viewport" class="viewport">
+        <canvas id="canvas" tabindex="0" aria-label="Drawing. Click to select, drag a grip to change, use the wheel to zoom."></canvas>
+      </div>
+      <section id="panorama" class="panorama" aria-label="Panorama"></section>
+      <section id="cmdline" class="cmdline" aria-label="Command line"></section>
+    </main>
+    <aside id="properties" aria-label="Properties"></aside>
+  </div>
+  <footer id="statusbar" class="statusbar"></footer>
+</div>
+<noscript><p class="noscript">First Pass needs JavaScript turned on.</p></noscript>
+<script type="module" src="js/shared/report.js"></script>
+<script type="module" src="js/app/main.js"></script>
 </body>
 </html>

@@ -30,6 +30,14 @@ function collect() {
   for (const c of CHECKS) labels.push(c.title);
   const cases = [...Object.values(shapes())];
   const skew = defaultRoundabout(); skew.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); cases.push(skew);
+  // The new words of the second engine pass: a corner built with shorter radii, legs too close for any radii,
+  // widths that cannot be met for each reason, and a lane that narrows beside its island.
+  const close = defaultRoundabout(); close.legs[0].bearing = 30; cases.push(close);
+  const close1 = defaultRoundabout(); close1.legs[0].bearing = 23; cases.push(close1);
+  const wide = defaultRoundabout(); wide.legs[0].splitterLength = 20; cases.push(wide);
+  const long = defaultRoundabout(); long.legs[0].entryRadius = 250; long.legs[2].exitRadius = 150; cases.push(long);
+  const pinch = defaultRoundabout(); pinch.legs[0].entryWidth = 15; pinch.legs[1].exitWidth = 16; cases.push(pinch);
+  const cross = defaultRoundabout(); Object.assign(cross.legs[0], { entryWidth: 12, splitterWidth: 4 }); cases.push(cross);
   const tight = defaultRoundabout(); tight.circWidth = 12; tight.legs.forEach((l) => { l.entryWidth = 12; l.exitWidth = 12; l.exitRadius = 100; l.splitterWidth = 30; }); cases.push(tight);
   const junk = defaultRoundabout(); junk.icd = 'x'; junk.legs[0].entryRadius = 9999; cases.push(junk);
   cases.push(null, { legs: [] });

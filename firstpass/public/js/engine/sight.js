@@ -54,7 +54,7 @@ function curbLateral(L, s) {
   if (s >= L.sNose) return L.approachWidth;
   const F = frame(L.F), T1 = frame(L.T1);
   if (s >= T1.s) return F.t + ((T1.t - F.t) * (s - F.s)) / (T1.s - F.s);
-  const O = frame(L.entryO), r = L.entryRadius;
+  const O = frame(L.entryO), r = L.entryRadiusBuilt;
   const ds = s - O.s;
   if (Math.abs(ds) > r) return frame(L.T2).t;
   return O.t - Math.sqrt(r * r - ds * ds);

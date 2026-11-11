@@ -30,6 +30,11 @@ export function radius(r) {
   return r === Infinity || r === null || r === undefined ? 'straight' : `${whole(r)} ft`;
 }
 
+/** "a" or "an" before a number written out in figures: "an 80 ft radius", "a 65 ft radius". */
+export function article(figures) {
+  return /^(8|1[18](?!\d))/.test(String(figures)) ? 'an' : 'a';
+}
+
 /** "the North leg" from a leg name. */
 export function theLeg(name) {
   return /^(the|leg)\b/i.test(name) ? name : `the ${name}`;

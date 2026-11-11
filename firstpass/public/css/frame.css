@@ -1,0 +1,70 @@
+/* The workspace frame: the page grid, the title bar with the quick access toolbar, the ribbon, the option tabs and the drawing area. */
+.fp { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; height: 100dvh; }
+.work { display: flex; min-height: 0; min-width: 0; background: var(--c-frame); }
+.center { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #1c2229; border-right: 1px solid #1c2229; }
+
+/* ---- title bar */
+.titlebar { display: flex; align-items: center; height: 32px; padding: 0 6px 0 0; background: var(--c-frame); border-bottom: 1px solid #1f252d; user-select: none; }
+.appbtn { width: 44px; height: 32px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; }
+.appbtn .ico { width: 26px; height: 26px; }
+.appbtn:hover { background: var(--c-hover); }
+.qat { display: flex; align-items: center; gap: 1px; padding: 0 6px; height: 24px; border-left: 1px solid var(--c-line-soft); border-right: 1px solid var(--c-line-soft); }
+.qat-btn { width: 26px; height: 24px; border: 1px solid transparent; border-radius: 2px; background: transparent; display: grid; place-items: center; }
+.qat-btn:hover { background: var(--c-hover); border-color: #5b6778; }
+.title { flex: 1; text-align: center; color: var(--c-ink); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
+.tb-right { display: flex; align-items: center; gap: 4px; }
+.tb-report { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 1px solid var(--c-line); border-radius: 2px; background: #3a4350; }
+.tb-report:hover { background: var(--c-hover); }
+.tb-help { width: 26px; height: 24px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 2px; }
+.tb-help:hover { background: var(--c-hover); }
+
+/* ---- ribbon */
+.ribbon { background: var(--c-ribbon); border-bottom: 1px solid #1f252d; user-select: none; }
+.rb-tabs { display: flex; align-items: flex-end; height: 26px; padding: 0 6px; background: var(--c-frame); gap: 1px; }
+.rb-tab { height: 23px; padding: 0 13px; border: 1px solid transparent; border-bottom: 0; border-radius: 2px 2px 0 0; background: transparent; color: var(--c-ink); white-space: nowrap; }
+.rb-tab:hover { background: #38414e; }
+.rb-tab.active { background: var(--c-ribbon); border-color: #56616f; color: #fff; }
+.rb-tab.ctx { color: #c8f5ec; border-top: 3px solid var(--c-ctx); padding-top: 0; }
+.rb-tab.ctx.active { background: var(--c-ribbon); color: #fff; border-color: var(--c-ctx); border-top-width: 3px; }
+.rb-spacer { flex: 1; }
+.rb-min { width: 24px; height: 22px; margin-bottom: 1px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 2px; }
+.rb-min:hover { background: var(--c-hover); }
+.ribbon.minimized .rb-min .ico { transform: rotate(180deg); }
+.ribbon.minimized .rb-body { display: none; }
+.rb-body { height: 96px; overflow: hidden; }
+.rb-pane { display: flex; height: 100%; padding: 2px 2px 0; }
+.rb-panel { display: flex; flex-direction: column; border-right: 1px solid #2a313b; box-shadow: 1px 0 0 #49525f; margin-right: 1px; }
+.rb-panel-body { flex: 1; display: flex; align-items: stretch; gap: 1px; padding: 2px 3px 1px; }
+.rb-panel-title { height: 18px; line-height: 18px; text-align: center; color: var(--c-ink-dim); background: var(--c-ribbon-title); font-size: 11.5px; padding: 0 8px; white-space: nowrap; }
+.rb-col { display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; }
+.rb-btn { display: flex; align-items: center; border: 1px solid transparent; border-radius: 2px; background: transparent; color: var(--c-ink); padding: 0; white-space: nowrap; }
+.rb-btn:hover, .rb-fly:hover { background: var(--c-hover); border-color: #607086; }
+.rb-btn:active, .rb-fly:active { background: var(--c-press); }
+.rb-btn.large { flex-direction: column; justify-content: flex-start; width: auto; min-width: 50px; max-width: 76px; height: 72px; padding: 4px 4px 0; gap: 3px; }
+.rb-btn.large .rb-label { white-space: normal; text-align: center; line-height: 1.15; font-size: 11.5px; }
+.rb-btn.small { height: 22px; padding: 0 6px 0 3px; gap: 5px; }
+.rb-split { display: flex; }
+.rb-split.large { flex-direction: column; }
+.rb-split.large .rb-btn.large { height: 58px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.rb-fly { border: 1px solid transparent; border-radius: 2px; background: transparent; padding: 0; display: grid; place-items: center; }
+.rb-fly.large { height: 14px; width: 100%; border-top-left-radius: 0; border-top-right-radius: 0; }
+.rb-fly.large .ico { width: 12px; height: 12px; }
+.rb-fly.small { width: 14px; height: 22px; }
+
+/* ---- option tabs (the drawing's file tabs) */
+.doctabs { display: flex; align-items: flex-end; height: 28px; padding: 0 4px; background: var(--c-frame); border-bottom: 1px solid #1a2027; }
+.dt-list { display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow: hidden; }
+.dt-tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 3px 3px 0 0; background: #323a45; color: var(--c-ink-dim); white-space: nowrap; }
+.dt-tab:hover { background: #3c4552; color: var(--c-ink); }
+.dt-tab.active { background: var(--c-model); color: #fff; border-color: #4f5b6a; }
+.dt-st { width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.dt-st[data-s="pass"] { background: var(--c-pass); }
+.dt-st[data-s="warn"] { background: var(--c-warn); }
+.dt-st[data-s="fail"] { background: var(--c-fail); }
+.dt-plus { width: 24px; height: 22px; margin: 0 0 1px 4px; border: 0; border-radius: 2px; background: transparent; display: grid; place-items: center; }
+.dt-plus:hover { background: var(--c-hover); }
+
+/* ---- the drawing */
+.viewport { position: relative; flex: 1 1 auto; min-height: 120px; background: var(--c-model); overflow: hidden; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: none; outline: none; touch-action: none; }
+.viewport canvas.hand { cursor: grab; }

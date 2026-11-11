@@ -124,6 +124,8 @@ function evaluateShape(round, rules) {
       nose: W(L.nose), Se: W(L.Se), Sx: W(L.Sx), far: W(L.farCl), entranceMid: W(L.entranceMid), exitMid: W(L.exitMid),
       F: W(L.F), Fx: W(L.Fx), farIn: W(L.farIn), farOut: W(L.farOut), T1: W(L.T1), T2: W(L.T2), T1x: W(L.T1x), T2x: W(L.T2x),
       entryWidthBuilt: L.entryWidthBuilt, exitWidthBuilt: L.exitWidthBuilt,
+      entryRadiusBuilt: L.entryRadiusBuilt, exitRadiusBuilt: L.exitRadiusBuilt,
+      entryWidthPoint: W(L.entryWidthPoint), exitWidthPoint: W(L.exitWidthPoint),
     })),
     landTake,
     sightTriangles: triangles,
@@ -202,6 +204,7 @@ function legSummary(G, L, moves) {
     exitSpeed: fastestExit ? fastestExit.V.V3 : null,
     exitMovement: fastestExit ? fastestExit.id : null,
     entryWidthBuilt: L.entryWidthBuilt, exitWidthBuilt: L.exitWidthBuilt,
+    entryRadiusBuilt: L.entryRadiusBuilt, exitRadiusBuilt: L.exitRadiusBuilt,
   };
 }
 

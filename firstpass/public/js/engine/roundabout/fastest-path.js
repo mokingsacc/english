@@ -126,7 +126,15 @@ export function solveMovement(G, mv, rr, ws, optionsFor = passOptions) {
     if (k > 0) acc += hyp(xs[k] - xs[k - 1], ys[k] - ys[k - 1]);
     s[k] = acc;
   }
-  return { ok: true, problems: [], n, x: xs, y: ys, s, chains, solver: { iterations, converged: qpStats.converged, gradNorm: qpStats.gradNorm } };
+  // converged: the last pass stopped on one of its own stopping tests, the gradient test or the bending energy
+  // no longer falling (ftol); either way the path is solved as tightly as the stopping rules ask (see
+  // passOptions). The last pass's projected gradient is seldom below its tolerance at the objective stop, so
+  // the gradient test alone read false on paths that were solved; stopReason and gradTol say which test it was.
+  const settled = qpStats.reason === 'gradient' || qpStats.reason === 'objective';
+  return {
+    ok: true, problems: [], n, x: xs, y: ys, s, chains,
+    solver: { iterations, converged: settled, stopReason: qpStats.reason, gradNorm: qpStats.gradNorm, gradTol: qpStats.tolerance },
+  };
 }
 
 /** One pass of the [1 2 1] / 4 filter over the inner points; the end points stay put. */

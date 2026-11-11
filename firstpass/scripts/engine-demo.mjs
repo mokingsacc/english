@@ -4,14 +4,17 @@
 //   node scripts/engine-demo.mjs out.svg            the default four-leg roundabout
 //   node scripts/engine-demo.mjs out.svg t          a three-leg T (bearings 0, 90, 270)
 //   node scripts/engine-demo.mjs out.svg skew       a skewed four-leg (bearings 0, 75, 180, 255), default sizes
-//   node scripts/engine-demo.mjs out.svg skewfit    the same skew on a 160 ft circle with smaller curb radii
-//   node scripts/engine-demo.mjs out.svg big        the largest circle, with long, flat curbs
+//   node scripts/engine-demo.mjs out.svg turned     the default with the North leg turned 20 degrees
+//   node scripts/engine-demo.mjs out.svg tightest   the North leg turned as far as it can go (22 degrees)
+//   node scripts/engine-demo.mjs out.svg big        the largest circle, with long splitter islands
 //   node scripts/engine-demo.mjs out.svg small      a small circle with tight curbs
 //   node scripts/engine-demo.mjs out.svg six        six legs
 //   node scripts/engine-demo.mjs out.svg offset     legs shifted to the left and right, with uneven sizes
 //   node scripts/engine-demo.mjs out.svg shape.json a roundabout read from a file
 //
 // Extra name=value arguments change values before evaluating, for example icd=150 or legs.*.exitRadius=90.
+// The picture marks each entry and exit width as an engineer measures it: a short line square to the curb
+// from where the splitter island meets the circle.
 
 import { writeFileSync, readFileSync } from 'node:fs';
 import { evaluate, defaultRoundabout, defaultLeg, flattenChain, setAt } from '../public/js/engine/index.js';
@@ -25,31 +28,30 @@ function shape(name) {
   if (name === 'default') return r;
   if (name === 't') { r.legs = [0, 90, 270].map((b) => defaultLeg(b)); return r; }
   if (name === 'skew') { r.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); return r; }
-  if (name === 'skewfit') {
-    r.icd = 160;
-    r.legs = [0, 75, 180, 255].map((b) => ({ ...defaultLeg(b), entryRadius: 60, exitRadius: 100 }));
-    return r;
-  }
+  if (name === 'turned') { r.legs[0].bearing = 20; return r; }
+  if (name === 'tightest') { r.legs[0].bearing = 22; return r; }
   if (name === 'big') {
     r.icd = 300; r.circWidth = 24; r.apronWidth = 16;
-    r.legs.forEach((l) => { l.entryRadius = 200; l.exitRadius = 300; l.splitterLength = 200; l.splitterWidth = 20; l.entryWidth = 20; l.exitWidth = 20; });
+    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 60, exitRadius: 70, splitterLength: 200, splitterWidth: 20, entryWidth: 26, exitWidth: 26 }); });
     return r;
   }
   if (name === 'six') {
     r.icd = 200; r.circWidth = 20;
-    r.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 14, exitWidth: 14 }));
+    r.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5 }));
     return r;
   }
   if (name === 'offset') {
     r.icd = 150;
-    r.legs.forEach((l) => { l.exitRadius = 100; });
-    r.legs[0].offsetLeft = 12; r.legs[1].offsetLeft = -8; r.legs[2].approachSpeed = 30; r.legs[2].entryRadius = 100;
-    r.legs[3].entryWidth = 20; r.legs[3].splitterWidth = 20; r.legs[3].exitRadius = 80; r.legs[1].bearing = 95;
+    r.legs.forEach((l) => { Object.assign(l, { exitRadius: 80, entryWidth: 20, exitWidth: 21 }); });
+    Object.assign(r.legs[0], { offsetLeft: 12 });
+    Object.assign(r.legs[1], { offsetLeft: -8, bearing: 95, exitWidth: 23 });
+    Object.assign(r.legs[2], { approachSpeed: 30, entryRadius: 100, entryWidth: 22.5 });
+    Object.assign(r.legs[3], { entryWidth: 20, splitterWidth: 20 });
     return r;
   }
   if (name === 'small') {
     r.icd = 90; r.circWidth = 20; r.apronWidth = 10;
-    r.legs.forEach((l) => { l.entryRadius = 35; l.exitRadius = 45; l.splitterWidth = 6; l.entryWidth = 14; l.exitWidth = 14; l.splitterLength = 40; });
+    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 40 }); });
     return r;
   }
   return JSON.parse(readFileSync(name, 'utf8'));
@@ -87,6 +89,15 @@ for (const L of result.legs) {
   console.log(`${L.id.padEnd(4)} ${R}  | ${V}`);
 }
 console.log('');
+if (result.ok) {
+  console.log('leg   entry width  exit width  (ft, as built)  |  entry radius  exit radius  (ft, as built)');
+  for (const L of result.geometry.legs) {
+    console.log(`${L.id.padEnd(4)}  ${L.entryWidthBuilt.toFixed(2).padStart(11)} ${L.exitWidthBuilt.toFixed(2).padStart(11)}                  | ${L.entryRadiusBuilt.toFixed(1).padStart(13)} ${L.exitRadiusBuilt.toFixed(1).padStart(12)}`);
+  }
+  const corners = result.checks.find((c) => c.id === 'geometry').items.filter((i) => i.status === 'warn');
+  if (corners.length) console.log('Warnings:\n  ' + corners.map((i) => i.text).join('\n  '));
+  console.log('');
+}
 for (const c of result.checks) console.log(`${c.status.padEnd(4)}  ${c.title}${c.value !== null ? `: ${typeof c.value === 'number' ? Math.round(c.value * 10) / 10 : c.value} ${c.unit || ''}` : ''}`);
 console.log('');
 const q = (p) => times[Math.floor(p * (times.length - 1))].toFixed(2);
@@ -163,6 +174,12 @@ function svg(res, round) {
   for (const p of G.layers.edge) parts.push(`<path d="${pathOf([p])}" fill="none" stroke="#fff" stroke-width="${lw(1.4)}"/>`);
   for (const p of G.layers.centerline) parts.push(`<path d="${pathOf([p])}" fill="none" stroke="#e5b800" stroke-width="${lw(1.6)}" stroke-dasharray="${lw(8)} ${lw(6)}"/>`);
   for (const p of [...G.layers.entrance, ...G.layers.exit]) parts.push(`<path d="${pathOf([p])}" fill="none" stroke="#fff" stroke-width="${lw(2.2)}" stroke-dasharray="${lw(4)} ${lw(3)}"/>`);
+  // Entry and exit widths as measured: square to the curb from where the splitter island meets the circle.
+  for (const L of G.legs) {
+    for (const [a, b] of [[L.Se, L.entryWidthPoint], [L.Sx, L.exitWidthPoint]]) {
+      parts.push(`<path d="M${X(a).toFixed(3)} ${Y(a).toFixed(3)}L${X(b).toFixed(3)} ${Y(b).toFixed(3)}" fill="none" stroke="#1f6fd6" stroke-width="${lw(2)}"/>`);
+    }
+  }
   // Fastest paths, coloured by speed.
   for (const m of res.movements) {
     if (!m.ok) {
@@ -206,6 +223,11 @@ function svg(res, round) {
     parts.push(`<text x="${lx + (i * 60) / sc}" y="${ly + 36 / sc}" font-family="sans-serif" font-size="${lw(12)}">${v} mph</text>`);
   }
   parts.push(`<text x="${lx}" y="${ly + 56 / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#7b4fd6">Purple: sight triangle along the entering path. Orange: along the circulating path.</text>`);
+  parts.push(`<text x="${lx}" y="${ly + 74 / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#1f6fd6">Blue: entry and exit widths, measured square to the curb from where the splitter island meets the circle.</text>`);
+  const warns = res.checks.find((c) => c.id === 'geometry').items.filter((i) => i.status === 'warn');
+  warns.forEach((w, i) => {
+    parts.push(`<text x="${lx}" y="${ly + (94 + 18 * i) / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#a04000">${esc(w.text)}</text>`);
+  });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}">${parts.join('\n')}</svg>\n`;
 }

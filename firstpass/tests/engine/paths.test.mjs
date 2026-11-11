@@ -102,15 +102,30 @@ function legR1(r) {
   return e.legs[0].R.R1;
 }
 
-test('a bigger entry radius never lowers R1', () => {
-  // Exit radii of 100 ft leave room on the circle for the bigger entry curbs.
+test('a wider entry never lowers R1', () => {
+  // The entry width is measured at the circle, so a wider entry moves the whole curb line out beside the island
+  // and gives the path more room. (Below 16 ft at the default 50 ft radius the lane beside the island narrows
+  // too far for a car; see the geometry check.)
   let prev = -Infinity;
-  for (let er = 30; er <= 95; er += 5) {
+  for (let w = 16.5; w <= 26; w += 0.5) {
     const r = defaultRoundabout();
-    r.legs.forEach((l) => { l.exitRadius = 100; });
+    r.legs[0].entryWidth = w;
+    const R1 = legR1(r);
+    assert.ok(R1 >= prev - 0.05, `entry width ${w}: R1 ${R1} after ${prev}`);
+    prev = R1;
+  }
+});
+
+test('a bigger entry radius changes R1 smoothly', () => {
+  // With the width at the circle held, a bigger radius pulls the curb line in beside the island, so R1 need
+  // not grow; it must still change smoothly, with no jumps.
+  let prev = null;
+  for (let er = 30; er <= 70; er += 1) {
+    const r = defaultRoundabout();
+    r.legs.forEach((l) => { l.entryWidth = 20; l.exitWidth = 21; });
     r.legs[0].entryRadius = er;
     const R1 = legR1(r);
-    assert.ok(R1 >= prev - 0.05, `entry radius ${er}: R1 ${R1} after ${prev}`);
+    if (prev !== null) assert.ok(Math.abs(R1 - prev) < 4, `entry radius ${er}: R1 ${R1} after ${prev}`);
     prev = R1;
   }
 });
@@ -119,7 +134,7 @@ test('shifting the approach further left never raises R1', () => {
   let prev = Infinity;
   for (let o = -7; o <= 8; o += 1) {
     const r = defaultRoundabout();
-    r.legs.forEach((l) => { l.exitRadius = 100; });
+    r.legs.forEach((l) => { l.entryWidth = 20; l.exitWidth = 21; });
     r.legs[0].offsetLeft = o;
     const R1 = legR1(r);
     assert.ok(R1 <= prev + 0.05, `offset ${o}: R1 ${R1} after ${prev}`);
@@ -146,6 +161,24 @@ test('the stopping rules used on drag frames agree with a solve to rounding', ()
       }
     }
   }
+});
+
+test('solver.converged says whether each path was solved to its stopping rules', () => {
+  for (const [name, r] of Object.entries(shapes())) {
+    const e = evaluate(r, {});
+    for (const m of e.movements.filter((x) => x.ok)) {
+      assert.equal(m.solver.converged, true, `${name} ${m.id}: ${m.solver.stopReason}`);
+      assert.ok(m.solver.stopReason === 'gradient' || m.solver.stopReason === 'objective');
+      assert.ok(m.solver.gradTol > 0 && Number.isFinite(m.solver.gradNorm));
+      if (m.solver.stopReason === 'gradient') assert.ok(m.solver.gradNorm <= m.solver.gradTol);
+    }
+  }
+  // Cut short, the same solve says so.
+  const G = derive(validate(defaultRoundabout()).value, rr);
+  const mv = listMovements(G)[1];
+  const cut = solveMovement(G, mv, rr, ws, () => ({ tol: 1e-14, ftol: 0, maxIter: 2 }));
+  assert.equal(cut.solver.converged, false);
+  assert.equal(cut.solver.stopReason, 'iterations');
 });
 
 test('a path that cannot fit is reported with its place', () => {

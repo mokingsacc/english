@@ -124,7 +124,9 @@ function factorForward(n, D0, D1, D2, ridge, bind, g, il0, l1, l2, y) {
  * prob = { n, D0, D1, D2, q, lo, hi, x, fixed?, tol?, ftol?, maxIter? }
  *   tol    stop when the projected gradient is at most tol * max(1, |q|) (default 1e-10)
  *   ftol   also stop when an iteration lowers the objective by at most ftol * |objective| (default 0, off)
- * Returns { iterations, converged, objective, gradNorm, reason }.
+ * Returns { iterations, converged, objective, gradNorm, tolerance, reason }: converged is the gradient test
+ * (gradNorm at most tolerance, the absolute form of tol); reason says which test stopped the solve: 'gradient',
+ * 'objective' (the ftol test), 'iterations', 'no descent', 'no move' or 'factorisation'.
  */
 export function solveBoxQP(prob, ws) {
   const { n, D0, D1, D2, q, lo, hi, x } = prob;
@@ -268,5 +270,5 @@ export function solveBoxQP(prob, ws) {
   }
   gradNorm = pg;
   converged = pg <= tol;
-  return { iterations, converged, objective: f, gradNorm, reason };
+  return { iterations, converged, objective: f, gradNorm, tolerance: tol, reason };
 }

@@ -290,3 +290,61 @@ export function chainSlack(cc, x, y) {
   }
   return side * cc.side > 0 ? bestG : -bestU - clrNear;
 }
+
+// ---------------------------------------------------------------- distance to one primitive, and roots
+
+/** Distance from p to the segment from a to b. */
+export function segmentDistance(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, wx = p.x - a.x, wy = p.y - a.y;
+  const ll = dx * dx + dy * dy;
+  let t = ll > 0 ? (wx * dx + wy * dy) / ll : 0;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const ex = wx - t * dx, ey = wy - t * dy;
+  return Math.sqrt(ex * ex + ey * ey);
+}
+
+/** Distance from p to the arc from a to b about c with radius r, counterclockwise when ccw is true. */
+export function arcDistance(p, a, b, c, r, ccw) {
+  const a0 = Math.atan2(a.y - c.y, a.x - c.x);
+  const sw = arcSweep({ a, b, c, ccw });
+  const ap = Math.atan2(p.y - c.y, p.x - c.x);
+  const t = wrap2Pi(ccw ? ap - a0 : a0 - ap);
+  if (t <= sw) return Math.abs(Math.sqrt((p.x - c.x) ** 2 + (p.y - c.y) ** 2) - r);
+  return Math.min(dist(p, a), dist(p, b));
+}
+
+/**
+ * Root of a non-decreasing function f on [lo, hi]. Where f is not defined it may answer -Infinity (below
+ * the range it is defined on) or Infinity (above it). Bisection runs while either end of the bracket is not
+ * finite, then Illinois regula falsi. Stops when |f| <= ftol or the bracket is shorter than xtol.
+ * Returns { x, fx, lo, hi, flo, fhi }: x is the end with the smaller |f|, and flo <= 0 <= fhi when f(lo) <= 0
+ * <= f(hi) to start with. The caller judges whether fx is close enough to zero: at a jump it is not.
+ */
+export function bracketRoot(f, lo, hi, xtol, ftol, maxIter = 200) {
+  let flo = f(lo), fhi = f(hi);
+  if (!(flo <= 0) || !(fhi >= 0)) {
+    const useLo = Math.abs(flo) <= Math.abs(fhi);
+    return { x: useLo ? lo : hi, fx: useLo ? flo : fhi, lo, hi, flo, fhi };
+  }
+  let a = flo, b = fhi, last = 0;
+  for (let it = 0; it < maxIter; it++) {
+    if (-flo <= ftol) return { x: lo, fx: flo, lo, hi, flo, fhi };
+    if (fhi <= ftol) return { x: hi, fx: fhi, lo, hi, flo, fhi };
+    if (hi - lo <= xtol) break;
+    let m = a > -Infinity && b < Infinity ? lo + ((hi - lo) * -a) / (b - a) : 0.5 * (lo + hi);
+    if (!(m > lo && m < hi)) m = 0.5 * (lo + hi);
+    const fm = f(m);
+    if (fm !== fm) break;
+    if (fm <= 0) {
+      lo = m; flo = a = fm;
+      if (last === -1) b *= 0.5;
+      last = -1;
+    } else {
+      hi = m; fhi = b = fm;
+      if (last === 1) a *= 0.5;
+      last = 1;
+    }
+  }
+  const useLo = -flo <= fhi;
+  return { x: useLo ? lo : hi, fx: useLo ? flo : fhi, lo, hi, flo, fhi };
+}
