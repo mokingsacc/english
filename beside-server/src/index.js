@@ -122,7 +122,11 @@ function oldId(v) {
 
 const SUBS_MAX = 12;
 const RING_GAP = 8000; // one ring per room every 8 s at most
-const HEART_GAP = 5000; // one heart ping per person every 5 s at most
+const HEART_GAP = 2000; // one heart ping per person every 2 s at most: the page's heart button rests 2.5 s, so every heart tapped pings
+const HEART_KEEP = 24 * 3600; // seconds a heart's ping waits for a device that is off or out of signal, as long as it stays on the wall
+// Whose clock a ping lands on: the host is Mo in London, the guest is Semal in Los Angeles (as the page's house has it).
+const HOME = { host: 'Europe/London', guest: 'America/Los_Angeles' };
+const hourIn = (zone, t) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(t));
 const RING_RE = /^(host|guest)$/;
 const VOIP_RE = /^[0-9a-f]{64,200}$/;
 const TALK_DAY = 60; // sentences per board per day
@@ -207,17 +211,25 @@ export class Board {
   }
 
   // A heart was saved: a soft ping on the other person's devices. Never stops the heart itself being saved.
+  // (Mo, 11 Nov 2026: "whenever we send hearts the notifications appear straight away".) The ping is held a day for a
+  // device that can't be reached just then (it used to be dropped at once, or after a minute in a browser), tried once
+  // more if the push service didn't take it, and on the iPhone it comes through a Focus or a notification summary
+  // (Time Sensitive). Only late at night there (11 pm to 6 am, when the house on Home says a heart will wait) is it an
+  // ordinary notification, which a Sleep Focus keeps quiet until morning.
   async sendHeart(role, t) {
     const now = Date.now();
     if (now - (this.hearts[role] || 0) < HEART_GAP) return;
     this.hearts[role] = now;
     const title = (t.from || 'Your person') + ' is thinking of you';
     const body = t.note ? t.note.slice(0, 140) : t.photo ? 'They sent you a photo.' : 'Open Beside to send one back.';
+    const hour = hourIn(HOME[role === 'host' ? 'guest' : 'host'], now);
+    const level = hour >= 23 || hour < 6 ? 'active' : 'time-sensitive';
     const to = this.subs.filter((s) => s.role !== role && (s.kind === 'web' || s.alert));
-    const results = await Promise.all(to.map((s) => (s.kind === 'web'
-      ? sendWeb(this.env, s, { kind: 'heart', title, body, url: s.open, tag: 'beside-heart' }, 'heart')
-      : sendAlert(this.env, s, { aps: { alert: { title, body }, sound: 'ping.wav', 'thread-id': 'beside-hearts' }, kind: 'heart' })
-    ).catch(() => 'fail')));
+    const once = (s) => (s.kind === 'web'
+      ? sendWeb(this.env, s, { kind: 'heart', title, body, url: s.open, tag: 'beside-heart' }, 'heart', HEART_KEEP)
+      : sendAlert(this.env, s, { aps: { alert: { title, body }, sound: 'ping.wav', 'thread-id': 'beside-hearts', 'interruption-level': level }, kind: 'heart' }, HEART_KEEP)
+    ).catch(() => 'fail');
+    const results = await Promise.all(to.map(async (s) => { const r = await once(s); return r === 'fail' ? once(s) : r; }));
     const gone = to.filter((s, i) => results[i] === 'gone');
     if (!gone.length) return;
     // A web device that is gone is forgotten; the app keeps ringing and only loses its heart token.
