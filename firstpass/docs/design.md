@@ -264,20 +264,24 @@ and the page never shows Autodesk's name, logo or product names as its own.
 5. Truck turns (swept path), her own base drawing or photo.
 6. One fresh-eyes review; fixes; deploy.
 
-## Open items (11 Nov 2026, after the first engine review)
+## Open items on the engine (11 Nov 2026)
 
-- Entry and exit width: the engine builds the curb `splitterWidth/2 + entryWidth` from the leg's axis, so the width
-  as an engineer measures it (NCHRP 672: square to the right curb, from where the left edge meets the inscribed
-  circle) comes out wider than asked (19.3 ft and 23.8 ft for a nominal 16 ft). To fix: solve the curb offset so the
-  measured width equals the parameter.
-- Corners that do not fit: when one leg's entry curve and the next leg's exit curve overlap on the circle, the engine
-  answers ok:false. With the defaults there is no slack, so turning any leg breaks the drawing. To fix: shorten both
-  radii by one common factor until they just meet, report the built radii, and give a warning in plain words; only
-  answer ok:false when even the smallest allowed radius does not fit.
+- Second pass, done: widths are measured the engineer's way (square to the curb, from where the island meets the
+  inscribed circle); overlapping corners shorten both radii by one factor and warn in words, with the built radii
+  reported; `solver.converged` means what it says.
+- Third pass, in hand after review: the second pass could not build ordinary sizes (entry radius 65 with exit radius
+  100, 80 with 150, 100 with 200 all answered ok:false), because the curb offset was solved against a fixed straight
+  island. The model now is: the curb line sits `splitterWidth/2 + approachWidth` from the axis; the entry curb curve is
+  tangent to it and to the inscribed circle; the island's entry edge is the arc concentric with that curve at
+  radius + entry width, back to the island's body line; the same on the exit side; the island is what is left between
+  the two lanes, at least as long as the longer curve, with its width at the circle reported.
 - Stopping sight factor: the engine uses 1.075 (AASHTO); NCHRP 672 prints 1.087. Both are marked verify. Check
   against NCHRP 1043 and the Caltrans HDM table before she relies on it.
-- Six legs take about 18 ms per evaluate (the budget is set for four legs).
-- `movement.solver.converged` reads false on a path whose gradient is 1e-9: check what the flag means.
+- Six legs take about 16 ms per evaluate (the budget is set for four legs).
+- Not yet shown to Claude through the connector: the built radii (`legsView` in `src/worker/mcp`). CONTRACT.md needs a
+  dated section for the engine's second and third passes.
+- The data model's example values near the top of this file are the first defaults; the engine's parameter table holds
+  the current ones.
 
 ## Open items on the server (11 Nov 2026, from its builder's report)
 

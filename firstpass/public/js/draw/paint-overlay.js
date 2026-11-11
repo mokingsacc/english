@@ -131,7 +131,7 @@ function paintCursor(ctx, cam, scene) {
     ctx.stroke();
     if (c.mode !== 'point') ctx.strokeRect(x - p, y - p, 2 * p, 2 * p);
   }
-  if (scene.problem) paintProblem(ctx, c.sx + 22, c.sy + 20, scene.problem, cam);
+  if (scene.problem) paintProblem(ctx, c.sx + 22, c.sy, scene.problem, cam);
   ctx.restore();
 }
 
@@ -139,8 +139,10 @@ function paintProblem(ctx, x, y, text, cam) {
   ctx.font = FONT;
   const lines = wrap(ctx, text, 300);
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 14, h = lines.length * 15 + 10;
+  // Above and to the right of the cursor: the dynamic input box sits below and to the right.
   if (x + w > cam.w - 4) x = Math.max(4, x - w - 44);
-  if (y + h > cam.h - 4) y = Math.max(4, y - h - 40);
+  y = y - h - 18;
+  if (y < 4) y = Math.min(cam.h - h - 4, y + h + 18 + 96);
   ctx.fillStyle = 'rgba(40,16,16,0.94)';
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = LAYERS.fail.color; ctx.lineWidth = 1;
