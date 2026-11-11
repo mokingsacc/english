@@ -521,11 +521,20 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound-mode:last-child:nth-child(odd){grid-column:1 / -1}
 .sound-mode{min-height:44px;padding:0 8px;border-radius:12px;border:1.5px solid var(--snd-line);background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .sound-mode[aria-checked="true"]{background:var(--clay);border-color:var(--clay);color:var(--clay-ink)}
-.sound-mode:focus-visible,.sound-test:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
+.sound-mode:focus-visible,.sound-test:focus-visible,.sound-fix:focus-visible{outline:2px solid var(--clay);outline-offset:2px}
 .sound-say{min-height:2.7em;font-size:12.5px;line-height:1.35;color:var(--snd-dim)}
 .sound-testrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.sound-test{min-height:44px;padding:0 16px}
-.soundpop .sound-test{background:rgba(255,255,255,.1);color:#F0E7D8;box-shadow:inset 0 0 0 1px rgba(240,231,216,.24)}
+.sound-test,.sound-fix{min-height:44px;padding:0 16px}
+.soundpop .sound-test,.soundpop .sound-fix{background:rgba(255,255,255,.1);color:#F0E7D8;box-shadow:inset 0 0 0 1px rgba(240,231,216,.24)}
+.sound-fixrow[hidden]{display:none}
+.sndlog{margin:0 20px 12px;font-size:13.5px}
+.sndlog summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--ink-2)}
+.sndlog summary:focus-visible{outline:2px solid var(--clay);outline-offset:2px;border-radius:8px}
+.sndlog ol{list-style:none;margin:0;padding:0;max-height:34vh;overflow-y:auto}
+.sndlog li{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:6px 0;border-top:1px solid var(--line);line-height:1.35}
+.sndlog time{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sndlog-say:empty{display:none}
+.sndlog-say{margin:8px 0 0;color:var(--ink-3);font-size:12.5px;line-height:1.35}
 .sound-test-say{font-size:12.5px;line-height:1.35;color:var(--snd-dim)}
 .sound-row.off{opacity:.45}
 .sound-pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--snd-dim);font-weight:500}
@@ -692,14 +701,14 @@ button:disabled{opacity:.55;cursor:default}
 .nd-room::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 6%,rgba(255,226,170,.55),transparent 60%);pointer-events:none}
 .nd-room[data-light=off]{--wall:#2C3252;--stripe:rgba(255,255,255,.04);--floor:#463C57;--trim:#4E4766;--frame:#4D4766}
 .nd-room[data-light=off]::before{opacity:0}
-/* The heart wall: each heart sent in the last 24 hours, on the sender's wall, behind their figure */
+/* The heart wall: each heart sent in the last 24 hours, on the wall of the one it was sent to, only ever on bare wall.
+   A strong red with a paper edge, so it reads at phone size on either wallpaper and with the light off. */
 .nd-hearts{position:absolute;inset:0;pointer-events:none}
-.nd-heart{position:absolute;display:block;aspect-ratio:24/22;transform:rotate(var(--r,0deg));color:#C8573C;opacity:.9}
-.nd-room[data-who=semal] .nd-heart{color:#D0614C}
-.nd-heart svg{display:block;width:100%;height:100%;fill:currentColor}
-.nd-room[data-light=off] .nd-heart{filter:brightness(.7)}
+.nd-heart{position:absolute;display:block;aspect-ratio:24/22;transform:rotate(var(--r,0deg));color:#D63C2C}
+.nd-heart svg{display:block;width:100%;height:100%;overflow:visible;fill:currentColor;stroke:#FFF6E6;stroke-width:2.4;stroke-linejoin:round;paint-order:stroke}
+.nd-room[data-light=off] .nd-heart{filter:brightness(.82)}
 .nd-heart.pop{animation:ndheartpop .7s cubic-bezier(.3,1.5,.5,1) both}
-@keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:.9}}
+@keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:1}}
 .nd-floor{position:absolute;left:0;right:0;bottom:0;height:10cqh;background:var(--floor);border-top:5px solid var(--trim)}
 /* the light: a lamp hanging from the ceiling, lit or not */
 .nd-lamp{position:absolute;top:0;left:var(--lx,50%);width:24px;margin-left:-12px;height:calc(6cqh + 14px);pointer-events:none}
@@ -1164,6 +1173,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <span class="sum" id="checkSummary"></span>
     </header>
     <ul class="checks" id="checkList"></ul>
+    <details class="sndlog" id="sndLog"><summary>Sound log</summary><ol id="sndLogList"></ol><p class="sndlog-say" id="sndNow"></p><p class="sndlog-say">What Beside noticed and put right in your calls. If the sound drops again, send a picture of this.</p></details>
     <footer><button class="btn ghost" id="checkBtn">Run again</button><button class="btn quiet" id="checkClose" style="min-height:44px">Done</button></footer>
   </div>
 </div>
@@ -1246,8 +1256,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
-<script src="board.js?v=14"></script>
+<script src="board.js?v=15"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

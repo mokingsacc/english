@@ -304,9 +304,11 @@
       heartsReady = true; // the hearts already there on opening just sit; later ones pop on
     }
   }
-  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a small heart on the wall of the one it was sent to,
-  // behind their figure. Each one's spot comes from its id, so it stays put; it never covers the window, clock,
-  // picture, calendar, fridge, lamp, the paper chain or a face. A new one pops on (not with reduced motion).
+  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a heart on the wall of the one it was sent to.
+  // It only ever sits on bare wall (Mo, 10 Nov 2026: "now they kinda go and hide behind the person"): clear of the whole
+  // figure with room to wave and lean, the window, clock, picture, calendar, fridge, lamp and the paper chain. The bare
+  // wall is cut into heart-sized places and each heart takes the place its id picks, so it stays put. More hearts than
+  // places: they shrink a little, and past that the newest ones show. A new one pops on (not with reduced motion).
   const HEART_SVG = '<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21.2C5.6 16.4 1 12.5 1 7.4 1 3.9 3.7 1.2 7 1.2c2 0 3.8 1 5 2.6 1.2-1.6 3-2.6 5-2.6 3.3 0 6 2.7 6 6.2 0 5.1-4.6 9-11 13.8z"/></svg>';
   const heartSeen = new Set();
   let heartsReady = false;
@@ -321,38 +323,54 @@
     const fresh = new Set(heartsReady ? list.filter((x) => !heartSeen.has(x.id)).map((x) => x.id) : []);
     list.forEach((ht) => heartSeen.add(ht.id));
     const W = room.clientWidth, H = room.clientHeight;
-    const key = list.map((x) => x.id).join(',') + '|' + W + 'x' + H;
-    if (!W || layer.dataset.k === key) return;
-    layer.dataset.k = key;
+    if (!W) return;
+    // The room's own pieces by where they stand (a wave or a press moves them for a moment; the hearts stay put).
+    const own = (e, px, py) => ({ l: e.offsetLeft - px, t: e.offsetTop - py, r: e.offsetLeft + e.offsetWidth + px, b: e.offsetTop + e.offsetHeight + py });
     const R = room.getBoundingClientRect();
-    const box = (e, pad, part) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.top - R.top + r.height * (part || 1) + pad }; };
-    const keep = [...room.querySelectorAll('.nd-win, .nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => box(e, 4));
+    const box = (e, pad) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.bottom - R.top + pad }; };
+    const keep = [...room.querySelectorAll('.nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => own(e, 5, 5));
+    const win = room.querySelector('.nd-win');
+    if (win) keep.push(own(win, 5, 11)); // with its sill
     const fig = room.querySelector('.nd-fig');
-    if (fig) keep.push(box(fig, 4, 0.3)); // the face and hat; the body may stand in front of hearts
-    const chain = $('ndChain');
-    if (chain) keep.push(box(chain, 2));
-    const s = Math.max(10, Math.min(22, W * 0.05));
-    const top = 6, bottom = room.querySelector('.nd-floor') ? box(room.querySelector('.nd-floor'), 0).t - 4 : H * 0.88;
-    const hit = (x, y, b) => x < b.r && x + s > b.l && y < b.b && y + s > b.t;
-    const placed = [];
-    const out = [];
-    list.forEach((ht) => {
-      const rnd = seeded(ht.id + ':' + ht.at);
-      let spot = null;
-      for (let i = 0; i < 80 && !spot; i++) {
-        const x = 4 + rnd() * (W - s - 8), y = top + rnd() * Math.max(0, bottom - top - s);
-        if (keep.some((b) => hit(x, y, b))) continue;
-        if (i < 40 && placed.some((p) => Math.abs(p.x - x) < s * 0.9 && Math.abs(p.y - y) < s * 0.9)) continue;
-        spot = { x, y };
+    if (fig) keep.push(own(fig, Math.max(6, fig.offsetWidth * 0.18), 6)); // the whole body, and the room its wave and lean take
+    // the picture's name can be wider than the picture; the chain crosses both rooms (its rings and its tag)
+    [...room.querySelectorAll('.nd-pic b'), ...document.querySelectorAll('#ndChain svg, #ndTag')].forEach((e) => keep.push(box(e, 4)));
+    const floor = room.querySelector('.nd-floor');
+    const bottom = (floor ? floor.offsetTop : H * 0.88) - 5;
+    // Drawn again only when the hearts, or anything they must stay clear of, have changed (the calendar grows with a plan).
+    const key = list.map((x) => x.id).join(',') + '|' + W + 'x' + H + '|' + bottom + '|' + keep.map((b) => [b.l, b.t, b.r, b.b].map(Math.round).join(' ')).join(',');
+    if (layer.dataset.k === key) return;
+    layer.dataset.k = key;
+    if (!list.length) { layer.replaceChildren(); return; }
+    // The places at one heart size: the bare wall, row by row, each a heart and a small gap from the next.
+    const places = (s) => {
+      const h = s * 22 / 24, gap = s * 0.34, out = [];
+      for (let y = 6; y + h <= bottom; y += 2) {
+        let x = 6;
+        while (x + s <= W - 6) {
+          const b = keep.find((k) => x < k.r && x + s > k.l && y < k.b && y + h > k.t);
+          const p = b ? null : out.find((q) => Math.abs(q.x - x) < s + gap - 0.01 && Math.abs(q.y - y) < h + gap);
+          if (b) x = Math.max(x + 1, b.r); else if (p) x = Math.max(x + 1, p.x + s + gap); else { out.push({ x, y }); x += s + gap; }
+        }
       }
-      if (!spot) return;
-      placed.push(spot);
+      return out;
+    };
+    const full = Math.max(15, Math.min(28, W * 0.095)); // big enough to read on a phone
+    let s = full, spots = [];
+    for (const k of [1, 0.9, 0.8, 0.72, 0.66]) { s = full * k; spots = places(s); if (spots.length >= list.length) break; }
+    const taken = [];
+    const out = (spots.length ? list.slice(-spots.length) : []).map((ht) => {
+      const rnd = seeded(ht.id);
+      let i = Math.floor(rnd() * spots.length);
+      while (taken[i]) i = (i + 1) % spots.length;
+      taken[i] = true;
+      const nudge = () => (rnd() * 2 - 1) * s * 0.06; // a little off the row, never enough to touch a neighbour
       const el = document.createElement('i');
       el.className = 'nd-heart' + (fresh.has(ht.id) ? ' pop' : '');
       el.dataset.id = ht.id;
-      el.style.cssText = 'left:' + (spot.x / W * 100).toFixed(2) + '%;top:' + (spot.y / H * 100).toFixed(2) + '%;width:' + s.toFixed(1) + 'px;--r:' + Math.round(rnd() * 30 - 15) + 'deg';
+      el.style.cssText = 'left:' + ((spots[i].x + nudge()) / W * 100).toFixed(2) + '%;top:' + ((spots[i].y + nudge()) / H * 100).toFixed(2) + '%;width:' + s.toFixed(1) + 'px;--r:' + Math.round(rnd() * 24 - 12) + 'deg';
       el.innerHTML = HEART_SVG;
-      out.push(el);
+      return el;
     });
     layer.replaceChildren(...out);
   }
@@ -864,6 +882,7 @@
       const live = (!opts.live || opts.live()) && tr && tr.readyState === 'live' && tr.enabled && !tr.muted;
       zero = sum === 0 && live ? zero + 20 : 0;
       if (zero >= 4000 && !dead) { dead = true; report(); }
+      else if (dead && sum > 0) { dead = false; report(); } // sound came back: the leveller is used again
       const db = sum > 0 ? 10 * Math.log10(sum / buf.length + 1e-12) : -300;
       const go = clearGate(gst, db, now, t, document.hidden);
       if (go) n.gate.gain.setTargetAtTime(go[0], ctx.currentTime, go[1]);
@@ -904,6 +923,7 @@
         ch.src = ctx.createMediaStreamSource(stream2);
         zero = 0;
         wire();
+        if (dead) { dead = false; report(); }
       },
       close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail, n && n.out, n && n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} }); isoEnd(n); },
     };
@@ -1036,10 +1056,14 @@
     try { await tr.applyConstraints(want); } catch (e) {}
     if (micFits(tr, want)) { try { tr.contentHint = hint; } catch (e) {} app.micSwap = 'constraints'; return; }
     const fresh = await getOwn('audio', want);
-    const nt = fresh.getAudioTracks()[0];
-    if (!nt) return;
-    try { nt.contentHint = hint; } catch (e) {}
+    if (!fresh.getAudioTracks()[0]) return;
     app.micSwap = 'track';
+    await micSwap(fresh, tr, hint);
+  }
+  // A fresh mic takes the old one's place everywhere the old one was used, so the call carries on.
+  async function micSwap(fresh, tr, hint) {
+    const nt = fresh.getAudioTracks()[0];
+    try { nt.contentHint = hint; } catch (e) {}
     if (isGuest) {
       nt.enabled = !G.muted;
       const old = G.mic;
@@ -1053,9 +1077,9 @@
     } else {
       const old = H.mic;
       H.mic = fresh;
-      nt.enabled = !(SEND_RAW && H.muted);
+      nt.enabled = !H.muted;
       if (H.clear) H.clear.swap(fresh);
-      else if (H.rawSrc) { try { H.rawSrc.disconnect(); } catch (e) {} H.rawSrc = H.ctx.createMediaStreamSource(fresh); H.rawSrc.connect(H.micGain); }
+      else if (H.rawSrc && H.ctx) { try { H.rawSrc.disconnect(); } catch (e) {} H.rawSrc = H.ctx.createMediaStreamSource(fresh); H.rawSrc.connect(H.micGain); }
       hostVoicePick();
       old.getTracks().forEach((x) => x.stop());
     }
@@ -1108,17 +1132,18 @@
   }
   // What you hear, on this device: their voice (0 to 150%), the video's sound (0 to 100%), and the video's sound
   // ducking under a voice (Mo, 2 Nov 2026). iPhones and iPads ignore a page's volume, so on Safari, iPhone, iPad
-  // and the Beside app every sound you hear plays through the audio engine, where each lane has its own volume.
-  // Other browsers play through the page (their echo cancelling hears that best), and use the engine only to go
-  // above 100% or to lift an iPhone's voice (LIFT). If the engine stops (an iPhone phone call, or its clock
-  // stalls), the page plays it again at once.
+  // and the Beside app a sound whose volume you changed plays through the audio engine, where each lane has its
+  // own volume. Other browsers play through the page (their echo cancelling hears that best), and use the engine
+  // only to go above 100% or to lift an iPhone's voice (LIFT). If the engine stops (an iPhone phone call, or its
+  // clock stalls), the page plays it again at once. On an iPhone or iPad the engine is closed while a video is
+  // open together (see outRest below).
   const CAN_VOL = true;
   const UA = navigator.userAgent;
   const ENGINE_OUT = IS_IOS || (/AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|Android|OPR/.test(UA));
   const DUCK = 0.25; // about -12 dB under a voice
   function savedVol(k, max) { const v = parseFloat(store.get(k)); return v >= 0 && v <= max ? v : 1; }
   const SND = { voice: savedVol('beside.vol.voice', 1.5), media: savedVol('beside.vol.media', 1), duck: store.get('beside.duck') !== '0' };
-  const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0, rest: false, slept: null };
+  const OUT = { map: new Map(), duck: 1, duckT: 1, clocks: new Map(), timer: 0, rest: false, idleAt: 0 };
   function voiceEls() { return isGuest ? [$('voice')] : [...H.guests.values()].map((g) => g.audio); }
   function outEls() {
     const els = isGuest ? [[$('voice'), 'voice', G.lift]] : [...H.guests.values()].map((g) => [g.audio, 'voice', g.lift]);
@@ -1169,7 +1194,10 @@
       if (!l.el.muted) l.el.muted = true;
     } else {
       if (l.on) { try { l.gain.disconnect(); } catch (e) {} l.on = false; }
-      if (l.el.muted && l.el.srcObject) l.el.muted = false;
+      if (l.el.muted && l.el.srcObject) {
+        l.el.muted = false;
+        if (l.el.paused) l.el.play().catch(() => {}); // the phone may have paused it while the engine played
+      }
       const v = Math.min(1, outLevel(l, false));
       if (Math.abs(l.el.volume - v) > 0.001) l.el.volume = v;
     }
@@ -1182,22 +1210,52 @@
     return ENGINE_OUT || (l.kind === 'voice' && (!!l.chain || SND.voice > 1));
   }
   // Mo, 5 Nov 2026: "when im watching a youtube video on the app together then there is crackles, both when we're
-  // speaking and when the video is playing". While the audio engine runs, an iPhone or iPad plays all of the app's
-  // sound, the video's too, in tiny slices of under 3 ms; with YouTube and two cameras busy it falls behind, and
-  // everything crackles. YouTube ignores its volume there anyway. So while a video is open together on an iPhone
-  // or iPad, voices play through the page (at full volume, not lifted, no green ring) and the engine rests, unless
-  // the call's own sound still passes through it (three or more people, or a video file you share). It starts again
-  // when the video closes.
+  // speaking and when the video is playing". 10 Nov: "I want the sound quality to be A1 because that was the whole
+  // purpose of building this app". On an iPhone or iPad, an audio engine that merely exists makes the phone play
+  // ALL of the app's sound (voices, YouTube, the mic) in slices of under 3 ms; with YouTube busy as well they fall
+  // behind, and everything crackles. Pausing the engine does not undo that (the first fix, 5 Nov, paused it, and
+  // the crackle stayed): only closing it does. YouTube ignores its volume there anyway. So while a video is open
+  // together on an iPhone or iPad the engine is closed, and voices play through the page (at full volume, not
+  // lifted), unless the call's own sound still passes through it (three or more people, or a video file you
+  // share). It is made again when the video closes, and an ordinary call sounds as it did before.
   function outRest() { return IS_IOS && !!W.id; }
-  function outIdle() {
+  // Does the call's own sound pass through the engine? A host needs it until one guest is settled in: the lanes
+  // of a call are made from its tracks, and three or more people get a mix that only it can make.
+  function engineBusy() {
+    if (CV.snd) return true;
+    if (isGuest) return !!G.vctx && G.vctx === G.ctx;
+    if (!H.mic || H.guests.size !== 1) return true;
+    const g = [...H.guests.values()][0];
+    return !g.live || !g.voice || Date.now() - (g.liveAt || 0) < 1500 || (!!H.mediaTrack && g.ver < 3 && g.id !== H.sharer);
+  }
+  function engineUp() {
+    if (outCtx()) return false;
+    let ctx = null;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; }
+    ctx.resume().catch(() => {});
+    if (isGuest) G.ctx = ctx; else hostEngineBuild(ctx);
+    return true;
+  }
+  function engineDown() {
     const ctx = outCtx();
-    const busy = !!CV.snd || (isGuest ? !!G.vctx && G.vctx === G.ctx : app.hostVoice === 'mix');
-    if (OUT.rest && !busy) {
-      if (ctx && ctx.state === 'running') { OUT.slept = ctx; ctx.suspend().catch(() => {}); }
-    } else if (OUT.slept) {
-      const c = OUT.slept;
-      OUT.slept = null;
-      if (c === ctx && c.state === 'suspended' && (app.state === 'live' || app.state === 'watching')) c.resume().catch(() => {});
+    if (!ctx) return;
+    if (isGuest) G.ctx = null; else hostEngineDrop();
+    [...OUT.map.values()].forEach(outDrop);
+    outEls().forEach(([el, kind, lift]) => outApply(outLane(el, kind, lift))); // on the page from here
+    ctx.close().catch(() => {});
+  }
+  // iPhone and iPad only: the engine goes when a video opens together and comes back when it closes. It waits
+  // 2 s before closing, so a video opened and closed at once doesn't close it and make it again.
+  function outIdle() {
+    if (!IS_IOS) return;
+    const live = isGuest ? app.state === 'watching' : app.state === 'live';
+    if (!live) return;
+    if (!OUT.rest || engineBusy()) {
+      OUT.idleAt = 0;
+      if (!outCtx() && engineUp()) applyVolumes();
+    } else if (outCtx()) {
+      if (!OUT.idleAt) OUT.idleAt = Date.now();
+      else if (Date.now() - OUT.idleAt > 2000) { OUT.idleAt = 0; engineDown(); }
     }
   }
   // Should this element be muted (its sound plays through the engine instead)?
@@ -1209,6 +1267,7 @@
     [...OUT.map.values()].forEach((l) => { if (!live.has(l.el)) outDrop(l); });
     ytVolume();
     outWatch();
+    soundWatch();
     soundUi();
     outIdle();
   }
@@ -1274,6 +1333,282 @@
     if (el.paused) el.play().catch(() => {});
   }
 
+  // ---------- SOUND WATCH ----------
+  // Mo, 10 Nov 2026: "sometimes just randomly i cant hear her and she cant here me, figure out why this happens and
+  // how we can fix it". A phone can take a call's sound away without telling the page: a phone call, Siri, an
+  // alarm, headphones going in or out, the lock screen. It pauses what plays and cuts the mic, on one phone, so
+  // both of you go silent at once. Nothing started them again (a guest's sound came back only on returning to
+  // the page, a host's only on a tap). So every 2 s in a call, on coming back to Beside, and when the phone says
+  // its sound changed: a paused sound plays again, a stopped engine starts again, and a mic the phone cut or
+  // ended is asked for again. Each side also reads what arrives from the other: if nothing does, it asks that
+  // device to restart its mic. "Fix sound" does all of it on both sides at once; pressed twice, it connects the
+  // call again. What happened is kept in a short log, shown in Check my setup.
+  const SW = { timer: 0, log: [], lanes: new Map(), plays: new WeakSet(), micBadAt: 0, micHid: false, micBusy: 0, micP: null, micPF: false, micTry: 0, micFails: 0, fixAt: 0, sayT: 0, owed: '', owedFix: false };
+  try { SW.log = (JSON.parse(store.get('beside.sndlog') || '[]') || []).filter((e) => e && typeof e.w === 'string' && e.t > 0).slice(-30); } catch (e) { SW.log = []; }
+  function inCallNow() { return isGuest ? app.state === 'watching' : app.state === 'live'; }
+  // A phone gives an app in the background neither the mic nor a new player; a computer's tab gets both.
+  function inBack() { return IS_IOS && document.visibilityState !== 'visible'; }
+  function sndLog(what) {
+    const now = Date.now();
+    const last = SW.log[SW.log.length - 1];
+    if (last && last.w === what && now - last.t < 60000) { last.n = (last.n || 1) + 1; last.t = now; } else SW.log.push({ t: now, w: what });
+    if (SW.log.length > 30) SW.log.splice(0, SW.log.length - 30);
+    store.set('beside.sndlog', JSON.stringify(SW.log));
+    sndLogShow();
+  }
+  function sndLogShow() {
+    const box = $('sndLog'), list = $('sndLogList');
+    if (!box || !list) return;
+    const sum = box.querySelector('summary');
+    if (sum) sum.textContent = 'Sound log, ' + (SW.log.length ? SW.log.length + (SW.log.length === 1 ? ' line' : ' lines') : 'nothing yet');
+    const cur = $('sndNow');
+    if (cur) cur.textContent = !inCallNow() ? '' : !outCtx() ? 'Right now the sound engine is closed: voices play straight through the page.' : 'Right now the sound engine is on.';
+    list.textContent = '';
+    SW.log.slice().reverse().forEach((e) => {
+      const li = document.createElement('li');
+      const tm = document.createElement('time');
+      const d = new Date(e.t);
+      tm.textContent = d.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      tm.dateTime = d.toISOString();
+      const s = document.createElement('span');
+      s.textContent = e.w + (e.n > 1 ? ' (' + e.n + ' times)' : '');
+      li.append(tm, s);
+      list.appendChild(li);
+    });
+  }
+  function soundWatch() {
+    if (SW.timer || !inCallNow()) return;
+    SW.timer = setInterval(() => {
+      if (!inCallNow()) { clearInterval(SW.timer); SW.timer = 0; SW.lanes.clear(); SW.micBadAt = SW.micFails = 0; SW.micHid = SW.owedFix = false; SW.owed = ''; return; }
+      soundCheck();
+      laneWatch();
+    }, 2000);
+  }
+  // Put right whatever on this device stopped the call's sound.
+  function soundCheck() {
+    if (!inCallNow()) return;
+    document.querySelectorAll('#screenVideo, #watchRoot .tile video').forEach((v) => { if (v.srcObject && v.paused) v.play().catch(() => {}); });
+    const tap = $('tapToHear');
+    const waits = !!tap && !tap.hidden; // "Tap to hear" already shows: try again without showing it again
+    outEls().forEach(([el]) => {
+      if (!el.srcObject || !el.paused || SW.plays.has(el)) return;
+      SW.plays.add(el);
+      (isGuest ? playWithSound(el, waits) : el.play().then(() => true, () => false)).then((ok) => {
+        SW.plays.delete(el);
+        if (ok && !el.paused) sndLog('A sound that had been paused was started again.');
+      });
+    });
+    // A sound meant to play on the page must not be left muted there.
+    OUT.map.forEach((l) => { if (l.route === 'page' && l.el.muted && l.el.srcObject) { l.el.muted = false; sndLog('A sound that had been left muted was turned back on.'); } });
+    [outCtx(), G.vctx].forEach((ctx) => {
+      if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+      ctx.resume().then(() => { if (ctx.state === 'running') sndLog('The sound engine had stopped. It was started again.'); }).catch(() => {});
+    });
+    if (isGuest) guestVoicePick(); else hostVoicePick();
+    if (SW.owed && !inBack()) {
+      const who = SW.owed, fix = SW.owedFix;
+      SW.owed = '';
+      SW.owedFix = false;
+      if (fix) soundFix(who); else micAgain(who + ' heard nothing from your mic, so it was started again.', true);
+    } else micWatch();
+  }
+  // A mic the phone cut (for 2.5 s or more, with Beside in front) or ended is asked for again.
+  function micWatch() {
+    const stream = isGuest ? G.mic : H.mic;
+    const tr = stream && stream.getAudioTracks()[0];
+    if (!tr || SW.micBusy) return;
+    const ended = tr.readyState !== 'live';
+    if (!ended && !tr.muted) {
+      if (SW.micBadAt) { SW.micBadAt = SW.micFails = 0; sndLog('Your mic came back by itself.'); }
+      return;
+    }
+    const now = Date.now();
+    if (!SW.micBadAt) { SW.micBadAt = now; sndLog(ended ? 'Your mic stopped.' : 'Your mic was cut by this device.'); }
+    if (inBack()) { SW.micHid = true; return; }
+    if (SW.micHid) { SW.micHid = false; SW.micBadAt = now; } // back in front: the phone gets its 2.5 s to give the mic back
+    if (!ended && (!IS_IOS || now - SW.micBadAt < 2500)) return; // elsewhere a cut mic is often a headset's own mute
+    if (now - SW.micTry < (SW.micFails >= 3 ? 30000 : 8000)) return;
+    micAgain('Your mic was started again.');
+  }
+  function micWhy(e) {
+    const n = (e && e.name) || '';
+    return n === 'NotAllowedError' ? 'this device did not allow it' : n === 'NotFoundError' ? 'no mic was found' : n === 'NotReadableError' || n === 'AbortError' ? 'the mic is busy somewhere else' : 'this device gave no reason';
+  }
+  // Waits its turn behind a change of mic mode. force: also when the mic looks fine from here.
+  function micAgain(why, force) {
+    if (SW.micP && (SW.micPF || !force)) return SW.micP; // one is already waiting its turn
+    const run = async () => {
+      const stream = isGuest ? G.mic : H.mic;
+      const tr = stream && stream.getAudioTracks()[0];
+      if (!tr || !inCallNow()) return false;
+      if (!force && tr.readyState === 'live' && !tr.muted) return true; // it came back while this waited
+      SW.micTry = Date.now();
+      try {
+        const fresh = await getOwn('audio', micWant(CLEAR.mode));
+        const nt = fresh.getAudioTracks()[0];
+        const gone = (isGuest ? G.mic : H.mic) !== stream || !inCallNow();
+        if (gone || !nt || nt.readyState !== 'live' || (nt.muted && tr.readyState === 'live')) {
+          fresh.getTracks().forEach((x) => x.stop());
+          if (!gone) SW.micFails++;
+          return false;
+        }
+        await micSwap(fresh, tr, CLEAR.mode === 'music' ? 'music' : 'speech');
+        SW.micBadAt = SW.micFails = 0;
+        sndLog(why);
+        return true;
+      } catch (e) {
+        SW.micFails++;
+        sndLog('Your mic could not be started again: ' + micWhy(e) + '.');
+        return false;
+      }
+    };
+    SW.micBusy++;
+    const p = CLEAR.q.then(run, run).catch(() => false);
+    CLEAR.q = p;
+    const me = p.then((ok) => { SW.micBusy--; if (SW.micP === me) SW.micP = null; return ok; });
+    SW.micP = me;
+    SW.micPF = !!force;
+    return me;
+  }
+  // What arrives on each voice lane, read from the call itself. Nothing arriving on a connected call for 6 s means
+  // the other device stopped sending: it is asked to restart its mic. Perfect silence for 20 s is only noted (they
+  // may simply be muted or quiet): a restart there could click in the middle of a quiet film.
+  async function laneWatch() {
+    const voice = $('voice');
+    const list = isGuest
+      ? [{ id: hostId, pc: G.call && G.call.peerConnection, track: voice && voice.srcObject ? voice.srcObject.getAudioTracks()[0] : null, conn: G.conn, name: theirName || 'Your host' }]
+      : [...H.guests.values()].filter((g) => g.live).map((g) => ({ id: g.id, pc: g.call && g.call.peerConnection, track: g.voice, conn: g.conn, name: g.name || 'Your guest' }));
+    for (const p of list) {
+      const pc = p.pc;
+      const rc = pc && p.track && /^(connected|completed)$/.test(pc.iceConnectionState) ? pc.getReceivers().find((x) => x.track === p.track) : null;
+      if (!rc) { SW.lanes.delete(p.id); continue; }
+      let bytes = null, energy = null;
+      try {
+        (await rc.getStats()).forEach((r) => {
+          if (r.type !== 'inbound-rtp') return;
+          bytes = r.bytesReceived;
+          if (typeof r.totalAudioEnergy === 'number') energy = r.totalAudioEnergy;
+        });
+      } catch (e) { continue; }
+      if (typeof bytes !== 'number') continue;
+      const now = Date.now();
+      let l = SW.lanes.get(p.id);
+      if (!l || l.track !== p.track) { SW.lanes.set(p.id, { track: p.track, bytes, energy, bAt: now, eAt: now, seen: false, asks: 0, flats: 0, askAt: 0, quiet: false }); continue; }
+      if (bytes !== l.bytes) { l.bytes = bytes; l.bAt = now; if (l.seen && l.asks) l.asks = 0; l.seen = true; }
+      if (energy !== l.energy) { l.energy = energy; l.eAt = now; l.quiet = false; l.flats = 0; }
+      const stall = l.seen && now - l.bAt > 6000;
+      const flat = !stall && l.seen && energy != null && !l.quiet && now - l.eAt > 20000;
+      if (stall && l.asks < 3 && now - l.askAt > 15000) {
+        l.asks++;
+        l.askAt = now;
+        sndLog('Nothing was arriving from ' + p.name + '’s mic. Their device was asked to restart it.');
+        tell(p.conn, { t: 'snd', q: 'stall' });
+      } else if (flat && l.flats < 3 && now - l.askAt > 15000) {
+        l.flats++;
+        l.askAt = now;
+        tell(p.conn, { t: 'snd', q: 'flat' });
+      }
+    }
+  }
+  // The other side asks about this device's sound (q), answers (a), or pressed Fix sound (fix).
+  function soundAsked(d, g) {
+    if (!inCallNow()) return;
+    if (g && !rate(g, 'sndT', 5)) return;
+    const conn = g ? g.conn : G.conn;
+    const who = g ? g.name || 'Your guest' : theirName || 'Your host';
+    if (d.fix && inBack()) {
+      // Restarting players or the engine from the background can lose the sound this phone still has.
+      SW.owed = who;
+      SW.owedFix = true;
+      sndLog(who + ' pressed Fix sound while Beside was in the background here. The sound is restarted when you come back.');
+      tell(conn, { t: 'snd', a: 'away' });
+    } else if (d.fix === 2) {
+      if (!isGuest) return;
+      sndLog(who + ' pressed Fix sound twice, so the call was connected again.');
+      guestLost();
+    } else if (d.fix) soundFix(who);
+    else if (d.q === 'stall') {
+      const stream = isGuest ? G.mic : H.mic;
+      if (!stream) tell(conn, { t: 'snd', a: 'muted' });
+      else if (inBack()) { SW.owed = who; tell(conn, { t: 'snd', a: 'away' }); }
+      else {
+        soundCheck();
+        micAgain(who + ' heard nothing from your mic, so it was started again.', true).then((ok) => tell(conn, { t: 'snd', a: ok ? 'fixed' : 'failed' }));
+      }
+    } else if (d.q === 'flat') {
+      const ch = isGuest ? G.clear : H.clear;
+      const muted = isGuest ? G.muted || !G.mic : H.muted || !H.mic;
+      tell(conn, { t: 'snd', a: muted ? 'muted' : ch && ch.ok ? 'quiet' : 'open' });
+    } else if (typeof d.a === 'string') {
+      const l = SW.lanes.get(g ? g.id : hostId);
+      if (!l) return;
+      if (d.a === 'muted' || d.a === 'quiet' || d.a === 'open') l.quiet = true;
+      if (d.a === 'open') sndLog(who + '’s mic sent only silence for 20 seconds. If you can’t hear them, press Fix sound.');
+      else if (d.a === 'away') {
+        sndLog(who + ' has Beside in the background. Their sound is restarted when they come back.');
+        if (SW.sayT) fixSay(who + ' has Beside in the background. Their sound is restarted when they come back.');
+      }
+      else if (d.a === 'fixed') sndLog(who + '’s mic was started again.');
+      else if (d.a === 'failed') sndLog(who + '’s mic could not be started again.');
+    }
+  }
+  // Fix sound: every sound gets a fresh player, the engine's lanes are made again, and the mic is asked for again,
+  // here and on the other side. by: the other person's name when they pressed it.
+  function soundFix(by) {
+    if (!inCallNow()) return;
+    const now = Date.now();
+    if (!by) {
+      const twice = now - SW.fixAt < 30000;
+      SW.fixAt = twice ? 0 : now;
+      if (twice) {
+        sndLog('You pressed Fix sound twice, so the call was connected again.');
+        fixSay('Connecting the call again…');
+        if (isGuest) guestLost(); else toGuests({ t: 'snd', fix: 2 });
+        return;
+      }
+      sndLog('You pressed Fix sound.');
+      if (isGuest) tell(G.conn, { t: 'snd', fix: 1 }); else toGuests({ t: 'snd', fix: 1 });
+    } else {
+      sndLog(by + ' pressed Fix sound.');
+      note(by + ' pressed Fix sound, so the sound was restarted here too.', 'info');
+    }
+    [...OUT.map.values()].forEach(outDrop);
+    outEls().forEach(([el]) => {
+      const tr = el.srcObject && el.srcObject.getAudioTracks()[0];
+      if (!tr) return;
+      el.srcObject = new MediaStream([tr]);
+      if (isGuest) playWithSound(el); else el.play().catch(() => {});
+    });
+    const ctx = outCtx();
+    if (IS_IOS && ctx && !engineBusy()) engineDown(); // made again by itself if something needs it
+    else if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
+    applyVolumes();
+    if (isGuest) guestVoicePick(); else hostVoicePick();
+    if (!inBack()) micAgain('Your mic was started again.', true);
+    if (!by) fixSay('The sound was restarted on both sides. Still nothing? Press again to connect the call again.');
+  }
+  function fixSay(txt) {
+    document.querySelectorAll('.sound-fix-say').forEach((el) => { el.textContent = txt; });
+    if (mini.els && mini.els.snd) mini.els.snd.querySelectorAll('.sound-fix-say').forEach((el) => { el.textContent = txt; });
+    clearTimeout(SW.sayT);
+    SW.sayT = txt ? setTimeout(() => fixSay(''), 30000) : 0;
+  }
+  // The Beside app says when the phone's sound changed hands (Calls.swift).
+  const SND_NATIVE = {
+    began: 'This device took the sound away for something else.',
+    ended: 'This device gave the sound back.',
+    route: 'The sound moved to another speaker or headphones.',
+    reset: 'This device restarted its sound.',
+    call: 'The ring handed the call over to Beside.',
+  };
+  function soundNative(why) {
+    if (!inCallNow() || !SND_NATIVE[why]) return;
+    sndLog(SND_NATIVE[why]);
+    if (why === 'began') return;
+    [300, 1500, 4000].forEach((ms) => setTimeout(soundCheck, ms));
+    if (why === 'reset') setTimeout(() => micAgain('Your mic was started again.', true), 800);
+  }
+
   // Who is talking: the host listens to every voice and tells everyone; a green ring marks them.
   const T = { ids: new Set(), sig: '', timer: 0, last: new Map(), buf: null };
   function renderTalk() {
@@ -1297,20 +1632,47 @@
     for (let i = 0; i < T.buf.length; i++) s += T.buf[i] * T.buf[i];
     return Math.sqrt(s / T.buf.length);
   }
+  // With no engine (an iPhone or iPad host while a video is open together, see outRest) the call itself says how
+  // loud each voice it receives is.
+  // Such a host can't measure its own mic (blind), so each guest measures the host's voice the same way.
+  function rxLevel(pc, track) {
+    try {
+      const r = pc && track && pc.getReceivers().find((x) => x.track === track);
+      let v = 0;
+      (r && r.getSynchronizationSources ? r.getSynchronizationSources() : []).forEach((x) => { if (x.audioLevel > v) v = x.audioLevel; });
+      return v;
+    } catch (e) { return 0; }
+  }
   function hostListen() {
     clearInterval(T.timer);
     T.timer = setInterval(() => {
-      if (!H.ctx) return;
+      if (app.state !== 'live') return;
       const now = Date.now();
-      const src = [[H.me, H.micAn]].concat([...H.guests.values()].filter((g) => g.live).map((g) => [g.id, g.an]));
-      const ids = [];
-      const run = H.ctx.state === 'running'; // a resting engine's meters hold their last sound
-      src.forEach(([id, an]) => {
-        if (run && loud(an) > 0.02) T.last.set(id, now);
-        if (now - (T.last.get(id) || 0) < 1300) ids.push(id);
-      });
-      if (setTalk(ids)) toGuests({ t: 'talk', ids });
+      const eng = H.ctx;
+      const run = !!eng && eng.state === 'running'; // a stopped engine's meters hold their last sound
+      if (run && loud(H.micAn) > 0.02) T.last.set(H.me, now);
+      const ids = now - (T.last.get(H.me) || 0) < 1300 ? [H.me] : [];
+      for (const g of H.guests.values()) {
+        if (!g.live) continue;
+        const lv = eng ? (run ? loud(g.an) : 0) : rxLevel(g.call && g.call.peerConnection, g.voice);
+        if (lv > 0.02) T.last.set(g.id, now);
+        if (now - (T.last.get(g.id) || 0) < 1300) ids.push(g.id);
+      }
+      const blind = !eng;
+      if (setTalk(ids) || blind !== T.blind) { T.blind = blind; toGuests({ t: 'talk', ids, blind }); }
     }, 120);
+  }
+  // A guest: what the host says, plus the host's own voice when the host can't measure it.
+  function guestTalk() {
+    const now = Date.now();
+    const ids = (T.host || []).filter((x) => x !== hostId || !T.blind);
+    if (T.blind) {
+      const el = $('voice');
+      if (rxLevel(G.call && G.call.peerConnection, el && el.srcObject && el.srcObject.getAudioTracks()[0]) > 0.02) T.last.set(hostId, now);
+      if (now - (T.last.get(hostId) || 0) < 1300) ids.push(hostId);
+      if (!T.gTimer) T.gTimer = setInterval(() => { if (T.blind && app.state === 'watching') guestTalk(); else { clearInterval(T.gTimer); T.gTimer = 0; } }, 150);
+    }
+    setTalk(ids);
   }
   function analyser(node) {
     try {
@@ -2018,6 +2380,20 @@
       tr.append(tb, ts);
       box.appendChild(tr);
     }
+    // In a call: one button that restarts the sound on both sides (see SOUND WATCH).
+    const fr = doc.createElement('div');
+    fr.className = 'sound-testrow sound-fixrow';
+    fr.hidden = true;
+    const fb = doc.createElement('button');
+    fb.type = 'button';
+    fb.className = 'btn quiet sound-fix';
+    fb.textContent = 'Fix sound';
+    fb.addEventListener('click', () => soundFix());
+    const fs = doc.createElement('span');
+    fs.className = 'sound-test-say sound-fix-say';
+    fs.setAttribute('aria-live', 'polite');
+    fr.append(fb, fs);
+    box.appendChild(fr);
     return box;
   }
   function soundUi() {
@@ -2030,7 +2406,8 @@
         const n = Math.round(SND[k] * 100);
         if (+r.value !== n) r.value = String(n);
         row.querySelector('.sound-pct').textContent = n + '%';
-        const off = k === 'media' && amSharing() && !W.id;
+        // An iPhone or iPad plays voices at full volume while a video is open together (see outRest).
+        const off = (k === 'media' && amSharing() && !W.id) || (k === 'voice' && IS_IOS && !!W.id);
         r.disabled = off;
         row.classList.toggle('off', off);
       });
@@ -2046,9 +2423,12 @@
         : ISO.why === 'slow' ? ' The typing remover was too slow on this device, so it is off. Other sounds are still pushed back.'
           : ISO.why === 'rate' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.'
             : ISO.why === 'broke' ? ' The typing remover can’t run on this device, so other sounds are only pushed back.' : '');
+      const fr = b.querySelector('.sound-fixrow');
+      if (fr) fr.hidden = !inCallNow();
       const h = b.querySelector('.sound-hint');
       if (h) {
-        h.textContent = !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
+        h.textContent = IS_IOS && W.id ? 'While a video is open together, voices play at full volume here: that keeps the sound clean. Use the volume buttons on the side.'
+          : !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
           : mine ? 'You’re sharing: use the video’s own volume. Everyone hears that change.'
             : 'You’re sharing without sound. Share a tab with “Also share tab audio” on to send its sound.';
       }
@@ -2361,7 +2741,9 @@
     if (!n || !n.voip || !/^[0-9a-f]{64,200}$/.test(n.voip)) return;
     if (!isGuest && !store.get('beside.room.linked')) return; // not yet given a link: no room of its own to ring
     const alert = typeof n.alert === 'string' && /^[0-9a-f]{64,200}$/.test(n.alert) ? n.alert : '';
-    const mark = n.voip + '|' + alert + '|' + boardRoom() + '|' + ringRole() + '|' + boardName();
+    // Handed over again each day: if the server ever dropped this phone's codes (Apple said one was gone), it gets
+    // them back within a day, so rings and heart pings can't stay lost.
+    const mark = n.voip + '|' + alert + '|' + boardRoom() + '|' + ringRole() + '|' + boardName() + '|' + new Date().toISOString().slice(0, 10);
     if (store.get('beside.voip.sent') === mark) return;
     ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), voip: n.voip, alert: alert || undefined, env: n.env === 'sandbox' ? 'sandbox' : 'production' })
       .then(() => store.set('beside.voip.sent', mark)).catch(() => {});
@@ -2867,7 +3249,7 @@
     };
   }
   // The video's sound has a lane to everyone (an old host's guest has none).
-  function soundLane() { return isGuest ? !!G.mediaSender && G.hostVer >= 3 && !!G.ctx : !!H.ctx; }
+  function soundLane() { return isGuest ? !!G.mediaSender && G.hostVer >= 3 && !!G.ctx : !!H.ctx || (IS_IOS && app.state === 'live'); }
   function soundWhy() {
     if (soundLane()) return 'Videos play with their sound.';
     return isGuest && IS_IOS ? 'Videos you share from an iPhone or iPad play without sound.' : 'Videos play without sound, because their Beside is out of date.';
@@ -3057,6 +3439,7 @@
     CV.url = url;
     CV.media = v;
     // Its sound: through the call's audio engine to the video-sound lane, and to your own speaker.
+    if (!isGuest && IS_IOS && !H.ctx && app.state === 'live') engineUp(); // closed while nothing needed it
     const ctx = isGuest ? G.ctx : H.ctx;
     if (soundLane() && ctx) {
       try {
@@ -3301,6 +3684,47 @@
     H.silent = silentTrack(H.ctx);
     H.micGain = H.ctx.createGain();
     H.micAn = analyser(H.micGain);
+    // If it stops or starts, what each guest is sent changes with it (hostVoicePick).
+    ctx.addEventListener('statechange', () => { if (H.ctx === ctx && app.state === 'live') hostVoicePick(); });
+  }
+  // Your mic into the engine: the leveller, or the plain mic if the leveller can't be made.
+  function hostMicIn() {
+    if (!H.mic || !H.ctx) return;
+    try { H.clear = clearChain(H.ctx, H.mic, { live: () => !H.muted, change: () => hostVoicePick() }); H.clear.out.connect(H.micGain); } catch (e) {
+      H.clear = null;
+      try { H.rawSrc = H.ctx.createMediaStreamSource(H.mic); H.rawSrc.connect(H.micGain); } catch (e2) { H.rawSrc = null; }
+    }
+  }
+  // iPhone and iPad (see outRest): the engine made again in the middle of a call, with everything that lives in
+  // it: your mic's path, each guest's voice mix and meter, and the shared video's sound.
+  function hostEngineBuild(ctx) {
+    hostEngine(ctx);
+    hostMicIn();
+    H.micGain.gain.value = H.muted ? 0 : 1;
+    for (const g of H.guests.values()) {
+      try { g.vdest = H.ctx.createMediaStreamDestination(); g.vdest.channelCount = 1; H.micGain.connect(g.vdest); } catch (e) { g.vdest = null; }
+      if (g.voice) { try { g.vsrc = H.ctx.createMediaStreamSource(new MediaStream([g.voice])); g.an = analyser(g.vsrc); } catch (e) { g.vsrc = g.an = null; } }
+    }
+    H.mediaSrc = null;
+    H.mediaTrack = null; // roomSound makes its part of the engine again
+    roomSound();
+    rewire();
+  }
+  // And closed: the plain mic is sent, and nothing of the engine's stays on a lane.
+  function hostEngineDrop() {
+    const raw = H.mic && H.mic.getAudioTracks()[0];
+    for (const g of H.guests.values()) {
+      if (g.voiceSender && raw && g.voiceSender.track !== raw) g.voiceSender.replaceTrack(raw).catch(() => {});
+      if (g.mediaSender && H.silent && g.mediaSender.track === H.silent) g.mediaSender.replaceTrack(null).catch(() => {});
+      [g.vsrc, g.an].forEach((nd) => { if (nd) { try { nd.disconnect(); } catch (e) {} } });
+      g.vsrc = g.an = g.vdest = null;
+    }
+    if (H.clear) { H.clear.close(); H.clear = null; }
+    [H.rawSrc, H.mediaSrc].forEach((nd) => { if (nd) { try { nd.disconnect(); } catch (e) {} } });
+    if (H.silent) H.silent.stop();
+    H.ctx = H.sink = H.silent = H.micGain = H.micAn = H.rawSrc = H.mediaSrc = null;
+    app.hostVoice = raw ? 'plain' : '';
+    T.last.clear();
   }
   // Three ways to start: a video call, a voice call, or a call that starts by sharing a tab or window.
   async function hostStart(mode) {
@@ -3359,11 +3783,7 @@
               old.close().catch(() => {});
             } catch (e) {}
           }
-          try { H.clear = clearChain(H.ctx, H.mic, { live: () => !H.muted }); H.clear.out.connect(H.micGain); } catch (e) {
-            H.clear = null;
-            H.rawSrc = H.ctx.createMediaStreamSource(H.mic);
-            H.rawSrc.connect(H.micGain);
-          }
+          hostMicIn();
         } catch (e) {
           note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
         }
@@ -3559,6 +3979,7 @@
   function screenFor(g) { return (g.id === H.sharer ? null : roomTrack()) || H.blankScreen; }
   function hostAddGuest(conn) {
     const via = conn.provider || H.peer; // the server this guest came through: the own one or the spare
+    if (IS_IOS && !H.ctx && app.state === 'live') engineUp(); // closed while nobody needed it: a call's lanes are made from it
     if (!via || via.destroyed || !H.ctx || !H.blankScreen || H.guests.has(conn.connectionId)) return;
     for (const [k, old] of H.guests) if (old.conn.peer === conn.peer) hostDropGuest(k); // same guest reconnecting
     const g = {
@@ -3606,7 +4027,7 @@
           tuneVoice(g.voiceSender);
           text('liveHint', '');
           tell(conn, { cam: !!H.cam });
-          if (!g.live) { g.live = true; guestStatus(); moveTakeOver(g); }
+          if (!g.live) { g.live = true; g.liveAt = Date.now(); guestStatus(); moveTakeOver(g); }
           hostFace(g);
         });
     }
@@ -3658,6 +4079,7 @@
       if (!d || typeof d !== 'object') return;
       if (!d.t && 'cam' in d) { g.camOn = !!d.cam; hostFace(g); return; }
       if (d.t === 'lift') { g.lift = liftMode(d.mode); applyVolumes(); return; }
+      if (d.t === 'snd') { soundAsked(d, g); return; }
       if (d.t === 'hello') {
         liftTell(g);
         g.ver = +d.v || 0;
@@ -3824,23 +4246,28 @@
   // shared video's sound goes into its voice mix, as before.
   // An iPhone or iPad host with one guest sends its mic as it comes (SEND_RAW). With more guests each one needs
   // the others' voices mixed in, which only the audio engine can do, so then every guest gets the mix.
+  // Any host whose engine or leveller has stopped also sends the mic as it comes (10 Nov 2026): the engine's mix
+  // would be silence, and the guest would hear nothing.
   function hostVoicePick() {
-    const raw = SEND_RAW && H.mic ? H.mic.getAudioTracks()[0] : null;
+    const mic = H.mic ? H.mic.getAudioTracks()[0] : null;
+    const plain = SEND_RAW || !H.ctx || H.ctx.state !== 'running' || (!!H.clear && !H.clear.ok);
+    const raw = plain && mic && mic.readyState === 'live' ? mic : null;
     const one = H.guests.size <= 1;
     let sent = '';
     for (const g of H.guests.values()) {
       const s = g.voiceSender;
-      if (!s || !g.vdest) continue;
+      if (!s) continue;
+      const mixed = g.vdest ? g.vdest.stream.getAudioTracks()[0] : null;
       const mix = !one || (!!H.mediaSrc && g.ver < 3 && g.id !== H.sharer); // an old guest hears the video in its voice
-      const want = raw && raw.readyState === 'live' && !mix ? raw : g.vdest.stream.getAudioTracks()[0];
+      const want = raw && (!mix || !mixed) ? raw : mixed;
       if (want && s.track !== want) s.replaceTrack(want).catch(() => {});
-      sent = want === raw ? 'plain' : 'mix';
+      if (want) sent = want === raw ? 'plain' : 'mix';
     }
     app.hostVoice = sent;
   }
   function rewire() {
-    if (!H.ctx) return;
     hostVoicePick();
+    if (!H.ctx) return;
     const all = [...H.guests.values()];
     all.forEach((g) => {
       if (!g.vsrc) return;
@@ -3958,8 +4385,8 @@
   function hostMute() {
     if (!H.mic) { note('No microphone yet. Allow the microphone for this site, then press End and start the call again.', 'info'); return; }
     H.muted = !H.muted;
-    H.micGain.gain.value = H.muted ? 0 : 1;
-    if (SEND_RAW) H.mic.getAudioTracks().forEach((t) => { t.enabled = !H.muted; }); // the mic itself is sent
+    if (H.micGain) H.micGain.gain.value = H.muted ? 0 : 1;
+    H.mic.getAudioTracks().forEach((t) => { t.enabled = !H.muted; }); // the mic itself may be what is sent
     setPressed('muteBtn', H.muted, 'Unmute my mic', 'Mute my mic');
   }
   function hostMode(mode) {
@@ -4267,7 +4694,7 @@
       // audio engine track is ever sent from there, as that made the voice crackle. Their videos go without sound.)
       // Clear voice needs the engine too, so anyone joining with a mic starts it here.
       // Everyone gets it: your volumes for their voice and the video play through it on iPhone and iPad.
-      if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
+      if (!G.ctx && !outRest()) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       if (G.ctx) {
         G.ctx.resume().catch(() => {});
         if (CAN_SHARE && !G.silentA) G.silentA = silentTrack(G.ctx);
@@ -4513,7 +4940,11 @@
         }));
         layout();
       } else if (d.t === 'talk') {
-        setTalk((Array.isArray(d.ids) ? d.ids : []).slice(0, 8).map((x) => String(x).slice(0, 80)));
+        T.host = (Array.isArray(d.ids) ? d.ids : []).slice(0, 8).map((x) => String(x).slice(0, 80));
+        T.blind = !!d.blind;
+        guestTalk();
+      } else if (d.t === 'snd') {
+        soundAsked(d);
       } else if (d.t === 'chat') {
         if (typeof d.text !== 'string') return;
         const t = d.text.slice(0, 2000).trim();
@@ -4530,7 +4961,7 @@
       } else if (d.t === 'part') filePart('h:' + String(d.id).slice(0, 12), d);
     } catch (e) { /* a bad message never breaks the call */ }
   }
-  function roomReset() { G.hostVer = 0; G.room = null; G.people = []; setTalk([]); }
+  function roomReset() { G.hostVer = 0; G.room = null; G.people = []; T.host = []; T.blind = false; setTalk([]); }
   function answered(conn) { const pc = conn && conn.peerConnection; return !!(pc && pc.remoteDescription); }
   function notLiveYet() {
     if (app.state === 'watching') return;
@@ -4604,14 +5035,15 @@
     stayAwake(true);
     wakeControls();
   }
-  function playWithSound(el) {
-    el.play().then(() => { app.autoplayErr = ''; tapHide(); }).catch((e) => {
+  function playWithSound(el, quiet) {
+    return el.play().then(() => { app.autoplayErr = ''; tapHide(); return true; }).catch((e) => {
       app.autoplayErr = e && e.name;
-      if (!e || e.name !== 'NotAllowedError') return;
+      if (!e || e.name !== 'NotAllowedError' || quiet) return false;
       // Sound blocked until the next tap: offer "Tap to hear".
       const t = $('tapToHear');
       if (t) t.hidden = false;
       wakeControls();
+      return false;
     });
   }
   // iPhone pauses media while locked, in another app, or when the camera starts: start it again.
@@ -4805,6 +5237,7 @@
     try {
       const m = await getOwn('audio', micWant(CLEAR.mode));
       const t = m.getAudioTracks()[0];
+      if (!G.mic || G.mic.getAudioTracks()[0] !== a) { m.getTracks().forEach((x) => x.stop()); return; } // the sound watch got there first
       t.enabled = !G.muted;
       try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {}
       G.mic = m;
@@ -4833,7 +5266,8 @@
     try { if (G.call) G.call.close(); } catch (e) {}
     try { if (G.peer) G.peer.destroy(); } catch (e) {}
     guestVoiceClose();
-    if (G.ctx && G.ctx.state === 'running') G.ctx.suspend().catch(() => {}); // joining again resumes it inside the tap
+    if (IS_IOS) { [...OUT.map.values()].forEach(outDrop); if (G.ctx) { G.ctx.close().catch(() => {}); G.ctx = null; } } // closed, not paused (see outRest)
+    else if (G.ctx && G.ctx.state === 'running') G.ctx.suspend().catch(() => {}); // joining again resumes it inside the tap
     [G.mic, G.cam].forEach((s) => s && s.getTracks().forEach((t) => t.stop()));
     G.peer = G.call = G.mic = G.cam = G.camSender = G.screenSender = G.view = G.viewFor = null;
     G.camOn = false;
@@ -4936,6 +5370,7 @@
     closeMore();
     if (panel) panel.hidden = false;
     text('checkSummary', 'Checking…');
+    sndLogShow();
     const closeBtn = $('checkClose');
     if (closeBtn) closeBtn.focus();
 
@@ -5224,7 +5659,7 @@
       const vo = $('voice'), me = $('media');
       if (me && me.srcObject) { me.muted = outMuted(me); me.play().catch(() => {}); }
       if (vo) { vo.muted = outMuted(vo); vo.play().then(tapHide, () => {}); }
-      if (G.ctx && G.ctx.state === 'suspended' && OUT.slept !== G.ctx) G.ctx.resume().catch(() => {});
+      if (G.ctx && G.ctx.state === 'suspended') G.ctx.resume().catch(() => {});
       wakeControls();
     });
     on('checkBtn', 'click', runChecks);
@@ -5250,7 +5685,8 @@
     on('moveNot', 'click', () => { MV.dismissed = true; moveCardHide(); });
     on('nameInput', 'change', () => { if (app.state === 'join') moveProbe(moveFound); });
     document.addEventListener('pointerdown', () => {
-      if (H.ctx && H.ctx.state === 'suspended' && OUT.slept !== H.ctx) H.ctx.resume().catch(() => {}); // not while it rests
+      if (H.ctx && H.ctx.state === 'suspended') H.ctx.resume().catch(() => {});
+      if (G.ctx && G.ctx.state === 'suspended' && app.state === 'watching') G.ctx.resume().catch(() => {}); // made again with no mic on: it waits for a tap
       // Safari can refuse to play a guest's voice until a click on the page.
       for (const g of H.guests.values()) {
         if (g.audio && g.audio.paused && g.audio.srcObject) {
@@ -5277,11 +5713,17 @@
       netKeep();
       if (inCall() || (app.state === 'waiting' && Date.now() - G.waitSince < 20 * 60000)) stayAwake(true);
       resumeMedia();
+      soundCheck();
     });
+    // The Beside app, and the browser, say when the device's sound changed (headphones, a phone call ending).
+    window.besideSound = (why) => { try { soundNative(String(why || '')); } catch (e) {} };
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () => { if (inCallNow()) { sndLog('The speaker, headphones or mic changed.'); setTimeout(soundCheck, 600); } });
+    }
     const sv = $('screenVideo');
     if (sv) sv.addEventListener('webkitendfullscreen', () => { if (inCall()) sv.play().catch(() => {}); });
     addEventListener('hashchange', () => location.reload());
-    addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+    addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); else soundCheck(); });
     addEventListener('beforeunload', (e) => { if (app.state === 'live') { e.preventDefault(); e.returnValue = ''; } });
     addEventListener('pagehide', () => {
       [H.peer, H.spare].forEach((p) => { if (p) { try { p.destroy(); } catch (e) {} } });
@@ -5322,7 +5764,7 @@
     ringBoot();
     // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
     app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

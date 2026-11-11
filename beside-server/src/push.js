@@ -69,7 +69,8 @@ export async function encryptPayload(text, p256dh, auth) {
 
 // One web push. Returns 'ok', 'gone' (forget this device) or 'fail'.
 // topic: a newer push with the same topic replaces one still waiting (a ring, or a heart).
-export async function sendWeb(env, sub, payload, topic = 'ring') {
+// ttl: seconds the push service keeps it for a device it can't reach yet. A ring is no use after a minute; a heart waits.
+export async function sendWeb(env, sub, payload, topic = 'ring', ttl = 60) {
   const j = vapidJwk(env);
   if (!j || !pushHostOk(sub.endpoint, env)) return 'fail';
   const key = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', d: j.d, x: j.x, y: j.y }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
@@ -80,10 +81,11 @@ export async function sendWeb(env, sub, payload, topic = 'ring') {
   try {
     const r = await fetch(sub.endpoint, {
       method: 'POST',
-      headers: { authorization: `vapid t=${jwt}, k=${vapidPublic(env)}`, ttl: '60', urgency: 'high', topic, 'content-encoding': 'aes128gcm', 'content-type': 'application/octet-stream' },
+      headers: { authorization: `vapid t=${jwt}, k=${vapidPublic(env)}`, ttl: String(ttl), urgency: 'high', topic, 'content-encoding': 'aes128gcm', 'content-type': 'application/octet-stream' },
       body,
     });
     if (r.status === 404 || r.status === 410) return 'gone';
+    if (!r.ok) console.warn('web push', topic, r.status); // seen with wrangler tail; never the address or the keys
     return r.ok ? 'ok' : 'fail';
   } catch (e) { return 'fail'; }
 }
@@ -94,9 +96,10 @@ export const APNS_TOPIC = 'com.mokingsacc.beside.voip';
 export const APNS_ALERT_TOPIC = 'com.mokingsacc.beside';
 export const sendVoip = (env, sub, payload) => apns(env, sub.token, sub.env, 'voip', APNS_TOPIC, payload);
 // One ordinary Apple notification to the Beside app (a heart), to the device's notification token.
-export const sendAlert = (env, sub, payload) => apns(env, sub.alert, sub.env, 'alert', APNS_ALERT_TOPIC, payload);
+// keep: seconds Apple holds it for a phone that is off or has no signal just then (a ring is never held: 0).
+export const sendAlert = (env, sub, payload, keep = 0) => apns(env, sub.alert, sub.env, 'alert', APNS_ALERT_TOPIC, payload, keep);
 
-async function apns(env, token, where, type, topic, payload) {
+async function apns(env, token, where, type, topic, payload, keep = 0) {
   if (!env.APNS_KEY_P8 || !env.APNS_KEY_ID || !env.APPLE_TEAM_ID) return 'fail';
   if (!apnsJwt || Date.now() - apnsJwt.at > 40 * 60 * 1000) {
     const pem = String(env.APNS_KEY_P8).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
@@ -108,13 +111,14 @@ async function apns(env, token, where, type, topic, payload) {
   try {
     const r = await fetch(`${base}/3/device/${token}`, {
       method: 'POST',
-      headers: { authorization: 'bearer ' + apnsJwt.t, 'apns-push-type': type, 'apns-topic': topic, 'apns-priority': '10', 'apns-expiration': '0', 'content-type': 'application/json' },
+      headers: { authorization: 'bearer ' + apnsJwt.t, 'apns-push-type': type, 'apns-topic': topic, 'apns-priority': '10', 'apns-expiration': keep ? String(Math.floor(Date.now() / 1000) + keep) : '0', 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (r.ok) return 'ok';
     let why = '';
     try { why = (await r.json()).reason || ''; } catch (e) {}
     if (why === 'ExpiredProviderToken') apnsJwt = null;
+    console.warn('apns', type, r.status, why); // seen with wrangler tail; never the device code
     if (r.status === 410 || why === 'BadDeviceToken' || why === 'Unregistered' || why === 'DeviceTokenNotForTopic') return 'gone';
     return 'fail';
   } catch (e) { return 'fail'; }
