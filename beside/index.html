@@ -438,8 +438,8 @@ body.idle .stage.watch{cursor:none}
 .peek b{font-weight:700;margin-right:6px}
 .note.dark{bottom:var(--toast-b)}
 
-/* a phone with the chat open: the call shrinks above it, the bar steps aside */
-@media (max-width:700px){
+/* a phone (or any window under 900 px) with the chat open: the call shrinks above it, the bar steps aside */
+@media (max-width:899px){
   body.chat-open #watchRoot{--cg-b:8px;--dot:72px}
   body.chat-open #watchRoot .dotslot{--dt:calc(var(--cg-t) + 8px)}
 }
@@ -649,8 +649,16 @@ button.stbtn:hover:not(:disabled){background:var(--fill)}
 .composer .btn.icon{min-height:52px;min-width:52px;flex:none}
 .composer .btn svg{width:22px;height:22px}
 .composer .send{background:var(--them);color:var(--on-them)}
-body.chat-open .stage.watch .viewport{right:360px}
-@media (max-width:700px){
+/* From 900 px wide the chat docks beside the video: a rounded column on the right, and the video (with its bar,
+   dot, tray and pills) moves over to make room, so nothing covers a face. Under 900 px it is the bottom sheet. */
+@media (min-width:900px){
+  .chat{top:var(--cg-t);right:var(--cg-r);bottom:max(var(--bar-b),calc(var(--kb,0px) + 8px));width:360px;border-left:0;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1);padding-top:6px;overflow:hidden}
+  .chat .composer{background:var(--surface);padding:10px 12px 12px}
+  .chat-list > .msg:first-of-type{margin-top:auto}
+  body.chat-open .stage.watch .viewport{right:calc(360px + var(--cg-r) + 4px)}
+  body.chat-open :is(.note.dark,.linkbanner){left:calc((100% - 364px - var(--cg-r)) / 2)}
+}
+@media (max-width:899px){
   .chat{top:auto;left:0;width:auto;border-left:0;bottom:var(--kb,0px);height:min(58dvh,calc(100dvh - var(--kb,0px) - 64px));border-radius:var(--r4) var(--r4) 0 0;background:var(--surface);box-shadow:var(--e2);padding-top:6px}
   .chat .composer{background:var(--surface)}
   body.chat-open .stage.watch .viewport{right:0;bottom:58dvh}
@@ -672,22 +680,24 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .tile.small .dots > .dot{width:16px;height:16px;margin:-8px 0 0 -8px;border-width:2px;box-shadow:none}
 .tile.small .dots .dot-name{display:none}
 @keyframes dotlife{0%{opacity:0;transform:scale(.4)}8%{opacity:1;transform:scale(1)}82%{opacity:1}100%{opacity:0}}
-/* the mini window (Document Picture-in-Picture), styled from this same sheet */
+/* the faces window (Document Picture-in-Picture), styled from this same sheet: its own document gets this whole
+   style block (the tokens with it) and the font links. Two people: their face fills the window, you are a round dot
+   bottom right, their name in a pill top left, and one glass pill bottom left with Mic, Camera and a red End.
+   "Stop sharing" is a second small pill beside it while you share; Sound shows top right when the pointer moves. */
 .mini-body{margin:0;overflow:hidden;background:var(--bg)}
-.mini-peek{position:absolute;left:8px;right:8px;top:8px;padding:6px 12px;border-radius:var(--r2);font:var(--caption);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:fade var(--move) var(--ease)}
-.mini-btn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--on-glass);flex:none}
-.mini-btn:hover{background:var(--fill)}
-.mini-btn svg{width:20px;height:20px}
+.mini-peek{position:absolute;left:14px;right:14px;top:14px;min-height:34px;padding:7px 14px;border-radius:var(--r3);font:var(--caption);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:fade var(--move) var(--ease)}
+.mini-btn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--on-glass);flex:none;transition:background-color var(--press) var(--ease),transform var(--press) var(--ease)}
+.mini-btn:hover{background:color-mix(in srgb,var(--on-glass) 13%,transparent)}
+.mini-btn:active{transform:scale(.94)}
+.mini-btn svg{width:22px;height:22px}
 .mini-btn .slash{display:none}
-.mini-btn[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
-.mini-btn[aria-pressed="true"] .slash{display:inline}
-.mini-btn.cam .slash{display:inline}
-.mini-btn.cam{background:var(--ink);color:var(--bg)}
-.mini-btn.cam[aria-pressed="true"]{color:var(--on-glass);background:none}
-.mini-btn.cam[aria-pressed="true"] .slash{display:none}
-.mini-btn.stop{width:auto;padding:0 12px;border-radius:var(--round);background:var(--end);color:var(--on-end);font:var(--caption);font-weight:600;margin-left:4px}
-/* the faces window: everyone side by side, as big as the window allows */
-.fw{position:fixed;inset:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden}
+/* off is a solid light button with the slash, as in the call's bar: a muted mic, a camera that is off */
+.mini-btn[aria-pressed="true"]:not(.cam),.mini-btn.cam:not([aria-pressed="true"]){background:var(--on-glass);color:var(--bg)}
+.mini-btn[aria-pressed="true"]:not(.cam) .slash,.mini-btn.cam:not([aria-pressed="true"]) .slash{display:inline}
+.mini-btn.end{width:56px;border-radius:var(--round);background:var(--end);color:var(--on-end)}
+.mini-btn.end svg{width:24px;height:24px}
+.mini-btn.stop{width:auto;padding:0 16px;border-radius:var(--round);font:var(--callout);font-weight:600;white-space:nowrap}
+.fw{position:fixed;inset:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden;--fw-dot:clamp(56px,38vh,132px)}
 .fw-grid{position:absolute;inset:6px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-content:center}
 .fw-tile{position:relative;overflow:hidden;border-radius:var(--r2);background:var(--surface);display:grid;place-items:center}
 .fw-tile video{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover}
@@ -695,18 +705,33 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .fw-tile b{width:min(46%,46vh,120px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--them);color:var(--on-them);font:var(--display)}
 .fw-tile.self b{background:var(--me);color:var(--on-me)}
 .fw-tile b svg{width:46%;height:46%}
-.fw-tile .label{position:absolute;z-index:2;left:8px;bottom:8px;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 10px;border-radius:var(--round);font:var(--caption);font-weight:600}
-.fw-tile.self.muted .label::after{content:" · muted";color:var(--end)}
+/* three or four people: today's split, each name at the top of its picture (the pill sits at the bottom) */
+.fw-tile .label{position:absolute;z-index:2;left:8px;top:8px;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 10px;border-radius:var(--round);font:var(--caption);font-weight:600}
+.fw-tile.self.muted .label::after{content:", muted";color:var(--end)}
 .fw-tile.talking .label::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--go);vertical-align:1px;animation:talkdot 1.6s ease-in-out infinite}
-.fw-stage{position:absolute;inset:0;z-index:3;background:var(--bg);animation:fade var(--move) var(--ease)}
+/* two people: their face fills the window, you are the dot */
+.fw[data-n="2"] .fw-grid{inset:0;display:block}
+.fw[data-n="2"] .fw-tile:not(.self){position:absolute;inset:0;border-radius:0}
+.fw[data-n="2"] .fw-tile.self{position:absolute;z-index:4;right:14px;bottom:14px;width:var(--fw-dot);height:var(--fw-dot);border-radius:50%;box-shadow:0 0 0 4px var(--bg)}
+.fw[data-n="2"] .fw-tile.self b{width:100%;height:100%;font:var(--title)}
+.fw[data-n="2"] .fw-tile.self .label{display:none}
+.fw[data-n="2"] .fw-tile:not(.self) .label{left:14px;top:14px;max-width:calc(100% - 86px);display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 13px 0 11px;font:var(--callout);font-weight:600}
+.fw[data-n="2"] .fw-tile:not(.self) .label::before{content:"";display:block;flex:none;width:8px;height:8px;margin:0;border-radius:50%;background:var(--go)}
+.fw[data-n="2"] .fw-tile:not(.self).talking .label::before{animation:talkdot 1.6s ease-in-out infinite}
+.fw-stage{position:absolute;inset:0;z-index:5;background:var(--bg);animation:fade var(--move) var(--ease)}
 .fw-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .fw-stage .dots{position:absolute}
 .fw-stage .dots > .dot{width:22px;height:22px;margin:-11px 0 0 -11px}
-.fw .mini-peek{z-index:5}
-.fw .fw-wait{top:auto;bottom:58px;text-align:center}
-.fw-bar{position:absolute;z-index:6;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:4px;border-radius:var(--round);opacity:0;transition:opacity var(--move) var(--ease);pointer-events:none}
-.fw.awake .fw-bar,.fw:focus-within .fw-bar{opacity:1;pointer-events:auto}
-.fw-sound{position:absolute;z-index:6;left:50%;bottom:58px;transform:translateX(-50%);width:min(calc(100% - 20px),340px);padding:12px 14px 10px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e2)}
+.fw .mini-peek{z-index:7}
+.fw .fw-wait{top:auto;bottom:80px;text-align:center}
+/* the pills, bottom left; a second one wraps above the first when the window is narrow */
+.fw-acts{position:absolute;z-index:6;left:14px;bottom:14px;max-width:calc(100% - 28px);display:flex;flex-wrap:wrap-reverse;align-items:center;gap:8px}
+.fw[data-n="2"] .fw-acts{max-width:calc(100% - var(--fw-dot) - 40px)}
+.fw-bar{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:var(--round)}
+.fw-sndbtn{position:absolute;z-index:6;top:14px;right:14px;background:var(--glass);box-shadow:var(--glass-edge);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);opacity:0;pointer-events:none;transition:opacity var(--move) var(--ease),background-color var(--press) var(--ease)}
+.fw.awake .fw-sndbtn,.fw-sndbtn:focus-visible,.fw-sndbtn[aria-expanded="true"]{opacity:1;pointer-events:auto}
+.fw-sndbtn[aria-expanded="true"]{background:var(--on-glass);color:var(--bg)}
+.fw-sound{position:absolute;z-index:6;top:66px;right:14px;width:min(calc(100% - 28px),340px);padding:12px 14px 10px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e2)}
 /* who is talking: the chip's dot pulses (no outlines on any picture in the call) */
 .who-face b,.who-fig{position:relative}
 /* their character in place of the letter while their camera is off, on a tint of their colour */
@@ -806,7 +831,7 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound-hint{margin:-4px 0 0;padding:0 4px;font:var(--caption);color:var(--ink-2)}
 .soundpop{max-height:calc(100dvh - 140px);overflow-y:auto;overscroll-behavior:contain}
 @media (max-width:699px){.soundpop{max-height:calc(100dvh - 48px)}}
-.fw-sound{max-height:calc(100vh - 70px);overflow-y:auto}
+.fw-sound{max-height:calc(100vh - 80px);overflow-y:auto}
 /* a film together: the real YouTube player on top in a rounded frame, one line of controls that works for both of
    you, their face below it and you in the corner (on a wide screen the film on the left, their face on the right) */
 .ytbox{position:absolute;z-index:2;top:var(--cg-t);left:var(--cg-l);right:var(--cg-r);display:flex;flex-direction:column;gap:8px}
@@ -1623,8 +1648,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=18"></script>
+<script src="board.js?v=19"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>
