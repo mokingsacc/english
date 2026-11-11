@@ -27,7 +27,10 @@ export function createViewport(app, canvas) {
   function snapped(w, sx, sy) {
     const s = app.store.get();
     const spec = app.runner.waiting();
-    if (!s.toggles.osnap || !(spec && spec.type === 'point') && !(drag && drag.kind === 'grip')) return { p: w, snap: null };
+    // Object snap catches picked points and the centre grip (moving the roundabout onto a point); a grip that changes one
+    // size follows the cursor freely, or the size would stick at whatever named point lies near.
+    const moving = drag && drag.kind === 'grip' && drag.grip.id === 'center';
+    if (!s.toggles.osnap || !(spec && spec.type === 'point') && !moving) return { p: w, snap: null };
     const ix = index();
     if (!ix) return { p: w, snap: null };
     let best = null, bd = 10;
@@ -157,7 +160,7 @@ export function createViewport(app, canvas) {
   function startDrag(g, e) {
     const s = app.store.get();
     const round = app.round();
-    const result = app.frameInfo().result;
+    const result = app.frameInfo().shown;   // the shape on screen (the last one built while the current one cannot be)
     const leg = g.leg ? round.legs.find((l) => l.id === g.leg.id) : null;
     const ctx = { round, leg, result };
     const paths = gripPaths(g.grip, leg);

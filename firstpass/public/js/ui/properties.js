@@ -63,6 +63,9 @@ export function createProperties(app, body) {
       const f = legField(p);
       out.push({ cat: 'Results', key: `r-built-${f}`, label: `${p.label} as built`, built: f, res: (r) => builtValue(r, ids, f, p.unit, app.selectedLegs()) });
     }
+    // Shown when the engine reports it: how wide the island is where it meets the circle.
+    out.push({ cat: 'Results', key: 'r-splitter-circle', label: 'Splitter island width at the circle', built: 'splitterWidthAtCircle',
+      res: (r) => (r && r.ok && r.legs.some((L) => typeof L.splitterWidthAtCircle === 'number') ? legResult(r, ids, (L) => L.splitterWidthAtCircle, 'ft') : null) });
     return { kind, rows: out };
   }
 
@@ -202,19 +205,23 @@ function legResult(r, ids, read, unit) {
   return rounded.every((v) => v === rounded[0]) ? rounded[0] : VARIES;
 }
 
-/** The value as built beside the asked value, when the engine reports one (<field>Built) and it differs. */
+/** The value as built beside the asked value, when the engine reports one (<field>Built) and it differs; null hides the row. */
 function builtValue(r, ids, field, unit, legs) {
   if (!r || !r.ok) return null;
   const key = `${field}Built`;
   const vals = [];
+  let differs = false;
   for (const id of ids) {
     const L = r.legs.find((x) => x.id === id) || {};
     const G = (r.geometry && r.geometry.legs.find((x) => x.id === id)) || {};
     const built = typeof L[key] === 'number' ? L[key] : typeof G[key] === 'number' ? G[key] : null;
     if (built === null) return null;
     const asked = (legs.find((l) => l.id === id) || {})[field];
-    vals.push(Math.abs(built - asked) > 0.005 ? `${showValue(built, unit)} (asked ${showValue(asked, unit)})` : showValue(built, unit));
+    const off = Math.abs(built - asked) > 0.005;
+    differs = differs || off;
+    vals.push(off ? `${showValue(built, unit)} (asked ${showValue(asked, unit)})` : showValue(built, unit));
   }
+  if (!differs) return null;
   return vals.every((v) => v === vals[0]) ? vals[0] : VARIES;
 }
 

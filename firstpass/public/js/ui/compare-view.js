@@ -68,7 +68,8 @@ export function createCompareView(app, body) {
           const c = res.checks.find((x) => x.id === r.check);
           if (!c) return { v: null, text: '-' };
           const num = typeof c.value === 'number' ? c.value : null;
-          return { v: r.better === 'rank' ? RANK[c.status] : num, status: c.status, text: `${STATUS_WORD[c.status]}${num !== null ? `, ${fmtCheckValue(num, c.unit)}` : ''}` };
+          const shown = num !== null && !(c.unit === 'problems' && num === 0);   // "Pass", not "Pass, none"
+          return { v: r.better === 'rank' ? RANK[c.status] : num, status: c.status, text: `${STATUS_WORD[c.status]}${shown ? `, ${fmtCheckValue(num, c.unit)}` : ''}` };
         });
         const nums = vals.map((x) => x.v).filter((v) => v !== null && v !== undefined);
         const best = nums.length > 1 ? (r.better === 'high' ? Math.max(...nums) : Math.min(...nums)) : null;

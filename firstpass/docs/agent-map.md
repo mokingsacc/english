@@ -77,6 +77,67 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 
 ## Page files (public/js; the engine is public/js/engine)
 
+- public/js/app/api.js: The only place the page talks to the server (CONTRACT.md has every route). The key comes from the link (#k=<key>),
+- public/js/app/eval-worker.js: The worker that runs evaluate off the page's main thread while a grip is dragged, so the drawing keeps up with the
+- public/js/app/evaluator.js: evaluate() with a small cache and a stopwatch: the same roundabout and rules give the same answer without working it
+- public/js/app/frame-meter.js: The frame meter (the idea of practice-hub's public/js/map/frame-meter.js): while she moves the drawing (a press, a
+- public/js/app/frame.js: One animation frame of the page: work out the roundabout on screen (the draft while a grip is dragged), keep the last
+- public/js/app/grips/bearing.js: Grip: out along a leg, past its splitter island nose as drawn. Dragging it turns the leg (its bearing, clockwise from
+- public/js/app/grips/center.js: Grip: the centre of the roundabout as drawn. Dragging it moves the whole roundabout (centre easting and northing).
+- public/js/app/grips/entry-radius.js: Grip: a point on a leg's entry curb curve as drawn. Dragging it away from the corner the curve rounds makes the
+- public/js/app/grips/entry-width.js: Grip: the entry width where the engine measures it, at entryWidthPoint on the right curb, square to that curb from
+- public/js/app/grips/exit-radius.js: Grip: a point on a leg's exit curb curve as drawn. Dragging it away from the corner the curve rounds makes the
+- public/js/app/grips/exit-width.js: Grip: the exit width where the engine measures it, at exitWidthPoint on the right curb, square to that curb from Sx
+- public/js/app/grips/frame.js: Shared maths for the grips. Every grip takes its place from evaluate's output (named points and the curb chain), never
+- public/js/app/grips/index.js: The grips registry. Each grip is one file that default-exports { id, on: 'round' | 'leg', path, points(g),
+- public/js/app/grips/quadrant.js: Grips: the four quadrant points of the inscribed circle as drawn. Dragging one in or out changes the inscribed
+- public/js/app/grips/splitter-tip.js: Grip: the nose (tip) of a leg's splitter island as drawn. Dragging it out along the leg makes the island longer;
+- public/js/app/main.js: The page's start: makes the store, the server link, the drawing and every panel, joins them in one `app` object that
+- public/js/app/model-index.js: What the drawing is made of, for picking and zooming: every primitive of an evaluate result with the object that owns
+- public/js/app/ops.js: The page's side of the change ops (docs/design.md, Server; the server's own copy is src/worker/store/ops.js): builders
+- public/js/app/prefs.js: Remembered settings on this browser only (palette sizes, which palettes are open, display layers, toggles): a small
+- public/js/app/sample.js: The first-run sample project, used when the page has no key or no server: the server's own sample (a rural crossroads
+- public/js/app/selfcheck.js: Check myself: one plain line each, green or red with what to do when red, for the data service, the Claude connector,
+- public/js/app/store.js: The page's one store: the project, the current option, the selection, the draft roundabout while a grip is dragged,
+- public/js/app/sync.js: Changes, undo and the 1.5 s poll. change(ops) applies the ops on the page at once (app/ops.js) and sends them to
+- public/js/commands/check.js: CHECK: opens the Checks tab of the Panorama window: every check, its value and limit, and what to do.
+- public/js/commands/checkmyself.js: CHECKMYSELF: the page checks itself and the server, one plain line each, green or red with what to do.
+- public/js/commands/compare.js: COMPARE: opens the Compare tab of the Panorama window: the options side by side, the best value in each row marked.
+- public/js/commands/deleteoption.js: DELETEOPTION: removes the option on screen from the project, after she says Yes. The last option cannot go.
+- public/js/commands/erase.js: ERASE (E): removes the selected legs (or the leg she picks). A roundabout keeps at least three legs.
+- public/js/commands/export.js: EXPORT: asks the server for the option on screen as a DXF drawing. Until the DXF export is built the server answers
+- public/js/commands/help.js: HELP (F1): lists every command with its short names and what it does, in the command history.
+- public/js/commands/icd.js: ICD: sets the inscribed circle diameter of the roundabout on screen ("ICD 110" in one go).
+- public/js/commands/index.js: The commands registry. Each command is one file that default-exports { name, aliases, description, ribbon, menu?,
+- public/js/commands/layer.js: LAYER (LA): the display layers. On its own it opens the Layers palette; with a layer named after it ("LA P") it turns
+- public/js/commands/leg.js: LEG: adds a leg at a typed bearing or toward a picked point (the default is the middle of the widest gap).
+- public/js/commands/move.js: MOVE (M): moves the whole roundabout from a base point to a second point, or by a typed displacement (east,north).
+- public/js/commands/new.js: NEW: starts a new project with the sample roundabout on its site, and opens it.
+- public/js/commands/open.js: OPEN: lists her projects and opens the one she picks.
+- public/js/commands/option.js: OPTION: copies the option on screen to the next letter (Option A to Option B) and shows the copy.
+- public/js/commands/pan.js: PAN (P): real-time pan. The cursor becomes a hand; drag to move the drawing; Esc or Enter ends it.
+- public/js/commands/panorama.js: PANORAMA: shows or hides the Panorama window (Checks and Compare) under the drawing.
+- public/js/commands/parser.js: The command line's words, in the AutoCAD manner, as pure functions (tests/page/commands.test.mjs): finding a command
+- public/js/commands/properties.js: PROPERTIES (PR): opens the Properties palette for the selection. Ctrl+1 does the same.
+- public/js/commands/qsave.js: QSAVE (SAVE): every change is saved as she makes it; this sends anything still waiting and says where things stand.
+- public/js/commands/redo.js: REDO: puts back the change the last undo took away. Ctrl+Y does the same.
+- public/js/commands/regen.js: REGEN (RE): works the drawing out again from its numbers and redraws it.
+- public/js/commands/rename.js: RENAME: renames the option on screen, or the selected leg.
+- public/js/commands/report.js: REPORT: opens Report a problem (public/js/shared/report.js): her words, a screenshot, and Copy for Claude.
+- public/js/commands/rotate.js: ROTATE (RO): turns a leg to a new bearing (typed, or picked as the direction from the centre), or by an angle.
+- public/js/commands/runner.js: Runs commands the AutoCAD way. A line she enters is split into words (a space ends a word as Enter does): the first
+- public/js/commands/settings.js: SETTINGS: opens the Settings tab of the Toolspace: every design limit, where it comes from, editable for this project.
+- public/js/commands/toolspace.js: TOOLSPACE (TS): shows or hides the Toolspace palette (Prospector and Settings) on the left.
+- public/js/commands/u.js: U: undoes the newest change (hers or Claude's), as one step. Ctrl+Z does the same.
+- public/js/commands/zoom.js: ZOOM (Z): a window picked in the drawing, a scale factor ("2x"), or the options Extents, Window, Object and Previous.
+- public/js/draw/camera.js: The drawing's camera: world (state plane feet, y north) to screen (CSS px, y down) and back, zoom about a point, pan,
+- public/js/draw/colors.js: The drawing's colours in one table, after the CAD colour index habit on a dark model space: white curbs, grey edge
+- public/js/draw/hit.js: Hit testing against the true lines and arcs of the drawing (never against pixels): the distance from a point to a
+- public/js/draw/layers.js: The drawing's one face: createLayers(canvas, { onFrame }) -> { resize, request, draw(scene, camera), stats, destroy }.
+- public/js/draw/paint-model.js: Paints the roundabout itself from an evaluate result: land take, sight triangles, islands with their hatch, edge and
+- public/js/draw/paint-overlay.js: Paints what sits over the model and changes with every mouse move: the grid, selection and rollover highlights, grips
+- public/js/draw/prims.js: Tracing the engine's true lines and arcs onto a 2D canvas through the camera: arcs stay arcs (canvas arc() in screen
+- public/js/draw/underlay.js: The aerial photo under the drawing: standard Web Mercator XYZ tiles from /tiles/naip/{z}/{x}/{y} (zoom 12 to 20),
 - public/js/engine/checks/entry-speed.js: Entry speed: the fastest path speed on entry (V1, from the entry curve R1) and on the right turn (V5, from
 - public/js/engine/checks/exit-speed.js: Exit speed (for information): the fastest speed of cars leaving by each leg (V3), which matters for people
 - public/js/engine/checks/geometry.js: The shape can be built: every curb meets the circle as drawn, and a car can follow every movement with the
@@ -101,6 +162,25 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/engine/sight.js: Sight distance.
 - public/js/shared/report-sheet.js: Report a problem: the sheet, loaded only when opened (ported from practice-hub). One text box, Add a screenshot, and
 - public/js/shared/report.js: Report a problem, loaded by the page (ported from practice-hub; report-sheet.js explains). Kept small: breadcrumbs, the
+- public/js/ui/checks-view.js: The Checks tab of the Panorama window: one row per check with its status icon, title, value, limit, the plain-word
+- public/js/ui/cmdline.js: The command line: a history scrollback above one input line with the >_ marker and "Type a command"; the running
+- public/js/ui/compare-view.js: The Compare tab of the Panorama window: the options as columns, one row per headline value and per check, the best
+- public/js/ui/dialogs.js: The page's small windows: Check myself (one green or red line each, with what to do), Open project (her projects to
+- public/js/ui/doctabs.js: The file tabs above the drawing: one tab per option (Option A, Option B, ...) as drawing tabs, the one on screen
+- public/js/ui/dom.js: Small DOM helpers the page's parts share: h() to make elements, setText()/setAttr() that write only when the value
+- public/js/ui/dyninput.js: Dynamic input: the small box by the cursor while a grip is dragged, showing the value being changed (its label from
+- public/js/ui/keys.js: The keyboard, as in the CAD original: typing anywhere outside a text field goes to the command line without a click
+- public/js/ui/menu.js: Shortcut menus (right click) and flyout lists: one floating menu at a time, closed by a click elsewhere, Esc or a
+- public/js/ui/palettes.js: Docked palettes (Toolspace on the left, Properties on the right): a title strip with the name written down its edge,
+- public/js/ui/panorama.js: The Panorama window docked under the drawing: its name down a strip at the left with close and collapse, the tabs
+- public/js/ui/properties.js: The Properties palette: a dropdown naming the selection ("Roundabout", "Leg (1)", "No selection"), then category rows
+- public/js/ui/prospector.js: Prospector, the Toolspace's tree: the project, its Options, each option with its Roundabout, Legs, Fastest paths and
+- public/js/ui/ribbon.js: The ribbon: tabs Home, Roundabout, Analyze, Output, Manage, each with panels titled in a strip along their bottom
+- public/js/ui/settings.js: Settings, the Toolspace's second tab: every design limit from the engine's rules table (label, value, unit, where it
+- public/js/ui/statusbar.js: The status bar along the very bottom: the cursor's northing and easting in feet (two decimals, live), the drawing
+- public/js/ui/titlebar.js: The title bar: the application button with our own FP mark (its menu: New, Open, Save, Export, Check myself, Report a
+- public/js/ui/tooltip.js: Tooltips in two stages, as CAD ribbons show them: rest on a button and its name, its command and one line come up;
+- public/js/ui/viewport.js: The drawing area's mouse, as in the CAD original: the wheel zooms about the cursor; a middle drag pans and a double
 
 ## Scripts (scripts)
 

@@ -25,10 +25,11 @@ export default {
       items.push({ leg: m.from, status: 'fail', value: null, text: m.problems[0] });
     }
     for (const w of ctx.warnings || []) items.push({ leg: null, status: 'warn', value: null, text: w });
+    for (const n of ctx.notes || []) items.push({ leg: n.leg, status: 'info', value: null, text: n.text });
     for (const L of ctx.geometry.legs) {
       items.push({
         leg: L.id, status: 'pass', value: L.entryWidthBuilt,
-        text: sentence(`${theLeg(L.name)} is ${num(L.entryWidthBuilt)} ft wide at the entry and ${num(L.exitWidthBuilt)} ft wide at the exit as built, measured square to the outer curb from where the splitter island meets the circle. Its curb radii are ${whole(L.entryRadiusBuilt)} ft at the entry and ${whole(L.exitRadiusBuilt)} ft at the exit.`),
+        text: sentence(`${theLeg(L.name)} is ${num(L.entryWidthBuilt)} ft wide at the entry and ${num(L.exitWidthBuilt)} ft wide at the exit as built, measured square to the outer curb from where the splitter island meets the circle. Its curb radii are ${whole(L.entryRadiusBuilt)} ft at the entry and ${whole(L.exitRadiusBuilt)} ft at the exit. Its splitter island is ${num(L.splitterWidthAtCircle)} ft wide where it meets the circle and ${num(L.splitterLengthBuilt)} ft long.`),
       });
     }
     const status = failedMoves.length ? 'fail' : (ctx.warnings || []).length ? 'warn' : 'pass';

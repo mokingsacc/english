@@ -84,12 +84,21 @@ function speedLine(app) {
   for (let i = 0; i < 15; i++) { const t0 = performance.now(); evaluate(round, rules); times.push(performance.now() - t0); }
   const ev = percentiles(times);
   const m = app.meter.summary();
-  const draws = percentiles(app.layers.stats.draws.slice(-120));
-  const work = ev.p50 + (draws ? draws.p50 : 0);
-  const ok = work < 16 && (!m.frames || m.frames.p90 < 34);
+  // A drag frame paints the whole model again, so the drawing is timed painting it from scratch, not from the quick frames
+  // that only lay the cursor over a kept picture.
+  const bench = app.layers.bench ? app.layers.bench(15) : [];
+  const draws = percentiles(bench.length ? bench : app.layers.stats.draws.slice(-120));
+  const drawMs = draws ? draws.p50 : 0;
+  // With the worker, a drag frame draws the last answer while the next one is worked out beside the page, so each of
+  // the two has the whole frame; without it they share one frame.
+  const beside = app.evaluator.async();
+  const ok = (beside ? Math.max(ev.p50, drawMs) < 16 : ev.p50 + drawMs < 16) && (!m.frames || m.frames.p90 < 34);
   const frames = m.frames && m.frames.n > 10 ? ` While you moved the drawing, frames came every ${m.frames.p50} ms (90 percent within ${m.frames.p90} ms, 99 percent within ${m.frames.p99} ms).` : ' Move or zoom the drawing for a few seconds, then run this again to measure the frames too.';
+  const how = beside
+    ? `Working out the drawing takes ${ev.p50.toFixed(1)} ms, done beside the page while you drag, and drawing it takes ${draws ? drawMs.toFixed(1) : '-'} ms, each against a budget of 16 ms a frame.`
+    : `Working out the drawing takes ${ev.p50.toFixed(1)} ms and drawing it ${draws ? drawMs.toFixed(1) : '-'} ms, ${(ev.p50 + drawMs).toFixed(1)} ms a frame against a budget of 16 ms.`;
   return {
     id: 'speed', ok, title: 'Speed on this machine',
-    text: `Working out the drawing takes ${ev.p50.toFixed(1)} ms and drawing it ${draws ? draws.p50.toFixed(1) : '-'} ms, ${work.toFixed(1)} ms a frame against a budget of 16 ms.${frames}${ok ? '' : ' That is slower than it should be: close other heavy tabs, or use Report a problem with these numbers.'}`,
+    text: `${how}${frames}${ok ? '' : ' That is slower than it should be: close other heavy tabs, or use Report a problem with these numbers.'}`,
   };
 }

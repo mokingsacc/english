@@ -17,19 +17,17 @@ export function shapes() {
   const turned = defaultRoundabout();
   turned.legs[0].bearing = 20;
 
-  // Widths are measured square to the curb from the end of the splitter island, so each shape's widths are at
-  // least what its curb radii make with the lane beside the island kept at its approach width.
   const big = defaultRoundabout();
   big.icd = 300; big.circWidth = 24; big.apronWidth = 16;
-  big.legs.forEach((l) => { Object.assign(l, { entryRadius: 60, exitRadius: 70, splitterLength: 200, splitterWidth: 20, entryWidth: 26, exitWidth: 26 }); });
+  big.legs.forEach((l) => { Object.assign(l, { entryRadius: 120, exitRadius: 200, splitterLength: 150, splitterWidth: 20, entryWidth: 20, exitWidth: 22 }); });
 
   const small = defaultRoundabout();
   small.icd = 90; small.circWidth = 20; small.apronWidth = 10;
-  small.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 40 }); });
+  small.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 45 }); });
 
   const offset = defaultRoundabout();
   offset.icd = 150;
-  offset.legs.forEach((l) => { Object.assign(l, { exitRadius: 80, entryWidth: 20, exitWidth: 21 }); });
+  offset.legs.forEach((l) => { Object.assign(l, { entryWidth: 20, exitWidth: 21 }); });
   Object.assign(offset.legs[0], { offsetLeft: 12 });
   Object.assign(offset.legs[1], { offsetLeft: -8, bearing: 95, exitWidth: 23 });
   Object.assign(offset.legs[2], { approachSpeed: 30, entryRadius: 100, entryWidth: 22.5 });
@@ -38,7 +36,7 @@ export function shapes() {
   const six = defaultRoundabout();
   six.icd = 200; six.circWidth = 20;
   six.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({
-    ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5,
+    ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 50, exitRadius: 80, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5,
   }));
 
   return { default: def, t, skew, turned, big, small, offset, six };

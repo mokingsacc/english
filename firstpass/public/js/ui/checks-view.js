@@ -1,13 +1,13 @@
 // The Checks tab of the Panorama window: one row per check with its status icon, title, value, limit, the plain-word
 // explanation and the fix; a caret opens the per-leg lines. Clicking a row zooms to the check's `where` and highlights
 // it in the drawing. Rows are kept by check id and only changed cells are written, so it can follow a grip drag live.
-import { h, ico, setText, setClass, keyed, whole, STATUS_WORD } from './dom.js';
+import { h, ico, setText, setAttr, setClass, keyed, whole, STATUS_WORD } from './dom.js';
 
-export function fmtCheckValue(v, unit) {
+export function fmtCheckValue(v, unit, isLimit = false) {
   if (v === null || v === undefined) return '-';
   if (typeof v !== 'number') return String(v);
   if (unit === 'sq ft') return `${whole(v)} sq ft`;
-  if (unit === 'problems') return v === 0 ? 'none' : `${v} problem${v === 1 ? '' : 's'}`;
+  if (unit === 'problems') return v === 0 ? (isLimit ? 'none allowed' : 'none') : `${v} problem${v === 1 ? '' : 's'}`;
   if (unit === 'ft') return `${whole(v)} ft`;
   return `${v.toFixed(1)}${unit ? ` ${unit}` : ''}`;
 }
@@ -41,9 +41,10 @@ export function createChecksView(app, body) {
     const [t, v, l, e, f] = p.cells;
     setText(t, c.title);
     setText(v, fmtCheckValue(c.value, c.unit));
-    setText(l, c.limit === null || c.limit === undefined ? '-' : fmtCheckValue(c.limit, c.unit === 'problems' ? 'problems' : c.unit));
-    setText(e, c.explain);
-    setText(f, c.fix || '');
+    setText(l, c.limit === null || c.limit === undefined ? '-' : fmtCheckValue(c.limit, c.unit, true));
+    // One line each, as a table; the whole text shows on the chosen row and when the pointer rests on it.
+    setText(e, c.explain); setAttr(e, 'title', c.explain || null);
+    setText(f, c.fix || ''); setAttr(f, 'title', c.fix || null);
     setClass(p.row, `st-${c.status}`, true);
     for (const s of ['pass', 'warn', 'fail', 'info']) if (s !== c.status) setClass(p.row, `st-${s}`, false);
     const focus = app.store.get().focusCheck;

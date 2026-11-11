@@ -55,7 +55,7 @@ export function boot() {
 
   const canvas = $('canvas');
   const camera = createCamera();
-  const evaluator = createEvaluator(evaluate);
+  const evaluator = createEvaluator(evaluate, { worker: makeWorker(), onReady: () => app.request('eval') });
   const meter = createFrameMeter({ target: $('viewport') });
   const views = [];
   let frames = null, layers = null, cmdline = null, runner = null, viewport = null, lastPrompt = null, photoV = 0, viewTimer = 0;
@@ -70,7 +70,13 @@ export function boot() {
     project: () => store.get().project,
     selectedLegs: () => selectedLegs(store.get()),
     frameInfo: () => (frames ? frames.info() : {}),
-    evaluateOption: (o) => (o ? evaluator.run(o.round, (store.get().project || {}).rules) : null),
+    // The option on screen follows a grip drag (the draft's answer), so the tree, the tabs and Compare agree with the checks.
+    evaluateOption: (o) => {
+      if (!o) return null;
+      const st = store.get();
+      if (st.draft && o.id === st.optionId && frames) { const f = frames.info(); if (f.result) return f.result; }
+      return evaluator.run(o.round, (st.project || {}).rules);
+    },
     photoVersion: () => photoV,
     viewportRect: () => canvas.getBoundingClientRect(),
 
@@ -196,6 +202,10 @@ export function boot() {
     },
   };
 
+  /** The evaluate worker (app/eval-worker.js), or null where module workers cannot start: then all runs stay here. */
+  function makeWorker() {
+    try { return new Worker(new URL('./eval-worker.js', import.meta.url), { type: 'module' }); } catch { return null; }
+  }
   function pick(obj, keys) {
     const out = {};
     if (obj && typeof obj === 'object') for (const k of keys) if (typeof obj[k] === 'boolean') out[k] = obj[k];
@@ -239,7 +249,7 @@ export function boot() {
   const ui = app.ui;
   ui.titlebar = createTitlebar(app, $('titlebar'));
   ui.ribbon = createRibbon(app, $('ribbon'), ribbonEntries(COMMANDS));
-  ui.toolspace = createPalette(app, $('toolspace'), { id: 'toolspace', name: 'Toolspace', side: 'left', width: 260, tabs: [{ id: 'prospector', label: 'Prospector' }, { id: 'settings', label: 'Settings' }] });
+  ui.toolspace = createPalette(app, $('toolspace'), { id: 'toolspace', name: 'Toolspace', side: 'left', width: 280, tabs: [{ id: 'prospector', label: 'Prospector' }, { id: 'settings', label: 'Settings' }] });
   ui.prospector = createProspector(app, ui.toolspace.bodies.prospector);
   ui.settings = createSettings(app, ui.toolspace.bodies.settings);
   ui.properties = createPalette(app, $('properties'), { id: 'properties', name: 'Properties', side: 'right', width: 300, min: 220 });
@@ -311,7 +321,7 @@ export function boot() {
     api, store,
     echo: (t, kind) => app.echo(t, kind),
     onProject: (project, why) => {
-      if (why === 'load') { frames.forget(); views.length = 0; restoreView(project); writeHash(); }
+      if (why === 'load') { frames.forget(); views.length = 0; restoreView(project); writeHash(); evaluator.warm(project.options[0].round, project.rules); }
     },
   });
 
@@ -338,7 +348,7 @@ export function boot() {
     const st = store.get();
     return { project_id: st.project && st.project.id, option: st.optionId, selection: st.selection, project: st.project, sync: { mode: sync.mode(), waiting: sync.waiting(), net: st.net.text }, photo: st.photo.text || st.photo.state, command_lines: cmdline.lastLines(12) };
   };
-  parts.perf = () => ({ perf: { frames: meter.summary(), evaluate_ms: percentiles(evaluator.times.slice(-60)), draw_ms: percentiles(layers.stats.draws.slice(-120)), last_frame_ms: app.stats.lastFrameMs } });
+  parts.perf = () => ({ perf: { frames: meter.summary(), evaluate_ms: percentiles(evaluator.times.slice(-60)), evaluate_worker_ms: percentiles(evaluator.workerTimes.slice(-60)), draw_ms: percentiles(layers.stats.draws.slice(-120)), last_frame_ms: app.stats.lastFrameMs } });
   // A small read-only face for the browser tests and for looking into the page from the console.
   window.fpPage = { state: () => store.get(), info: () => frames.info(), meter, layers: layers.stats, camera, evaluator, ready: null };
 

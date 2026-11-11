@@ -79,11 +79,12 @@ export function createProspector(app, body) {
   function update(row, r) {
     row.__r = r;
     const { caret, iconSlot, label, count, status } = row.__parts;
-    row.style.paddingLeft = `${4 + r.depth * 14}px`;
+    row.style.paddingLeft = `${4 + r.depth * 12}px`;
     const caretName = r.branch ? (open.has(r.key) ? 'caretDown' : 'caretRight') : '';
     if (caret.__n !== caretName) { caret.__n = caretName; caret.innerHTML = ''; if (caretName) caret.append(ico(caretName, 16)); }
     if (iconSlot.__n !== r.icon) { iconSlot.__n = r.icon; iconSlot.innerHTML = ''; if (r.icon) iconSlot.append(ico(r.icon, 16)); }
     setText(label, r.label);
+    setAttr(label, 'title', r.label);
     setText(count, r.count != null ? `(${r.count})` : '');
     const st = r.status || '';
     if (status.__n !== st) { status.__n = st; status.innerHTML = ''; if (st) status.append(ico(st, 16)); setAttr(status, 'title', st ? { pass: 'Pass', warn: 'Warning', fail: 'Fails', info: 'For information' }[st] : null); }

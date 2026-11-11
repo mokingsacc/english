@@ -11,6 +11,10 @@
 // holds. A x is carried from step to step, so an iteration costs one band product per line search trial.
 // Pure arithmetic on typed arrays; a workspace can be reused so a solve makes no garbage.
 
+// A variable held on its bound last step stays held while its pull into the box is at most this share of the
+// largest pull (see the bound set in solveBoxQP).
+const STICK = 0.3;
+
 export function createQPWorkspace(n) {
   return {
     cap: n,
@@ -160,6 +164,7 @@ export function solveBoxQP(prob, ws) {
   let f = 0;
   for (let i = 0; i < n; i++) f += x[i] * (0.5 * ax[i] + q[i]);
 
+  bind.fill(0, 0, n);
   let iterations = 0, converged = false, gradNorm = Infinity, reason = 'iterations';
   let ridge = 0;
 
@@ -185,8 +190,16 @@ export function solveBoxQP(prob, ws) {
     const eps = Math.min(epsMax, Math.sqrt(wsq));
 
     // Variables held at a bound this step: within eps of it, with the gradient pointing out of the box.
+    // A variable that was held last step and still sits exactly on its bound stays there this step (without
+    // even a gradient step) while its pull into the box is small next to the largest one: where a path lies
+    // along a straight curb the pulls are near zero, and releasing every one of them at once made the
+    // iterates zigzag along it for hundreds of steps. The largest pull is always released, so the solve
+    // still reaches the same answer.
+    const stick = STICK * pg;
     for (let i = 0; i < n; i++) {
+      const was = bind[i];
       bind[i] = frozen[i] || (x[i] <= lo[i] + eps && g[i] > 0) || (x[i] >= hi[i] - eps && g[i] < 0) ? 1 : 0;
+      if (!bind[i] && was && (x[i] === lo[i] || x[i] === hi[i]) && (g[i] < 0 ? -g[i] : g[i]) <= stick) bind[i] = 2;
     }
 
     // Newton step on the free set, from a banded Cholesky factorisation of A there (bound rows and
@@ -216,8 +229,9 @@ export function solveBoxQP(prob, ws) {
     }
     if (!ok) { reason = 'factorisation'; break; }
     // Variables held at a bound take a diagonally scaled gradient step; the projection keeps them there.
+    // Those kept on from last step (bind 2) stay put.
     for (let i = 0; i < n; i++) {
-      if (bind[i]) d[i] = frozen[i] ? 0 : -g[i] / D0[i];
+      if (bind[i]) d[i] = frozen[i] || bind[i] === 2 ? 0 : -g[i] / D0[i];
     }
 
     // Projected backtracking line search. f(x + dx) = f + g'dx + 0.5 dx'A dx.

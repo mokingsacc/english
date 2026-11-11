@@ -1,18 +1,20 @@
-// Grip: the exit width, square to the leg from the end of the splitter island at the circle. Dragging it sideways
-// makes the exit wider or narrower.
-import { legFrame, dot, sub } from './frame.js';
+// Grip: the exit width where the engine measures it, at exitWidthPoint on the right curb, square to that curb from Sx
+// (where the splitter island's edge meets the circle). Dragging it along that line makes the exit wider or narrower.
+import { legGeom, dot, sub, unit } from './frame.js';
 
 export default {
   id: 'exit-width',
   on: 'leg',
   path: 'legs.*.exitWidth',
   points(g) {
-    const f = legFrame(g.round, g.leg);
-    const w = g.leg.exitWidth;
-    return [{ x: f.Sx.x - w * f.rIn.x, y: f.Sx.y - w * f.rIn.y }];
+    const L = legGeom(g.result, g.leg.id);
+    return L && L.exitWidthPoint ? [L.exitWidthPoint] : [];
   },
-  value(g, P) {
-    const f = legFrame(g.round, g.leg);
-    return -dot(sub(P, f.Sx), f.rIn);
+  start(g) {
+    const L = legGeom(g.result, g.leg.id);
+    if (!L || !L.exitWidthPoint || !L.Sx) return null;
+    const v = sub(L.exitWidthPoint, L.Sx);
+    return { base: L.Sx, dir: unit(v), drawn: Math.hypot(v.x, v.y), asked: g.leg.exitWidth };
   },
+  value: (g, P, s) => (s ? s.asked + dot(sub(P, s.base), s.dir) - s.drawn : g.leg.exitWidth),
 };

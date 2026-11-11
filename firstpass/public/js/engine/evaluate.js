@@ -126,6 +126,20 @@ function evaluateShape(round, rules) {
       entryWidthBuilt: L.entryWidthBuilt, exitWidthBuilt: L.exitWidthBuilt,
       entryRadiusBuilt: L.entryRadiusBuilt, exitRadiusBuilt: L.exitRadiusBuilt,
       entryWidthPoint: W(L.entryWidthPoint), exitWidthPoint: W(L.exitWidthPoint),
+      // Points a grip or a label can use without working anything out: the centres of the curb curves (also
+      // the centres of the island's edge arcs beside them), where each curb's taper beside the island meets
+      // its straight part, and the island's corners: where its taper meets its body, where its edge leaves
+      // the body line for the circle, and (when the entry or exit is no wider than its lane) the step out to
+      // the edge arc. A step is null when there is none; an island edge radius is null when the edge is a
+      // straight step instead of an arc.
+      entryCenter: W(L.entryO), exitCenter: W(L.exitO),
+      entryCurbTaper: W(L.entryCurbTaper), exitCurbTaper: W(L.exitCurbTaper),
+      islandEntryTaper: W(L.islandEntryTaper), islandExitTaper: W(L.islandExitTaper),
+      islandEntryJoin: W(L.islandEntryJoin), islandExitJoin: W(L.islandExitJoin),
+      islandEntryStep: L.islandEntryStep ? W(L.islandEntryStep) : null,
+      islandExitStep: L.islandExitStep ? W(L.islandExitStep) : null,
+      islandEntryRadius: L.islandEntryRadius, islandExitRadius: L.islandExitRadius,
+      splitterLengthBuilt: L.splitterLengthBuilt, splitterWidthAtCircle: L.splitterWidthAtCircle,
     })),
     landTake,
     sightTriangles: triangles,
@@ -136,7 +150,7 @@ function evaluateShape(round, rules) {
 
   const ctx = {
     ok: true, problems: [], round: R, rules: rr, rule: (id) => rr.get(id), overridden: rr.overridden,
-    geometry, movements, legs: legsOut, derived: G, toWorld: W, warnings: G.warnings,
+    geometry, movements, legs: legsOut, derived: G, toWorld: W, warnings: G.warnings, notes: G.notes,
   };
   const checks = runChecks(ctx);
   return { ok: true, problems: [], geometry, movements, legs: legsOut, checks, headline: headline(legsOut, landTake, checks) };
@@ -205,6 +219,7 @@ function legSummary(G, L, moves) {
     exitMovement: fastestExit ? fastestExit.id : null,
     entryWidthBuilt: L.entryWidthBuilt, exitWidthBuilt: L.exitWidthBuilt,
     entryRadiusBuilt: L.entryRadiusBuilt, exitRadiusBuilt: L.exitRadiusBuilt,
+    splitterLengthBuilt: L.splitterLengthBuilt, splitterWidthAtCircle: L.splitterWidthAtCircle,
   };
 }
 

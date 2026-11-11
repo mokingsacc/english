@@ -2,7 +2,7 @@
 //
 // Right chain (the roadway on its left): the entry edge and curb of i, the inscribed circle
 // counterclockwise to j's exit curb, then the exit curb and edge of j.
-// Left chain (the roadway on its right): the centre line and splitter entry edge of i up to Se, the straight
+// Left chain (the roadway on its right): the centre line and splitter island entry edge of i up to Se, the straight
 // tangent from Se to the central island, the island counterclockwise, the tangent to j's Sx, then the
 // splitter exit edge and centre line of j. When the straight line from Se to Sx already clears the island
 // (a right turn) the island is left out and that straight line is used.
@@ -34,19 +34,12 @@ export function movementChains(G, i, j) {
   const A = G.legs[i], B = G.legs[j];
   const reach = G.lead + EXTEND;
 
-  const right = [
-    line(A.P(A.sNose + reach, A.approachWidth), A.F, 'edge'),
-    line(A.F, A.T1, 'curb'),
-    A.entryArc,
-  ];
+  const right = [line(A.P(A.sNose + reach, A.approachWidth), A.F, 'edge'), ...A.entryCurb];
   const sweep = wrap2Pi(B.theta - A.theta) + B.alphaT2x - A.alphaT2;
   if (sweep > 1e-9) right.push(arc(A.T2, B.T2x, ORIGIN, G.Ri, true, 'curb'));
-  right.push(B.exitArc, line(B.T1x, B.Fx, 'curb'), line(B.Fx, B.P(B.sNose + reach, -B.departWidth), 'edge'));
+  right.push(...B.exitCurb, line(B.Fx, B.P(B.sNose + reach, -B.departWidth), 'edge'));
 
-  const left = [
-    line(A.P(A.sNose + reach, 0), A.nose, 'centerline'),
-    line(A.nose, A.Se, 'splitter'),
-  ];
+  const left = [line(A.P(A.sNose + reach, 0), A.nose, 'centerline'), ...A.islandEntry];
   const t1 = tangentAngleFromPoint(A.Se, G.Rc, false);
   const t2 = tangentAngleFromPoint(B.Sx, G.Rc, true);
   const P1 = polar(G.Rc, t1), P2 = polar(G.Rc, t2);
@@ -69,7 +62,7 @@ export function movementChains(G, i, j) {
     if (X) left.push(line(A.Se, X, 'hull'), line(X, B.Sx, 'hull'));
     else left.push(line(A.Se, B.Sx, 'hull'));
   }
-  left.push(line(B.Sx, B.nose, 'splitter'), line(B.nose, B.P(B.sNose + reach, 0), 'centerline'));
+  left.push(...B.islandExit, line(B.nose, B.P(B.sNose + reach, 0), 'centerline'));
   return { right, left, hullTouchesIsland };
 }
 

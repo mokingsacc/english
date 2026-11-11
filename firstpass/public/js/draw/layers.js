@@ -80,6 +80,13 @@ export function createLayers(canvas, { onFrame = null, maxDpr = 3 } = {}) {
       if (scene.underlay && scene.underlay.busy()) { modelKey = ''; api.request(); }
     },
     stats,
+    /** Paints the last scene again from scratch n times (after a few to warm up) and gives each time in ms, for Check myself. */
+    bench(n = 15) {
+      if (!last.scene) return [];
+      const out = [];
+      for (let i = 0; i < n + 3; i++) { modelKey = ''; api.draw(last.scene, last.camera); if (i >= 3) out.push(stats.lastDrawMs); }
+      return out;
+    },
     destroy() {
       alive = false;
       if (raf) cancelAnimationFrame(raf);

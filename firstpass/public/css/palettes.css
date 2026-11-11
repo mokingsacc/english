@@ -28,6 +28,7 @@
 .tw { flex: none; width: 16px; height: 16px; display: grid; place-items: center; }
 .tw .ico { width: 11px; height: 11px; }
 .ti { flex: none; width: 16px; height: 16px; }
+.ti:empty { display: none; }
 .tl { overflow: hidden; text-overflow: ellipsis; }
 .tc { flex: none; color: var(--c-ink-dim); }
 .ts { flex: none; margin-left: auto; width: 16px; height: 16px; }

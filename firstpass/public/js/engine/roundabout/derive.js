@@ -8,26 +8,40 @@
 // that driver's right, so the entry lane lies on the rIn side. A point at station s (along u) and lateral
 // offset t (toward rIn) from the leg axis is s u + (t - offsetLeft) rIn: the axis passes through
 // C - offsetLeft rIn.
+//
+// Each side of a leg is laid out the way a designer lays it out (the entry here; the exit mirrors it with
+// the exit radius, exit width and departure lane width):
+//   - the outer curb runs parallel to the leg at half the splitter island width plus the approach lane
+//     width, then turns onto the circle on a curve of the entry curb radius, tangent to both;
+//   - the lane follows the curb: the island's entry edge is the arc concentric with that curve at the entry
+//     width, from the circle back to where it meets the island's body, so the width measured square to the
+//     curb from where the island meets the circle is the entry width;
+//   - the island is whatever is left between the entry and exit lanes, closed by the circle, at its body
+//     width where the curves begin, then tapering to its nose, with the curb following it at the lane width.
 
 import {
-  bearingVec, dot, cross, sub, unit, rightOf, leftOf, dist, line, arc, filletLineCircle, angleOf, wrap2Pi,
-  closedChainArea, circleCircle, segmentsCross, arcSweep, segmentDistance, arcDistance, bracketRoot, TAU, DEG,
+  bearingVec, dot, cross, dist, line, arc, angleOf, wrap2Pi, closedChainArea, circleCircle, segmentsCross,
+  arcSweep, segmentDistance, arcDistance, bracketRoot, TAU, DEG,
 } from '../geom.js';
 import { paramFor } from './params.js';
-import { theLeg, sentence, whole, num, article } from '../format.js';
+import { theLeg, sentence, whole, num } from '../format.js';
 
 const MIN_ISLAND_RADIUS = 1; // ft; below this the central island is a point, not an island
-const WIDTH_TOL = 1e-6; // ft; a built width within this of the width asked for is that width
 const TOUCH = 1e-9; // radians of circle; less than this between an entry curve and the next exit curve is none
-const LANE_TOL = 0.05; // ft; a lane beside the splitter island this much narrower than its approach lane is the same
+const EPS = 1e-6; // ft; a line or arc shorter than this is left out of a chain
+const CURB_ROOM = 2; // ft; an outer curb line must pass at least this far inside the circle to turn onto it
+const ORIGIN = { x: 0, y: 0 };
 
 export function derive(round, rr) {
   const problems = [];
   const warnings = [];
+  const notes = [];
   const Ri = round.icd / 2;
   const Rc = Ri - round.circWidth;
   const Ra = Rc - round.apronWidth;
   const lead = rr.get('geom.leadLength');
+  const noseMargin = rr.get('geom.noseMargin');
+  const noseTaper = rr.get('geom.noseTaper');
 
   if (!(Rc > MIN_ISLAND_RADIUS)) {
     problems.push(`The circulatory roadway (${fmt(round.circWidth)} ft) leaves no room for a central island inside a ${fmt(round.icd)} ft circle. Make the circle bigger or the roadway narrower.`);
@@ -35,17 +49,17 @@ export function derive(round, rr) {
     problems.push(`The truck apron (${fmt(round.apronWidth)} ft) is wider than the central island can hold. The island edge is only ${fmt(Rc)} ft from the centre. Make the apron narrower or the circle bigger.`);
   }
 
-  const legs = round.legs.map((lg, idx) => legFrame(lg, idx, Ri, lead, problems));
-  if (problems.length) return { ok: false, problems, warnings };
+  const legs = round.legs.map((lg, idx) => legFrame(lg, idx, Ri, round.icd, problems));
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
-  // Each curb side at the radius asked for, placed so that its width is the width asked for.
+  // Each side at the radius asked for.
   for (const L of legs) {
     L.entrySide = buildSide(L, false, L.entryRadius, Ri);
-    if (!L.entrySide.ok) problems.push(sideProblem(L, false, L.entryRadius, L.entrySide));
+    if (!L.entrySide.ok) problems.push(sideProblem(L, false, round.icd));
     L.exitSide = buildSide(L, true, L.exitRadius, Ri);
-    if (!L.exitSide.ok) problems.push(sideProblem(L, true, L.exitRadius, L.exitSide));
+    if (!L.exitSide.ok) problems.push(sideProblem(L, true, round.icd));
   }
-  if (problems.length) return { ok: false, problems, warnings };
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
   // Counterclockwise order of the legs around the circle (the way traffic circulates).
   const ccw = legs.map((L, i) => i).sort((a, b) => legs[a].theta - legs[b].theta || a - b);
@@ -58,7 +72,7 @@ export function derive(round, rr) {
       problems.push(`The ${a.name} and the ${b.name} point the same way. Give each leg its own bearing.`);
     }
   }
-  if (problems.length) return { ok: false, problems, warnings };
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
   // Where one leg's entry curve and the next leg's exit curve would overlap before reaching the circle,
   // both radii are shortened by one common factor until the two curves just meet on the circle.
@@ -79,19 +93,10 @@ export function derive(round, rr) {
     const built = `${whole(fit.entry.R)} ft and ${whole(fit.exit.R)} ft`;
     warnings.push(`${sentence(theLeg(A.name))}'s entry curve and ${theLeg(B.name)}'s exit curve meet with no circle between them${built === asked ? '.' : `, so they are built at ${built}, not ${asked}.`}`);
   }
-  if (problems.length) return { ok: false, problems, warnings };
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
-  for (const L of legs) {
-    finishLeg(L, Ri);
-    for (const exit of [false, true]) {
-      const lane = narrowestLane(L, exit, exit ? L.exitSide : L.entrySide);
-      const ends = exit ? L.departWidth : L.approachWidth;
-      if (!(lane < ends - LANE_TOL)) continue;
-      const what = exit ? 'exit' : 'entry';
-      const R = exit ? L.exitRadiusBuilt : L.entryRadiusBuilt;
-      warnings.push(`The ${what} lane of ${theLeg(L.name)} narrows to ${num(Math.max(0, lane))} ft beside the splitter island, less than its ${fmt(ends)} ft ${exit ? 'departure' : 'approach'} lane: an ${what} ${fmt(exit ? L.exitWidth : L.entryWidth)} ft wide is tight for ${article(whole(R))} ${whole(R)} ft ${what} curb radius. Make the ${what} wider or its curb radius smaller.`);
-    }
-  }
+  for (const L of legs) finishLeg(L, Ri, lead, Math.max(noseMargin, noseTaper * L.hw), problems, notes);
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
   // Corners: the outer curb from one leg's entry, counterclockwise along the circle, to the next leg's exit.
   const corners = [];
@@ -102,7 +107,7 @@ export function derive(round, rr) {
     const sweep = gap + B.alphaT2x - A.alphaT2;
     const touching = !(sweep > TOUCH);
     const chain = [...A.entryChain];
-    if (!touching) chain.push(arc(A.T2, B.T2x, { x: 0, y: 0 }, Ri, true, 'curb'));
+    if (!touching) chain.push(arc(A.T2, B.T2x, ORIGIN, Ri, true, 'curb'));
     chain.push(...B.exitChain);
     // Two curves that meet on the circle touch there and nowhere else, so only a corner with some circle
     // between its curves needs the crossing test.
@@ -113,12 +118,11 @@ export function derive(round, rr) {
     }
     corners.push({ from: i, to: k, sweep, touching, chain });
   }
-  if (problems.length) return { ok: false, problems, warnings };
+  if (problems.length) return { ok: false, problems, warnings, notes };
 
-  const origin = { x: 0, y: 0 };
   const circle = (r, tag) => [
-    arc({ x: r, y: 0 }, { x: -r, y: 0 }, origin, r, true, tag),
-    arc({ x: -r, y: 0 }, { x: r, y: 0 }, origin, r, true, tag),
+    arc({ x: r, y: 0 }, { x: -r, y: 0 }, ORIGIN, r, true, tag),
+    arc({ x: -r, y: 0 }, { x: r, y: 0 }, ORIGIN, r, true, tag),
   ];
 
   // Land take: the outer curbs all round, closed across each leg at its nose station.
@@ -137,6 +141,7 @@ export function derive(round, rr) {
     ok: true,
     problems,
     warnings,
+    notes,
     Ri, Rc, Ra,
     Rm: Ri - round.circWidth / 2,
     circWidth: round.circWidth,
@@ -152,8 +157,8 @@ export function derive(round, rr) {
   };
 }
 
-/** The leg's frame and the points fixed by its own parameters: the splitter island, the nose and far ends. */
-function legFrame(lg, idx, Ri, lead, problems) {
+/** The leg's frame and its own fixed values. Adds a problem when an outer curb cannot reach the circle. */
+function legFrame(lg, idx, Ri, icd, problems) {
   const u = bearingVec(lg.bearing);
   const rIn = { x: -u.y, y: u.x };
   const o = lg.offsetLeft;
@@ -164,106 +169,90 @@ function legFrame(lg, idx, Ri, lead, problems) {
     idx, id: lg.id, name, bearing: lg.bearing, u, rIn, offset: o, theta: angleOf(u),
     approachSpeed: lg.approachSpeed, approachWidth: lg.approachWidth, departWidth: lg.departWidth,
     entryWidth: lg.entryWidth, exitWidth: lg.exitWidth, entryRadius: lg.entryRadius, exitRadius: lg.exitRadius,
-    splitterLength: lg.splitterLength, splitterWidth: lg.splitterWidth, P,
+    splitterLength: lg.splitterLength, splitterWidth: lg.splitterWidth, hw, P,
   };
-
-  if (Math.abs(hw - o) > Ri - 2 || Math.abs(hw + o) > Ri - 2) {
-    problems.push(`The splitter island of the ${name} is too wide, or its leg is shifted too far, to meet the circle. Make the island narrower or reduce the approach offset.`);
-    return L;
-  }
-  const sNose = Math.sqrt((Ri + lg.splitterLength) ** 2 - o * o);
-  const sSe = Math.sqrt(Ri * Ri - (hw - o) ** 2);
-  const sSx = Math.sqrt(Ri * Ri - (hw + o) ** 2);
-  L.sNose = sNose; L.sSe = sSe; L.sSx = sSx;
-  L.nose = P(sNose, 0);
-  L.Se = P(sSe, hw);
-  L.Sx = P(sSx, -hw);
-  L.F = P(sNose, lg.approachWidth);
-  L.Fx = P(sNose, -lg.departWidth);
-  L.farIn = P(sNose + lead, lg.approachWidth);
-  L.farOut = P(sNose + lead, -lg.departWidth);
-  L.farCl = P(sNose + lead, 0);
-  // Angles of points about the centre, measured from the leg axis (counterclockwise positive).
+  // Angles of points about the centre, measured from the leg axis (counterclockwise positive); stations
+  // along the leg, and lateral offsets from its axis toward the entry side.
   L.alpha = (p) => Math.atan2(cross(u, p), dot(u, p));
-  L.alphaSe = L.alpha(L.Se);
-  L.alphaSx = L.alpha(L.Sx);
+  L.st = (p) => dot(p, u);
+  L.lat = (p) => dot(p, rIn) + o;
+
+  for (const exit of [false, true]) {
+    const q = hw + (exit ? lg.departWidth : lg.approachWidth);
+    // The distance of the straight outer curb from the centre of the circle.
+    const off = Math.abs(exit ? q + o : q - o);
+    if (off > Ri - CURB_ROOM) problems.push(curbMissProblem(L, exit, q, icd));
+  }
   return L;
 }
 
-// Curb sides. The entry curb is a straight flare line from F (the approach lane edge at the island nose)
-// and an arc of the entry radius tangent to that line and touching the inscribed circle from outside. The
-// entry width is measured the way an engineer measures it: square to that curb, from Se, the point where
-// the splitter island's edge meets the circle. The line's direction is set by its lateral offset w at the
-// station of Se; the width grows with w, so w is found by a bracketed root find. The exit side mirrors
-// this from Fx and Sx.
+function curbMissProblem(L, exit, q, icd) {
+  const what = exit ? 'exit' : 'entry';
+  const lane = exit ? 'departure' : 'approach';
+  const shift = L.offset ? ', or reduce the approach offset' : '';
+  return `The ${what} curb of ${theLeg(L.name)} cannot turn onto the circle: it runs ${fmt(q)} ft from the leg's centre line (half the splitter island and the ${lane} lane), too far out for a ${fmt(icd)} ft circle. Make the circle bigger, or the splitter island or the ${lane} lane narrower${shift}.`;
+}
 
-const WIDE = 1, RADIUS = 2, NARROW = 3, CROSS = 4;
-
-/** The curb of one side at lateral offset w and radius R: { O, T1, T2, alpha, width, ... } or a reason code. */
-function curbAt(L, exit, R, w, Ri) {
-  const F = exit ? L.Fx : L.F;
-  const N = exit ? L.P(L.sSx, -w) : L.P(L.sSe, w);
-  const d = unit(sub(N, F));
-  const f = filletLineCircle(F, d, exit ? leftOf(d) : rightOf(d), R, Ri);
-  // No curve joins the line to the circle: the line is aimed either outside the circle (too wide) or across
-  // the splitter island to the far side of the circle.
-  if (!f) return w < L.splitterWidth / 2 ? CROSS : WIDE;
-  if (!(f.lambda > 1e-6)) return RADIUS;
-  const a = L.alpha(f.T2);
-  if (exit ? !(a < L.alphaSx - 1e-6) : !(a > L.alphaSe + 1e-6)) return NARROW;
-  const side = { O: f.O, T1: f.T1, T2: f.T2, alpha: a, w, R };
-  if (!(narrowestLane(L, exit, side) > 0)) return CROSS;
-  const S = exit ? L.Sx : L.Se;
-  // Both curb arcs turn clockwise: the entry arc from T1 to T2, the exit arc from T2 to T1.
-  const arcD = exit ? arcDistance(S, f.T2, f.T1, f.O, R, false) : arcDistance(S, f.T1, f.T2, f.O, R, false);
-  const lineD = segmentDistance(S, F, f.T1);
-  side.width = Math.min(lineD, arcD);
-  side.onArc = arcD <= lineD;
-  return side;
+function sideProblem(L, exit, icd) {
+  const what = exit ? 'exit' : 'entry';
+  const lane = exit ? 'departure' : 'approach';
+  const W = exit ? L.exitWidth : L.entryWidth;
+  const R = exit ? L.exitRadius : L.entryRadius;
+  return `The ${what} of ${theLeg(L.name)} cannot be ${fmt(W)} ft wide with a ${fmt(R)} ft ${what} curb radius on a ${fmt(icd)} ft circle: the curb curve would meet the circle before the ${what} reaches that width. Make the circle bigger, the ${what} curb radius larger, or the splitter island or the ${lane} lane narrower.`;
 }
 
 /**
- * One curb side (exit false: the entry) at radius R, with the width the leg asks for.
- * Returns { ok: true, O, T1, T2, alpha, width, w, R } or { ok: false, why, limit } where why is 'wide',
- * 'radius', 'narrow' or 'cross' and limit is the widest (for 'wide') or narrowest (otherwise) width that can
- * be built, or null.
+ * One side of a leg (exit false: the entry) at curb radius R. Returns { ok: false } when the curb cannot be
+ * laid out on the circle, else the side in leg terms (q is the lateral offset from the axis toward this side):
+ *   qC, qO       the straight curb and the curve's centre; sO the station of the centre and of T1
+ *   O, T1, T2    the curve's centre and its ends on the straight curb and on the circle; alpha the angle of T2
+ *   S, sS, qS    where the island meets the circle, the point the width is measured from
+ *   kind, J, K, sJ  the island's edge from S: 'arc' (the concentric arc from S back to J on the body line),
+ *                'wider' (the width is no more than the lane: the arc from S back to K, the arc's point
+ *                nearest the axis, then a step square to the axis in to J on the body line) or 'step' (the
+ *                curve meets the circle before the lane has widened past the body line: a step square to
+ *                the axis from S out to J on the body line, which cuts back the island's tip).
  */
 function buildSide(L, exit, R, Ri) {
+  const sg = exit ? -1 : 1;
   const W = exit ? L.exitWidth : L.entryWidth;
-  const hw = L.splitterWidth / 2;
-  // The width grows with w. The bracket runs from a line aimed across the splitter island (w far below hw)
-  // to one aimed well outside the circle, where no curve can join it to the circle.
-  const reach = 2 * Ri + Math.abs(L.offset) + hw + (exit ? L.departWidth : L.approachWidth);
-  const f = (w) => {
-    const c = curbAt(L, exit, R, w, Ri);
-    return typeof c === 'object' ? c.width - W : c === WIDE ? Infinity : -Infinity;
-  };
-  const r = bracketRoot(f, hw - reach, hw + reach, 1e-10, 1e-9);
-  const c = curbAt(L, exit, R, r.x, Ri);
-  if (typeof c === 'object' && Math.abs(c.width - W) <= WIDTH_TOL) return { ok: true, ...c };
-  const atLo = curbAt(L, exit, R, r.lo, Ri), atHi = curbAt(L, exit, R, r.hi, Ri);
-  if (atHi === WIDE) return { ok: false, why: 'wide', limit: typeof atLo === 'object' ? atLo.width : null };
-  const why = atLo === RADIUS ? 'radius' : atLo === NARROW ? 'narrow' : 'cross';
-  return { ok: false, why, limit: typeof atHi === 'object' ? atHi.width : null };
-}
-
-function sideProblem(L, exit, R, s) {
-  const what = exit ? 'exit' : 'entry';
-  const W = exit ? L.exitWidth : L.entryWidth;
-  const who = theLeg(L.name);
-  if (s.why === 'wide') {
-    const most = s.limit !== null ? ` The most it can be is about ${num(Math.floor(s.limit * 10) / 10)} ft.` : '';
-    return `The ${what} of ${who} cannot be ${fmt(W)} ft wide: the circle cannot take that much width there.${most} Make the ${what} or the splitter island narrower, or the circle bigger.`;
+  const lane = exit ? L.departWidth : L.approachWidth;
+  const hw = L.hw;
+  const qC = hw + lane, qO = qC + R;
+  const s2 = (Ri + R) ** 2 - (sg * qO - L.offset) ** 2;
+  if (!(s2 > 0)) return { ok: false };
+  const sO = Math.sqrt(s2);
+  const O = L.P(sO, sg * qO);
+  const T1 = L.P(sO, sg * qC);
+  const f = Ri / (Ri + R);
+  const T2 = { x: O.x * f, y: O.y * f };
+  const alpha = L.alpha(T2);
+  // The island's edge beside the curve is the concentric arc at the width asked for; it meets the circle at
+  // two points either side of the line through the centres, and the one toward the island is S.
+  const pts = circleCircle(O, R + W, ORIGIN, Ri);
+  if (!pts.length) return { ok: false };
+  const S = pts.length > 1 && sg * L.alpha(pts[1]) < sg * L.alpha(pts[0]) ? pts[1] : pts[0];
+  const sS = L.st(S), qS = sg * L.lat(S);
+  // S must lie beside the curve, so that the width from it is measured to the curve.
+  if (!(sS < sO - EPS) || !(qS < qO)) return { ok: false };
+  const side = { ok: true, exit, sg, R, W, lane, hw, qC, qO, sO, O, T1, T2, alpha, S, sS, qS };
+  if (W <= lane) {
+    side.kind = 'wider';
+    side.sJ = sO;
+    side.K = L.P(sO, sg * (qC - W));
+    side.J = L.P(sO, sg * hw);
+  } else if (qS > hw) {
+    side.kind = 'arc';
+    side.sJ = sO - Math.sqrt((R + W) ** 2 - (R + lane) ** 2);
+    side.J = L.P(side.sJ, sg * hw);
+    side.K = null;
+  } else {
+    side.kind = 'step';
+    side.sJ = sS;
+    side.J = L.P(sS, sg * hw);
+    side.K = null;
   }
-  const least = s.limit !== null ? ` The narrowest it can be is about ${num(Math.ceil(s.limit * 10) / 10)} ft.` : '';
-  if (s.why === 'radius') {
-    const where = exit ? 'end beyond' : 'start before';
-    return `The ${what} of ${who} cannot be as narrow as ${fmt(W)} ft with ${article(fmt(R))} ${fmt(R)} ft ${what} curb radius: the curve would have to ${where} the splitter island nose.${least} Make the ${what} curb radius smaller, the island longer, or the ${what} wider.`;
-  }
-  if (s.why === 'narrow') {
-    return `The ${what} of ${who} cannot be as narrow as ${fmt(W)} ft: its curb would meet the circle inside the splitter island.${least} Make the ${what} wider or the island narrower.`;
-  }
-  return `The ${what} of ${who} cannot be as narrow as ${fmt(W)} ft with ${article(fmt(R))} ${fmt(R)} ft ${what} curb radius: its curb would cross the splitter island.${least} Make the ${what} wider, the island narrower, or the ${what} curb radius smaller.`;
+  return side;
 }
 
 /**
@@ -289,79 +278,151 @@ function fitCorner(A, B, gap, Ri, minEntry, minExit) {
   return { ok: true, entry: best.entry, exit: best.exit };
 }
 
-/** The leg's curbs, arcs, chains and widths from its two curb sides. */
-function finishLeg(L, Ri) {
-  const e = L.entrySide, x = L.exitSide;
+/** The leg's island, nose, curbs, chains and widths from its two sides. */
+function finishLeg(L, Ri, lead, margin, problems, notes) {
+  const e = L.entrySide, x = L.exitSide, hw = L.hw;
   L.entryRadiusBuilt = e.R;
   L.exitRadiusBuilt = x.R;
-  L.N = L.P(L.sSe, e.w);
-  L.Nx = L.P(L.sSx, -x.w);
   L.entryO = e.O; L.T1 = e.T1; L.T2 = e.T2;
   L.exitO = x.O; L.T1x = x.T1; L.T2x = x.T2;
   L.alphaT2 = e.alpha;
   L.alphaT2x = x.alpha;
+  L.Se = e.S; L.Sx = x.S;
+  L.alphaSe = L.alpha(L.Se);
+  L.alphaSx = L.alpha(L.Sx);
+
+  // The island's body runs at its full width to where the farther curve begins, then tapers to the nose,
+  // which sits at the length asked for or, when that leaves too short a taper for the lanes to shift out
+  // across it, the margin beyond the farther curve.
+  const sBody = Math.max(e.sO, x.sO);
+  const sAsked = Math.sqrt((Ri + L.splitterLength) ** 2 - L.offset ** 2);
+  const sNose = Math.max(sAsked, sBody + margin);
+  L.sBody = sBody;
+  L.sNose = sNose;
+  L.splitterLengthBuilt = sNose > sAsked ? Math.sqrt(sNose * sNose + L.offset * L.offset) - Ri : L.splitterLength;
+  if (L.splitterLengthBuilt > L.splitterLength + 0.05) {
+    notes.push({
+      leg: L.id,
+      text: `The splitter island of ${theLeg(L.name)} is built ${num(L.splitterLengthBuilt)} ft long, not ${fmt(L.splitterLength)} ft, so that it runs ${num(margin)} ft past where its entry and exit curves begin and its lanes have room to shift out beside it.`,
+    });
+  }
+  L.nose = L.P(sNose, 0);
+  L.F = L.P(sNose, L.approachWidth);
+  L.Fx = L.P(sNose, -L.departWidth);
+  L.farIn = L.P(sNose + lead, L.approachWidth);
+  L.farOut = L.P(sNose + lead, -L.departWidth);
+  L.farCl = L.P(sNose + lead, 0);
+  L.entryCurbTaper = L.P(sBody, hw + L.approachWidth);
+  L.exitCurbTaper = L.P(sBody, -(hw + L.departWidth));
+  L.islandEntryTaper = L.P(sBody, hw);
+  L.islandExitTaper = L.P(sBody, -hw);
+
+  // Curbs: the approach edge at the nose, the curb along the taper, the straight curb, then the curve.
   L.entryArc = arc(L.T1, L.T2, L.entryO, e.R, false, 'curb');
   L.exitArc = arc(L.T2x, L.T1x, L.exitO, x.R, false, 'curb');
-  L.entryChain = [line(L.farIn, L.F, 'edge'), line(L.F, L.T1, 'curb'), L.entryArc];
-  L.exitChain = [L.exitArc, line(L.T1x, L.Fx, 'curb'), line(L.Fx, L.farOut, 'edge')];
-  L.splitter = [
-    line(L.nose, L.Se, 'splitter'),
-    arc(L.Se, L.Sx, { x: 0, y: 0 }, Ri, false, 'splitter'),
-    line(L.Sx, L.nose, 'splitter'),
-  ];
+  L.entryCurb = keep([line(L.F, L.entryCurbTaper, 'curb'), line(L.entryCurbTaper, L.T1, 'curb'), L.entryArc]);
+  L.exitCurb = keep([L.exitArc, line(L.T1x, L.exitCurbTaper, 'curb'), line(L.exitCurbTaper, L.Fx, 'curb')]);
+  L.entryChain = [line(L.farIn, L.F, 'edge'), ...L.entryCurb];
+  L.exitChain = [...L.exitCurb, line(L.Fx, L.farOut, 'edge')];
+
+  // The island: from the nose along its entry edge to the circle, the circle, then its exit edge back.
+  L.islandEntry = keep([
+    line(L.nose, L.islandEntryTaper, 'splitter'),
+    line(L.islandEntryTaper, e.J, 'splitter'),
+    ...(e.kind === 'wider' ? [line(e.J, e.K, 'splitter'), arc(e.K, e.S, e.O, e.R + e.W, false, 'splitter')]
+      : e.kind === 'arc' ? [arc(e.J, e.S, e.O, e.R + e.W, false, 'splitter')]
+        : [line(e.J, e.S, 'splitter')]),
+  ]);
+  L.islandExit = keep([
+    ...(x.kind === 'wider' ? [arc(x.S, x.K, x.O, x.R + x.W, false, 'splitter'), line(x.K, x.J, 'splitter')]
+      : x.kind === 'arc' ? [arc(x.S, x.J, x.O, x.R + x.W, false, 'splitter')]
+        : [line(x.S, x.J, 'splitter')]),
+    line(x.J, L.islandExitTaper, 'splitter'),
+    line(L.islandExitTaper, L.nose, 'splitter'),
+  ]);
+  L.splitter = [...L.islandEntry, arc(L.Se, L.Sx, ORIGIN, Ri, false, 'splitter'), ...L.islandExit];
+  L.islandEntryJoin = e.J; L.islandExitJoin = x.J;
+  L.islandEntryStep = e.kind === 'wider' ? e.K : null;
+  L.islandExitStep = x.kind === 'wider' ? x.K : null;
+  L.islandEntryRadius = e.kind === 'step' ? null : e.R + e.W;
+  L.islandExitRadius = x.kind === 'step' ? null : x.R + x.W;
+
+  L.splitterWidthAtCircle = L.alphaSe > L.alphaSx ? dist(L.Se, L.Sx) : 0;
+  if (!(L.alphaSe - L.alphaSx > 1e-6)) {
+    problems.push(`The entry and exit of ${theLeg(L.name)} overlap where they meet the circle, which leaves no room for the splitter island. Make the entry or exit narrower, the splitter island wider, or the curb radii larger.`);
+  } else if (L.splitterWidthAtCircle < L.splitterWidth - 0.05) {
+    notes.push({
+      leg: L.id,
+      text: `The splitter island of ${theLeg(L.name)} is ${num(L.splitterWidthAtCircle)} ft wide where it meets the circle, narrower than its ${fmt(L.splitterWidth)} ft body: a curb curve meets the circle before its lane has widened to the full entry or exit width, so the island's tip is cut back. A larger curb radius keeps it wider.`,
+    });
+  }
+
   L.centerline = [line(L.nose, L.farCl, 'centerline')];
-  L.entrance = arc(L.Se, L.T2, { x: 0, y: 0 }, Ri, true, 'entrance');
-  L.exitLine = arc(L.T2x, L.Sx, { x: 0, y: 0 }, Ri, true, 'exit');
+  L.entrance = arc(L.Se, L.T2, ORIGIN, Ri, true, 'entrance');
+  L.exitLine = arc(L.T2x, L.Sx, ORIGIN, Ri, true, 'exit');
   const midAng = (a, b) => L.theta + (a + b) / 2;
   L.entranceMid = { x: Ri * Math.cos(midAng(L.alphaSe, L.alphaT2)), y: Ri * Math.sin(midAng(L.alphaSe, L.alphaT2)) };
   L.exitMid = { x: Ri * Math.cos(midAng(L.alphaSx, L.alphaT2x)), y: Ri * Math.sin(midAng(L.alphaSx, L.alphaT2x)) };
-  // Widths as built: square to the curb from the end of the splitter island (equal to the widths asked for),
-  // and the point on the curb each one is measured to.
-  L.entryWidthBuilt = e.width;
-  L.exitWidthBuilt = x.width;
-  L.entryWidthPoint = nearestOnCurb(L.Se, e, L.F);
-  L.exitWidthPoint = nearestOnCurb(L.Sx, x, L.Fx);
+
+  // Widths as built: square to the curb from where the island meets the circle, and the point on the curb
+  // each one is measured to (on the curve, square to it, so straight toward its centre).
+  L.entryWidthBuilt = curbDistance(L.Se, L.entryCurb);
+  L.exitWidthBuilt = curbDistance(L.Sx, L.exitCurb);
+  L.entryWidthPoint = toward(L.entryO, L.Se, e.R);
+  L.exitWidthPoint = toward(L.exitO, L.Sx, x.R);
+
+  // Lateral offsets of the island edge and the curb at a station, for the sight distance eye point.
+  L.entryIslandQ = (s) => islandQ(L, e, s);
+  L.entryCurbQ = (s) => curbQ(L, e, s);
+  L.exitIslandQ = (s) => islandQ(L, x, s);
+  L.exitCurbQ = (s) => curbQ(L, x, s);
 }
 
-/** The point of a curb side (its straight line from F, then its arc) nearest to S. */
-function nearestOnCurb(S, side, F) {
-  if (side.onArc) {
-    const d = unit(sub(S, side.O));
-    const p = { x: side.O.x + side.R * d.x, y: side.O.y + side.R * d.y };
-    if (Math.abs(dist(p, S) - side.width) < 1e-6) return p;
-    // S is not beside the arc, so the nearest point is one of its ends.
-    return dist(side.T1, S) < dist(side.T2, S) ? side.T1 : side.T2;
-  }
-  const dx = side.T1.x - F.x, dy = side.T1.y - F.y, ll = dx * dx + dy * dy;
-  const t = Math.max(0, Math.min(1, ((S.x - F.x) * dx + (S.y - F.y) * dy) / ll));
-  return { x: F.x + t * dx, y: F.y + t * dy };
+/** Lateral offset of the island's edge on one side, toward that side, at station s. */
+function islandQ(L, side, s) {
+  if (s >= L.sNose) return 0;
+  if (s >= L.sBody) return (L.hw * (L.sNose - s)) / (L.sNose - L.sBody);
+  if (s >= side.sJ) return L.hw;
+  if (side.kind === 'step' || s <= side.sS) return side.qS;
+  const r = side.R + side.W, d = s - side.sO;
+  return side.qO - Math.sqrt(Math.max(0, r * r - d * d));
 }
 
-/**
- * The narrowest the entry lane (exit true: the exit lane) gets beside the splitter island, measured square to
- * the leg axis from the island edge to the curb, as the approach and departure lane widths are. Beside the
- * straight part of the curb the width changes linearly; beside the arc it is narrowest where the arc runs
- * parallel to the island edge.
- */
-function narrowestLane(L, exit, side) {
-  const sign = exit ? -1 : 1;
-  const st = (p) => dot(p, L.u);
-  const lat = (p) => sign * (dot(p, L.rIn) + L.offset);
-  const sS = exit ? L.sSx : L.sSe;
-  const hw = L.splitterWidth / 2;
-  const slope = hw / (L.sNose - sS);
-  const island = (s) => hw - slope * (s - sS);
-  const { O, R, T1, T2 } = side;
-  const os = st(O), ot = lat(O), s1 = st(T1), s2 = st(T2);
-  const onArc = (s) => ot - Math.sqrt(Math.max(0, R * R - (s - os) ** 2)) - island(s);
-  let least = Math.min(exit ? L.departWidth : L.approachWidth, lat(T1) - island(s1));
-  const lo = Math.max(sS, Math.min(s1, s2)), hi = Math.min(L.sNose, s1);
-  if (hi > lo) {
-    least = Math.min(least, onArc(lo));
-    const sMin = os - (R * slope) / Math.sqrt(1 + slope * slope);
-    if (sMin > lo && sMin < hi) least = Math.min(least, onArc(sMin));
+/** Lateral offset of the outer curb on one side, away from the axis, at station s. */
+function curbQ(L, side, s) {
+  if (s >= L.sNose) return side.lane;
+  if (s >= L.sBody) return islandQ(L, side, s) + side.lane;
+  if (s >= side.sO) return side.qC;
+  const d = s - side.sO;
+  if (-d >= side.R) return side.qO;
+  return side.qO - Math.sqrt(side.R * side.R - d * d);
+}
+
+/** The point at distance r from c toward p. */
+function toward(c, p, r) {
+  const d = dist(c, p);
+  return { x: c.x + ((p.x - c.x) * r) / d, y: c.y + ((p.y - c.y) * r) / d };
+}
+
+/** The shortest distance from p to a curb chain of lines and clockwise arcs. */
+function curbDistance(p, chain) {
+  let best = Infinity;
+  for (const c of chain) {
+    const d = c.type === 'line' ? segmentDistance(p, c.a, c.b) : arcDistance(p, c.a, c.b, c.c, c.r, c.ccw);
+    if (d < best) best = d;
   }
-  return least;
+  return best;
+}
+
+/** The chain without the lines and arcs too short to matter. */
+function keep(chain) {
+  return chain.filter((p) => {
+    if (dist(p.a, p.b) >= EPS) return true;
+    if (p.type !== 'arc') return false;
+    // A full turn would be no arc at all here: an island edge or curb curve turns well under half a circle.
+    const sw = arcSweep(p);
+    return sw > 1e-6 && sw < Math.PI;
+  });
 }
 
 /** True when two arcs cross somewhere inside both of their spans (touching at an end does not count). */
@@ -383,9 +444,9 @@ function onArc(p, x) {
 }
 
 function cornerSidesCross(A, B) {
-  const sa = [[A.farIn, A.F], [A.F, A.T1]];
-  const sb = [[B.T1x, B.Fx], [B.Fx, B.farOut]];
-  for (const [a, b] of sa) for (const [c, d] of sb) if (segmentsCross(a, b, c, d)) return true;
+  const sa = [line(A.farIn, A.F), ...A.entryCurb.filter((p) => p.type === 'line')];
+  const sb = [...B.exitCurb.filter((p) => p.type === 'line'), line(B.Fx, B.farOut)];
+  for (const a of sa) for (const b of sb) if (segmentsCross(a.a, a.b, b.a, b.b)) return true;
   return false;
 }
 

@@ -35,6 +35,10 @@ export const RULES = [
     label: 'Number of times each fastest path is solved, each time about the previous answer' },
   { id: 'geom.leadLength', value: 250, unit: 'ft', min: 100, max: 1000, verify: false, source: METHOD,
     label: 'Length of approach and departure road drawn and modelled beyond each splitter island nose' },
+  { id: 'geom.noseMargin', value: 10, unit: 'ft', min: 1, max: 100, verify: false, source: METHOD,
+    label: 'Least distance a splitter island runs on past where the farther of its entry and exit curb curves begins' },
+  { id: 'geom.noseTaper', value: 6, unit: 'ft per ft', min: 0, max: 20, verify: false, source: METHOD,
+    label: 'Least length of splitter island taper, beyond where the farther of its curb curves begins, for each foot the lanes shift out across it (half the island width)' },
 
   // Fastest path speeds
   { id: 'speed.eq.pos.k', value: 3.4415, unit: 'mph', min: 0.1, max: 20, verify: true, source: NCHRP + ', Equation 6-1',

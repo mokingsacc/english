@@ -1,18 +1,20 @@
-// Grip: the entry width, square to the leg from the end of the splitter island at the circle. Dragging it sideways
-// makes the entry wider or narrower.
-import { legFrame, dot, sub } from './frame.js';
+// Grip: the entry width where the engine measures it, at entryWidthPoint on the right curb, square to that curb from
+// Se (where the splitter island's edge meets the circle). Dragging it along that line makes the entry wider or narrower.
+import { legGeom, dot, sub, unit } from './frame.js';
 
 export default {
   id: 'entry-width',
   on: 'leg',
   path: 'legs.*.entryWidth',
   points(g) {
-    const f = legFrame(g.round, g.leg);
-    const w = g.leg.entryWidth;
-    return [{ x: f.Se.x + w * f.rIn.x, y: f.Se.y + w * f.rIn.y }];
+    const L = legGeom(g.result, g.leg.id);
+    return L && L.entryWidthPoint ? [L.entryWidthPoint] : [];
   },
-  value(g, P) {
-    const f = legFrame(g.round, g.leg);
-    return dot(sub(P, f.Se), f.rIn);
+  start(g) {
+    const L = legGeom(g.result, g.leg.id);
+    if (!L || !L.entryWidthPoint || !L.Se) return null;
+    const v = sub(L.entryWidthPoint, L.Se);
+    return { base: L.Se, dir: unit(v), drawn: Math.hypot(v.x, v.y), asked: g.leg.entryWidth };
   },
+  value: (g, P, s) => (s ? s.asked + dot(sub(P, s.base), s.dir) - s.drawn : g.leg.entryWidth),
 };

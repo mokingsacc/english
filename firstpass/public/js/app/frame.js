@@ -10,14 +10,23 @@ const QUIET = new Set(['cursor', 'view']);   // these redraw the canvas but leav
 
 export function createFrames(app) {
   const lastGood = new Map();
-  let F = null, modelVersion = 0, modelKey = '', panelsDirty = true, lastEvalCount = 0;
+  let F = null, modelVersion = 0, modelKey = '', panelsDirty = true, lastEvalTotal = 0;
 
   function compute() {
     const st = app.store.get();
     const option = currentOption(st);
     if (!option) return null;
     const round = st.draft || option.round;
-    const result = app.evaluator.run(round, st.project.rules);
+    const rules = st.project.rules;
+    let result = null;
+    if (st.draft && app.evaluator.async()) {
+      // While dragging, the worker works the shape out; until it answers, the last answer for this option stands.
+      result = app.evaluator.peek(round, rules);
+      if (!result) {
+        app.evaluator.ask(round, rules);
+        result = F && F.option.id === option.id && F.result ? F.result : app.evaluator.run(option.round, rules);
+      }
+    } else result = app.evaluator.run(round, rules);
     if (result.ok) lastGood.set(option.id, result);
     const shown = result.ok ? result : lastGood.get(option.id) || null;
     const grips = gripPoints(round, result.ok ? result : shown, st.selection);
@@ -32,11 +41,11 @@ export function createFrames(app) {
 
   function frame() {
     const t0 = performance.now();
+    // Evaluate time since the last frame: some runs happen as the mouse moves (grips and snaps ask), the rest in here.
+    const evalBefore = app.evaluator.total - lastEvalTotal;
+    const evalStart = app.evaluator.total;
     F = compute();
     if (!F) return;
-    const evals = app.evaluator.times.length;
-    const evalMs = evals !== lastEvalCount ? app.evaluator.lastMs : 0;
-    lastEvalCount = evals;
     const st = F.st;
     const vs = app.viewport.state();
     const focus = focusOf(st, F.shown);
@@ -51,8 +60,6 @@ export function createFrames(app) {
       underlay: app.underlayFace,
     };
     app.layers.draw(scene, app.camera);
-    const t1 = performance.now();
-    app.meter.work(evalMs, t1 - t0 - evalMs);
     app.ui.statusbar.update(st, vs.cursor && vs.cursor.visible ? vs.cursor : null);
     if (app.viewport.dragging() && vs.cursor) app.dyn.place(vs.cursor.sx, vs.cursor.sy, dragValues(st));
     if (panelsDirty) {
@@ -68,7 +75,11 @@ export function createFrames(app) {
       if (app.ui.properties.state() === 'open') app.ui.propertiesView.update(st, F.option, legs, F.result);
       app.ui.panorama.update(st, F.option, F.result);
     }
+    // The frame's work as the meter counts it: evaluate, then everything else (drawing and the panels).
     app.stats.lastFrameMs = performance.now() - t0;
+    const evalInside = app.evaluator.total - evalStart;
+    lastEvalTotal = app.evaluator.total;
+    app.meter.work(evalBefore + evalInside, app.stats.lastFrameMs - evalInside);
   }
 
   function dragValues(st) {

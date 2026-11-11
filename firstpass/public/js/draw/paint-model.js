@@ -48,8 +48,9 @@ export function paintModel(ctx, cam, scene) {
   ctx.setLineDash([]);
   paintFailures(ctx, cam, scene);
   if (D.paths) paintPaths(ctx, cam, res);
-  if (D.speeds && D.paths) paintSpeedLabels(ctx, cam, res);
-  paintLegNames(ctx, cam, G);
+  const names = legNamePlaces(ctx, cam, G);
+  if (D.speeds && D.paths) paintSpeedLabels(ctx, cam, res, names.map((p) => p.box));
+  paintLegNames(ctx, names);
   ctx.restore();
 }
 
@@ -111,36 +112,63 @@ function paintPaths(ctx, cam, res) {
 }
 
 const ORDER = { through: 0, left: 1, right: 2 };
-function paintSpeedLabels(ctx, cam, res) {
-  const placed = [];
+const hits = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+
+// Each label tries four places round its arc's middle point and is left out when none is clear of the labels already
+// placed and of the leg names, and when another label already stands for a point this close (the same curve on two paths).
+// Zoomed out (the circle smaller than OVERVIEW_PX across) only the fastest of each of R1 to R5 is labelled.
+const OVERVIEW_PX = 240;
+function paintSpeedLabels(ctx, cam, res, taken) {
+  const anchors = [];
   const moves = res.movements.filter((m) => m.ok).sort((a, b) => (ORDER[a.kind] ?? 3) - (ORDER[b.kind] ?? 3));
+  let arcs = [];
+  for (const m of moves) for (const name of ['R1', 'R2', 'R3', 'R4', 'R5']) if (m.arcs[name] && m.arcs[name].mid) arcs.push({ name, a: m.arcs[name] });
+  const across = 2 * res.geometry.radii.inscribed * Math.abs(cam.sx(1) - cam.sx(0));
+  if (across < OVERVIEW_PX) {
+    const top = new Map();
+    for (const it of arcs) { const t = top.get(it.name); if (!t || (it.a.speed || 0) > (t.a.speed || 0)) top.set(it.name, it); }
+    arcs = [...top.values()];
+  }
   ctx.font = FONT;
   ctx.textBaseline = 'middle';
-  for (const m of moves) {
-    for (const name of ['R1', 'R2', 'R3', 'R4', 'R5']) {
-      const a = m.arcs[name];
-      if (!a || !a.mid) continue;
-      const x = cam.sx(a.mid.x), y = cam.sy(a.mid.y);
-      if (x < -50 || y < -20 || x > cam.w + 50 || y > cam.h + 20) continue;
-      if (placed.some((q) => Math.abs(q[0] - x) < 70 && Math.abs(q[1] - y) < 26)) continue;
-      placed.push([x, y]);
-      const r = a.r === Infinity ? 'straight' : `${Math.round(a.r)} ft`;
-      const v = a.speed == null ? '' : `, ${Math.round(a.speed)} mph`;
-      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fillStyle = speedColor(a.speed || 0); ctx.fill();
-      haloText(ctx, `${name} ${r}${v}`, x + 5, y - 7, LAYERS.pathLabel.color, LAYERS.pathLabel.halo);
+  for (const { name, a } of arcs) {
+    const x = cam.sx(a.mid.x), y = cam.sy(a.mid.y);
+    if (x < 0 || y < 0 || x > cam.w || y > cam.h) continue;
+    if (anchors.some((q) => Math.abs(q[0] - x) < 40 && Math.abs(q[1] - y) < 20)) continue;
+    const r = a.r === Infinity ? 'straight' : `${Math.round(a.r)} ft`;
+    const v = a.speed == null ? '' : `, ${Math.round(a.speed)} mph`;
+    const text = `${name} ${r}${v}`;
+    const w = ctx.measureText(text).width + 4;
+    const spots = [[x + 5, y - 8], [x - 5 - w, y - 8], [x + 5, y + 8], [x - 5 - w, y + 8]];
+    let at = null;
+    for (const [tx, ty] of spots) {
+      const box = [tx - 2, ty - 7, w, 14];
+      if (box[0] < 0 || box[0] + w > cam.w || !taken.every((t) => !hits(t, box))) continue;
+      at = [tx, ty]; taken.push(box); break;
     }
+    if (!at) continue;
+    anchors.push([x, y]);
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fillStyle = speedColor(a.speed || 0); ctx.fill();
+    haloText(ctx, text, at[0], at[1], LAYERS.pathLabel.color, LAYERS.pathLabel.halo);
   }
 }
 
-function paintLegNames(ctx, cam, G) {
+/** Where each leg's name goes (beyond its splitter island, along the leg) and the box it takes on screen. */
+function legNamePlaces(ctx, cam, G) {
+  ctx.font = BOLD;
+  return G.legs.map((L) => {
+    const dx = L.far.x - L.nose.x, dy = L.far.y - L.nose.y, n = Math.hypot(dx, dy) || 1;
+    const x = cam.sx(L.nose.x + (dx / n) * 70), y = cam.sy(L.nose.y + (dy / n) * 70);
+    const w = ctx.measureText(L.name).width + 6;
+    return { text: L.name, x, y, box: [x - w / 2, y - 9, w, 18] };
+  });
+}
+
+function paintLegNames(ctx, places) {
   ctx.font = BOLD;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  for (const L of G.legs) {
-    const dx = L.far.x - L.nose.x, dy = L.far.y - L.nose.y, n = Math.hypot(dx, dy) || 1;
-    const x = cam.sx(L.nose.x + (dx / n) * 70), y = cam.sy(L.nose.y + (dy / n) * 70);
-    haloText(ctx, L.name, x, y, LAYERS.legName.color, LAYERS.legName.halo);
-  }
+  for (const p of places) haloText(ctx, p.text, p.x, p.y, LAYERS.legName.color, LAYERS.legName.halo);
   ctx.textAlign = 'left';
 }
 

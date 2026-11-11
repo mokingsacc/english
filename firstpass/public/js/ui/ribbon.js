@@ -57,7 +57,9 @@ export function createRibbon(app, root, entries) {
   function panel(name, list) {
     const row = h('div', { class: 'rb-panel-body' });
     let col = null;
-    for (const e of list) {
+    // Large buttons first, then the small ones stacked three to a column, as a CAD ribbon panel lays them out.
+    const ordered = [...list.filter((e) => e.size === 'large'), ...list.filter((e) => e.size !== 'large')];
+    for (const e of ordered) {
       if (e.size === 'large') { row.append(button(e, 'large')); col = null; continue; }
       if (!col || col.children.length >= 3) { col = h('div', { class: 'rb-col' }); row.append(col); }
       col.append(button(e, 'small'));

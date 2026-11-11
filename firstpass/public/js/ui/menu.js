@@ -54,16 +54,19 @@ function build(items, className) {
   return el;
 }
 
-document.addEventListener('pointerdown', (e) => { if (open && !open.contains(e.target)) closeMenu(); }, true);
-document.addEventListener('keydown', (e) => {
-  if (!open) return;
-  if (e.key === 'Escape') { closeMenu(); e.stopPropagation(); e.preventDefault(); return; }
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    const list = [...open.querySelectorAll(':scope > .menu-row > button:not([disabled])')];
-    const i = list.indexOf(document.activeElement);
-    const n = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
-    if (n) n.focus();
-    e.preventDefault();
-  }
-}, true);
-window.addEventListener('blur', closeMenu);
+// The listeners that close an open menu (left out where there is no page, as in the node tests).
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => { if (open && !open.contains(e.target)) closeMenu(); }, true);
+  document.addEventListener('keydown', (e) => {
+    if (!open) return;
+    if (e.key === 'Escape') { closeMenu(); e.stopPropagation(); e.preventDefault(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const list = [...open.querySelectorAll(':scope > .menu-row > button:not([disabled])')];
+      const i = list.indexOf(document.activeElement);
+      const n = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
+      if (n) n.focus();
+      e.preventDefault();
+    }
+  }, true);
+  window.addEventListener('blur', closeMenu);
+}

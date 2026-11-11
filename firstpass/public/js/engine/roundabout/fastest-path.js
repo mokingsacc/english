@@ -17,6 +17,10 @@ import {
 const KAPPA_ZERO = 1e-5; // 1/ft; flatter than a 100,000 ft radius counts as straight
 const WINDOWS = []; // scratch for smallestRadius: (first point, last point, radius) per window
 
+// How far above its gradient tolerance a solve that stops at rounding (no descent left) may be and still count as
+// converged. Measured over the test shapes and a sweep of circle sizes and curb radii, these stops sit within 40 times it.
+const ROUNDING = 100;
+
 /** Every movement from each leg to every other leg (no U-turns), entry legs in input order. */
 export function listMovements(G) {
   const out = [];
@@ -130,7 +134,10 @@ export function solveMovement(G, mv, rr, ws, optionsFor = passOptions) {
   // no longer falling (ftol); either way the path is solved as tightly as the stopping rules ask (see
   // passOptions). The last pass's projected gradient is seldom below its tolerance at the objective stop, so
   // the gradient test alone read false on paths that were solved; stopReason and gradTol say which test it was.
-  const settled = qpStats.reason === 'gradient' || qpStats.reason === 'objective';
+  // A stop with no descent left (the bending energy cannot fall any further in floating point) counts too
+  // when the projected gradient is within ROUNDING times its tolerance: the solve has reached rounding.
+  const settled = qpStats.reason === 'gradient' || qpStats.reason === 'objective'
+    || (qpStats.reason === 'no descent' && qpStats.gradNorm <= ROUNDING * qpStats.tolerance);
   return {
     ok: true, problems: [], n, x: xs, y: ys, s, chains,
     solver: { iterations, converged: settled, stopReason: qpStats.reason, gradNorm: qpStats.gradNorm, gradTol: qpStats.tolerance },

@@ -41,23 +41,10 @@ export function intersectionSightLength(v, rr) {
  */
 export function entryEyePoint(L, eyeBack) {
   const s = dot(L.entranceMid, L.u) + eyeBack;
-  const tSplit = s >= L.sNose ? 0 : (L.splitterWidth / 2) * ((L.sNose - s) / (L.sNose - L.sSe));
-  const tCurb = curbLateral(L, s);
+  const tSplit = L.entryIslandQ(s);
+  const tCurb = L.entryCurbQ(s);
   if (!(tCurb > tSplit)) return null;
   return L.P(s, 0.5 * (tSplit + tCurb));
-}
-
-/** Lateral offset (from the leg axis, toward the entry side) of the entry curb at station s. */
-function curbLateral(L, s) {
-  const o = L.offset;
-  const frame = (p) => ({ s: dot(p, L.u), t: dot(p, L.rIn) + o });
-  if (s >= L.sNose) return L.approachWidth;
-  const F = frame(L.F), T1 = frame(L.T1);
-  if (s >= T1.s) return F.t + ((T1.t - F.t) * (s - F.s)) / (T1.s - F.s);
-  const O = frame(L.entryO), r = L.entryRadiusBuilt;
-  const ds = s - O.s;
-  if (Math.abs(ds) > r) return frame(L.T2).t;
-  return O.t - Math.sqrt(r * r - ds * ds);
 }
 
 /**

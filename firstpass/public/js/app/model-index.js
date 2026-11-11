@@ -2,16 +2,21 @@
 // it ('round' for the circle and its islands, 'leg:<id>' for a leg's curbs, splitter island and lines), the named points
 // object snap can catch, and the extents box. Pure; built once per result and cached on it.
 //
-// A primitive belongs to a leg when its ends are that leg's named points (geometry.legs[i]); arcs on the circle between
-// two legs belong to the roundabout. A new pickable layer: add its name to LEG_LAYERS or ROUND_LAYERS.
+// A primitive belongs to a leg when its ends are that leg's named points (every point-valued field of geometry.legs[i],
+// so points the engine adds later count by themselves); arcs on the circle between two legs belong to the roundabout.
+// A new pickable layer: add its name to LEG_LAYERS or ROUND_LAYERS.
 
 import { primBox } from '../draw/hit.js';
 import { boxOf } from '../draw/camera.js';
 
 const LEG_LAYERS = ['splitter', 'centerline', 'entrance', 'exit', 'curb', 'edge'];
 const ROUND_LAYERS = ['island', 'apron', 'inscribed'];
-const NAMED = ['nose', 'Se', 'Sx', 'T1', 'T2', 'T1x', 'T2x', 'F', 'Fx', 'far', 'farIn', 'farOut', 'entranceMid', 'exitMid'];
-const SNAP_KIND = { entranceMid: 'mid', exitMid: 'mid' };
+const NO_SNAP = new Set(['far', 'farIn', 'farOut']);   // the ends of the lead-in lines, far out on the road
+/** A leg's named points: [name, {x, y}] for every field of its geometry that is a point. */
+export function namedPoints(L) {
+  return Object.entries(L).filter(([, v]) => v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y));
+}
+const snapKind = (n) => (/cent(er|re)/i.test(n) ? 'center' : /Mid$/.test(n) ? 'mid' : 'end');
 const cache = new WeakMap();
 
 const keyOf = (p) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
@@ -32,7 +37,7 @@ function build(result) {
   const C = G.center;
   const Ri = G.radii.inscribed;
   const owner = new Map();
-  for (const L of G.legs) for (const n of NAMED) if (L[n]) owner.set(keyOf(L[n]), L.id);
+  for (const L of G.legs) for (const [, p] of namedPoints(L)) owner.set(keyOf(p), L.id);
   const onCircle = (p) => p.type === 'arc' && Math.abs(p.c.x - C.x) < 0.01 && Math.abs(p.c.y - C.y) < 0.01;
   const byBearing = (p) => {
     const mx = (p.a.x + p.b.x) / 2 - C.x, my = (p.a.y + p.b.y) / 2 - C.y;
@@ -61,7 +66,7 @@ function build(result) {
   const snaps = [{ x: C.x, y: C.y, kind: 'center', key: 'round' }];
   for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) snaps.push({ x: C.x + dx * Ri, y: C.y + dy * Ri, kind: 'quadrant', key: 'round' });
   for (const L of G.legs) {
-    for (const n of NAMED) if (L[n] && n !== 'far' && n !== 'farIn' && n !== 'farOut') snaps.push({ x: L[n].x, y: L[n].y, kind: SNAP_KIND[n] || 'end', key: legKey(L.id) });
+    for (const [n, p] of namedPoints(L)) if (!NO_SNAP.has(n)) snaps.push({ x: p.x, y: p.y, kind: snapKind(n), key: legKey(L.id) });
   }
 
   const pts = [];
