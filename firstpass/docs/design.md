@@ -237,6 +237,15 @@ and the page never shows Autodesk's name, logo or product names as its own.
   ratio. Redraw only inside `requestAnimationFrame`, at most once per frame, and only when something changed (no idle
   loop). The photo tiles are drawn images, cached in memory. Panels update only the rows whose values changed. Budget:
   a drag frame (evaluate plus redraw) under 16 ms on a laptop; Check myself reports the measured time.
+- Drawing sits behind one small face, `createLayers(canvas) -> { resize, request, draw(scene, camera), stats, destroy }`
+  in `public/js/draw/`, the same idea as the Practise Hub map (`public/js/map/render.js` and `map/gl/layers.js` there).
+  Phase 1 fills it with Canvas 2D. A WebGL2 drawer (the hub's pattern: lasting shapes uploaded once as buffers, a frame
+  sends only the camera, drawn in a worker, falling back to 2D when the graphics context is lost) can replace it behind
+  the same face without touching the rest of the page. Add it when the frame meter says a real drawing needs it (the
+  likely first case is a large base drawing of hers), not before.
+- Frame meter: port the hub's `public/js/map/frame-meter.js` idea. While she moves the drawing it times the gaps between
+  frames (p50, p90, p99 in ms) and stops when idle. The numbers show in Check myself and go into every problem report
+  (Copy for Claude). No new server route.
 - Sync: after any commit, and every 1.5 s while visible, the page asks for changes since its `seq`; Claude's changes
   appear as named steps in the history and can be undone.
 - Also: Check myself (data service reachable, connector linked, engine self-test, export valid, each line in plain

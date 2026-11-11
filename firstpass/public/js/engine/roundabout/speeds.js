@@ -39,7 +39,8 @@ export function movementSpeeds(mv, radii, entryCap, exitCap, rr) {
     const raw = speedFromRadius(radii.R5, 1, rr);
     out.raw.V5 = raw;
     out.V5 = Math.min(raw, entryCap);
-    if (arcs.R5 && arcs.R5.a >= 0) out.knots.push({ s: arcs.R5.sMid, v: out.V5, name: 'V5' });
+    if (arcs.R5 && arcs.R5.a >= 0) out.knots.push(knot(arcs.R5, out.V5, 'V5'));
+    addRunKnots(out, radii, entryCap, exitCap, rr);
     return out;
   }
   const circName = mv.kind === 'left' ? 'R4' : 'R2';
@@ -62,15 +63,38 @@ export function movementSpeeds(mv, radii, entryCap, exitCap, rr) {
     v3 = Math.min(v3, speedAfter(vc, rr.get('speed.accel'), out.d23, rr));
   }
   out.V1 = v1; out[vName] = vc; out.V3 = v3;
-  if (has(a1)) out.knots.push({ s: a1.sMid, v: v1, name: 'V1' });
-  if (has(ac)) out.knots.push({ s: ac.sMid, v: vc, name: vName });
-  if (has(a3)) out.knots.push({ s: a3.sMid, v: v3, name: 'V3' });
+  if (has(a1)) out.knots.push(knot(a1, v1, 'V1'));
+  if (has(ac)) out.knots.push(knot(ac, vc, vName));
+  if (has(a3)) out.knots.push(knot(a3, v3, 'V3'));
+  addRunKnots(out, radii, entryCap, exitCap, rr);
   return out;
 }
 
 /**
- * Speed at every point of a path (for drawing it coloured by speed): at each knot the knot's speed; between
- * knots, as fast as the deceleration before the next knot and the acceleration after the last one allow;
+ * Knots for the speed profile from the curves that carry no named speed (for example the circulating part of
+ * a right turn on a roundabout with many legs), so the profile slows for every curve. Drawing only: these
+ * speeds are not reported or checked.
+ */
+/** A knot: the speed v holds over the fitted stretch [s0, s1] of the path, centred on s. */
+function knot(arc, v, name) {
+  return { s: arc.sMid, s0: Number.isFinite(arc.s0) ? arc.s0 : arc.sMid, s1: Number.isFinite(arc.s1) ? arc.s1 : arc.sMid, v, name };
+}
+
+function addRunKnots(out, radii, entryCap, exitCap, rr) {
+  const named = Object.values(radii.arcs).filter((a) => a && a.a >= 0);
+  for (const f of radii.runArcs || []) {
+    if (!(f.a >= 0) || !Number.isFinite(f.sMid)) continue;
+    if (named.some((a) => a === f || (a.sMid >= f.sMid - 1e-9 && a.a === f.a && a.b === f.b))) continue;
+    const v = Math.min(speedFromRadius(f.r, f.sign > 0 ? -1 : 1, rr), entryCap, exitCap);
+    if (v < Math.min(entryCap, exitCap)) out.knots.push(knot(f, v, null));
+  }
+  out.knots.sort((p, q) => p.s - q.s);
+}
+
+/**
+ * Speed at every point of a path (for drawing it coloured by speed): along each fitted curve the curve's
+ * speed; between curves, as fast as the deceleration before the next one and the acceleration after the last
+ * one allow;
  * never above the approach speeds (the entry leg's before the circulating curve, the exit leg's after it).
  */
 export function speedProfile(s, n, knots, entryCap, exitCap, rr, out) {
@@ -78,13 +102,14 @@ export function speedProfile(s, n, knots, entryCap, exitCap, rr, out) {
   const f = rr.get('speed.fpsPerMph');
   const dec = rr.get('speed.decel'), acc = rr.get('speed.accel');
   let split = s[n - 1] / 2;
-  for (const kn of knots) if (kn.name !== 'V1' && kn.name !== 'V3') split = kn.s;
+  for (const kn of knots) if (kn.name === 'V2' || kn.name === 'V4' || kn.name === 'V5') split = kn.s;
   for (let k = 0; k < n; k++) {
     let best = s[k] <= split ? entryCap : exitCap;
     for (const kn of knots) {
-      const d = s[k] - kn.s;
-      const a = d < 0 ? dec : acc;
-      const w = Math.sqrt((f * kn.v) ** 2 + 2 * a * Math.abs(d)) / f;
+      const before = kn.s0 - s[k], after = s[k] - kn.s1;
+      const w = before > 0 ? Math.sqrt((f * kn.v) ** 2 + 2 * dec * before) / f
+        : after > 0 ? Math.sqrt((f * kn.v) ** 2 + 2 * acc * after) / f
+          : kn.v;
       if (w < best) best = w;
     }
     v[k] = best;

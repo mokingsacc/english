@@ -291,14 +291,18 @@ export function pathRadii(path, mv, rr) {
   const runs = turningRuns(kappa, n);
   const fit = (run) => {
     const f = smallestRadius(x, y, s, n, run.i0, run.i1, win, minWin);
-    return { r: f.r, a: f.a, b: f.b, sMid: f.sMid };
+    return { r: f.r, a: f.a, b: f.b, sMid: f.sMid, s0: s[f.a], s1: s[f.b] };
   };
   const none = { r: Infinity, a: -1, b: -1, sMid: NaN };
-  const out = { R1: null, R2: null, R3: null, R4: null, R5: null, arcs: {}, kappa, runs };
+  // Every turning run is fitted once; the named radii pick from these. All of them are kept (runArcs) so the
+  // speed along the path can follow every curve, not only the named ones.
+  const fits = runs.map((run) => ({ ...fit(run), sign: run.sign }));
+  const out = { R1: null, R2: null, R3: null, R4: null, R5: null, arcs: {}, kappa, runs, runArcs: fits };
+  const fitOf = (run) => fits[runs.indexOf(run)];
 
   if (mv.kind === 'right') {
     let best = none;
-    for (const run of runs) if (run.sign < 0) { const f = fit(run); if (f.r < best.r) best = f; }
+    runs.forEach((run, q) => { if (run.sign < 0 && fits[q].r < best.r) best = fits[q]; });
     out.R5 = best.r; out.arcs.R5 = best;
     return out;
   }
@@ -314,7 +318,7 @@ export function pathRadii(path, mv, rr) {
   });
   let entryRun = null, exitRun = null, circArc = none;
   if (circ >= 0) {
-    circArc = fit(runs[circ]);
+    circArc = fits[circ];
     for (let q = circ - 1; q >= 0; q--) if (runs[q].sign < 0) { entryRun = runs[q]; break; }
     for (let q = circ + 1; q < runs.length; q++) if (runs[q].sign < 0) { exitRun = runs[q]; break; }
   } else {
@@ -327,8 +331,8 @@ export function pathRadii(path, mv, rr) {
       else if (!exitRun && run.i0 >= iMin) exitRun = run;
     }
   }
-  const e = entryRun ? fit(entryRun) : none;
-  const xr = exitRun ? fit(exitRun) : none;
+  const e = entryRun ? fitOf(entryRun) : none;
+  const xr = exitRun ? fitOf(exitRun) : none;
   out.R1 = e.r; out.arcs.R1 = e;
   out.R3 = xr.r; out.arcs.R3 = xr;
   if (mv.kind === 'left') { out.R4 = circArc.r; out.arcs.R4 = circArc; }
