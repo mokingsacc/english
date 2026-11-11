@@ -240,6 +240,9 @@
     on('ndChain', 'click', () => boardSheet(true, 'count'));
     let rz = 0;
     addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(houseDraw, 150); }); // the hearts find room again
+    // The house also changes size without the window doing so: the sidebar comes and goes, Home comes back from
+    // another tab, the house turns wide. The hearts and the chain are placed again then too.
+    if (window.ResizeObserver) new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(houseDraw, 150); }).observe($('house'));
   }
   // The top of Home: how the other person is, by their own clock. Asleep is the same 11 pm to 6 am that turns their
   // lamp off. The guest's phone says the same about the host.
@@ -271,6 +274,7 @@
       // under the house, one line: "London 12:24, 11° drizzle"
       text('ndTime' + id, r.clock);
       text('ndWx' + id, r.wx ? ', ' + r.wx : '');
+      text('ndWx2' + id, r.wx || ''); // the same weather on its own line, in that place's card (iPad and Mac)
       const fig = $('ndFig' + id);
       fig.disabled = !r.mine;
       fig.setAttribute('aria-label', r.mine ? 'Wave' : nm + ' in ' + r.place + (r.late ? ', asleep' : ''));
@@ -445,9 +449,19 @@
   function tabsBoot() {
     document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.go)));
     const bar = document.querySelector('.tabbar-in');
+    // From 700 px wide the bar is a sidebar (up and down), an icon rail up to 900 px: there each tab and Calls and
+    // setup show their word as a tooltip (a screen reader has the word all along).
+    const side = window.matchMedia && matchMedia('(min-width:700px)'), rail = window.matchMedia && matchMedia('(min-width:700px) and (max-width:899.98px)');
+    const fit = () => {
+      if (bar) bar.setAttribute('aria-orientation', side && side.matches ? 'vertical' : 'horizontal');
+      document.querySelectorAll('.tabbar button').forEach((b) => { if (rail && rail.matches) b.title = b.textContent.trim(); else b.removeAttribute('title'); });
+    };
+    fit();
+    [side, rail].forEach((m) => { if (m && m.addEventListener) m.addEventListener('change', fit); });
     if (bar) bar.addEventListener('keydown', (e) => {
-      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
       if (!d) return;
+      e.preventDefault(); // up and down move between tabs here, not the page
       const t = TABS[(TABS.indexOf(app.tab) + d + TABS.length) % TABS.length];
       setTab(t);
       const b = $('tb-' + t);
@@ -473,17 +487,20 @@
       const x = sh.querySelector('.close');
       if (x) x.focus({ preventScroll: true });
     } else {
-      const b = HS.back[k];
+      let b = HS.back[k];
       HS.back[k] = null;
+      if (k === 'setup' && !(b && b.getClientRects().length)) b = setupBtn(); // the round button is not on an iPad or a Mac
       if (b && b.focus && b.getClientRects().length) b.focus({ preventScroll: true });
     }
   }
   function homeSheetsClose() { Object.keys(HOME_SHEETS).forEach((k) => homeSheet(k, false)); }
-  function setupSheet(open) { if (open) setupVals(); homeSheet('setup', open, $('homeSetupBtn')); }
+  // whichever button opens Calls and setup on this screen size (Home's round one, or the sidebar's)
+  const setupBtn = () => [...document.querySelectorAll('[data-setup-open]')].find((b) => b.getClientRects().length) || $('homeSetupBtn');
+  function setupSheet(open) { if (open) homeSetupVals(); homeSheet('setup', open, $('homeSetupBtn')); }
   function calSheet(open) { homeSheet('cal', open, $('ndCal')); if (open) calDraw(); }
   function todoSheet(open) { homeSheet('todo', open, $('ndFridge')); if (open) todoDraw(true); }
   // Each row says how things are: the last check, the mic's way, rings on or off, the guest's name.
-  function setupVals() {
+  function homeSetupVals() {
     text('setupSoundVal', MODE_TEXT[CLEAR.mode] ? MODE_TEXT[CLEAR.mode][0] : '');
     setupHealth();
     ringMeUi();
@@ -527,9 +544,10 @@
     if (!window.BesideBoard.heart()) { note('Your hearts open in a moment. Try again.', 'info'); return; }
     b.disabled = true;
     const ico = (n) => (window.BesideIcons ? window.BesideIcons.svg(n, 22) : '');
-    b.innerHTML = ico('check');
+    // the words show on an iPad or a Mac, where it is a button with words
+    b.innerHTML = ico('check') + '<span>Sent</span>';
     b.setAttribute('aria-label', 'Sent');
-    setTimeout(() => { b.disabled = false; b.innerHTML = ico('heart'); b.setAttribute('aria-label', 'Send a heart'); }, 2500);
+    setTimeout(() => { b.disabled = false; b.innerHTML = ico('heart') + '<span>Send a heart</span>'; b.setAttribute('aria-label', 'Send a heart'); }, 2500);
   }
   // The calendar, opened: this month with a dot in each person's colour on their plan days, and the next plan.
   const WEEK_NAMES = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -696,7 +714,8 @@
     go.addEventListener('pointercancel', end);
   }
   function homeBoot() {
-    on('homeSetupBtn', 'click', () => setupSheet(true));
+    // Calls and setup: the round button on Home (phone) or the sidebar's row (iPad and Mac); closing gives focus back to it
+    document.querySelectorAll('[data-setup-open]').forEach((b) => b.addEventListener('click', () => { setupSheet(true); HS.back.setup = b; }));
     on('homeRingBtn', 'click', homeRing);
     on('homeHeartBtn', 'click', homeHeart);
     on('setupClose', 'click', () => setupSheet(false));
@@ -6353,7 +6372,7 @@
     const invite = (open) => {
       if (!inv) return;
       inv.hidden = !open;
-      if (open) { renderLink(); const x = $('inviteClose'); if (x) x.focus(); } else { const r = $('homeSetupBtn'); if (r) r.focus(); }
+      if (open) { renderLink(); const x = $('inviteClose'); if (x) x.focus(); } else { const r = setupBtn(); if (r) r.focus(); }
     };
     on('inviteRowBtn', 'click', () => invite(true));
     on('inviteClose', 'click', () => invite(false));
@@ -6375,7 +6394,7 @@
         const x = $('soundClose'); if (x) x.focus();
       } else if (ssFrom && ssFrom.focus) ssFrom.focus();
     };
-    document.querySelectorAll('[data-sound-open]').forEach((b) => b.addEventListener('click', () => soundSheet(true, b.closest('#setupSheet') ? $('homeSetupBtn') : b)));
+    document.querySelectorAll('[data-sound-open]').forEach((b) => b.addEventListener('click', () => soundSheet(true, b.closest('#setupSheet') ? setupBtn() : b)));
     on('soundClose', 'click', () => soundSheet(false));
     if (ss) {
       ss.addEventListener('click', (e) => { if (e.target === ss) soundSheet(false); });
