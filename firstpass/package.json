@@ -3,6 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test \"tests/{engine,worker}/**/*.test.{mjs,js}\""
+    "test": "node --test \"tests/{engine,worker,page}/**/*.test.{mjs,js}\"",
+    "test:web": "playwright test tests/web",
+    "dev": "node --disable-warning=ExperimentalWarning scripts/dev-server.mjs",
+    "build": "node scripts/build.mjs",
+    "map": "node scripts/agent-map.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
   }
 }
