@@ -3,7 +3,7 @@
 import { PROJECT_ARG, OPTION_ARG, projectFor, parseDoc, optionOf, evaluate, headlineView, refuse } from '../common.js';
 import { READ_ONLY } from '../annotations.js';
 import { PATH_PATTERN } from '../schema.js';
-import { resolveAndApply, OpError } from '../../store/ops.js';
+import { resolveAndApply, OpError, parsePath } from '../../store/ops.js';
 
 export const SWEEP_MAX = 25;
 
@@ -45,7 +45,8 @@ export default {
         fails: h.fails, warns: h.warns, ...(r.ok ? {} : { problem: r.problems[0] }) });
     }
     const ok = rows.filter(x => x.ok);
-    const text = `${args.path} of ${opt.name} from ${args.from} to ${args.to}: ${rows.length} values, ${ok.length} buildable.`
+    const p = parsePath(args.path);
+    const text = `${p ? p.param.label : args.path}${/^legs\.\*\./.test(args.path) ? ' of every leg' : ''} of ${opt.name} from ${args.from} to ${args.to}: ${rows.length} values, ${ok.length} buildable.`
       + (ok.length ? ` Entry speed ${Math.min(...ok.map(x => x.worst_entry_mph))} to ${Math.max(...ok.map(x => x.worst_entry_mph))} mph.` : '') + ' Nothing was changed.';
     return { text, data: { project: { id: row.id, seq: row.seq }, option: opt.id, path: args.path, rows } };
   },

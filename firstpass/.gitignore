@@ -1,0 +1,7 @@
+node_modules/
+# Built by scripts/build.mjs at deploy
+public/_worker.js
+# The dev server's database and its dev user's secrets
+.dev/
+.wrangler/
+.dev.vars

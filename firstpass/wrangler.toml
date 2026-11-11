@@ -1,0 +1,15 @@
+# First Pass on Cloudflare Pages (advanced mode): public/ is the site, public/_worker.js (built by scripts/build.mjs,
+# not committed) is the Worker, public/_routes.json sends only /api/*, /mcp/* and /tiles/* to it.
+# Deploy with scripts/deploy.sh (never from a session unasked).
+name = "firstpass"
+pages_build_output_dir = "public"
+compatibility_date = "2026-10-01"
+# AsyncLocalStorage only (node:async_hooks), for the request traces behind problem reports (src/worker/debug/trace.js).
+compatibility_flags = ["nodejs_als"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "firstpass"
+# Placeholder: replace with the id `wrangler d1 create firstpass` prints.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
