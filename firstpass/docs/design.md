@@ -278,3 +278,15 @@ and the page never shows Autodesk's name, logo or product names as its own.
   against NCHRP 1043 and the Caltrans HDM table before she relies on it.
 - Six legs take about 18 ms per evaluate (the budget is set for four legs).
 - `movement.solver.converged` reads false on a path whose gradient is 1e-9: check what the flag means.
+
+## Open items on the server (11 Nov 2026, from its builder's report)
+
+- The DXF export route answers 501 until part 4 writes it.
+- No limit yet on how often the connector can change a drawing. Projects cannot be deleted or renamed (options can).
+  No key rotation. No page or route shows her the connector link. No `_headers` file or content security policy.
+- Tests run on Node with a database fake; nothing has run under the real Workers runtime yet. Do one such run before
+  the first deploy (Cache API and AsyncLocalStorage are the likely differences).
+- `wrangler.toml` holds a placeholder database id, and the deploy script has never been run.
+- The sample site's state plane coordinates were worked out by hand; check them against `crs.js` when it exists.
+- The first `evaluate` after a cold start took 74 ms on the server (later runs 12 to 19 ms there).
+- Settings are server-wide, and a removed key can keep working for up to 60 s (the user cache). Fine for one user.
