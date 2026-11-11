@@ -692,14 +692,14 @@ button:disabled{opacity:.55;cursor:default}
 .nd-room::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 6%,rgba(255,226,170,.55),transparent 60%);pointer-events:none}
 .nd-room[data-light=off]{--wall:#2C3252;--stripe:rgba(255,255,255,.04);--floor:#463C57;--trim:#4E4766;--frame:#4D4766}
 .nd-room[data-light=off]::before{opacity:0}
-/* The heart wall: each heart sent in the last 24 hours, on the sender's wall, behind their figure */
+/* The heart wall: each heart sent in the last 24 hours, on the wall of the one it was sent to, only ever on bare wall.
+   A strong red with a paper edge, so it reads at phone size on either wallpaper and with the light off. */
 .nd-hearts{position:absolute;inset:0;pointer-events:none}
-.nd-heart{position:absolute;display:block;aspect-ratio:24/22;transform:rotate(var(--r,0deg));color:#C8573C;opacity:.9}
-.nd-room[data-who=semal] .nd-heart{color:#D0614C}
-.nd-heart svg{display:block;width:100%;height:100%;fill:currentColor}
-.nd-room[data-light=off] .nd-heart{filter:brightness(.7)}
+.nd-heart{position:absolute;display:block;aspect-ratio:24/22;transform:rotate(var(--r,0deg));color:#D63C2C}
+.nd-heart svg{display:block;width:100%;height:100%;overflow:visible;fill:currentColor;stroke:#FFF6E6;stroke-width:2.4;stroke-linejoin:round;paint-order:stroke}
+.nd-room[data-light=off] .nd-heart{filter:brightness(.82)}
 .nd-heart.pop{animation:ndheartpop .7s cubic-bezier(.3,1.5,.5,1) both}
-@keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:.9}}
+@keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:1}}
 .nd-floor{position:absolute;left:0;right:0;bottom:0;height:10cqh;background:var(--floor);border-top:5px solid var(--trim)}
 /* the light: a lamp hanging from the ceiling, lit or not */
 .nd-lamp{position:absolute;top:0;left:var(--lx,50%);width:24px;margin-left:-12px;height:calc(6cqh + 14px);pointer-events:none}
