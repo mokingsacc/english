@@ -179,6 +179,8 @@ throws; the 15 ms budget.
 
 Port the patterns from the owner's `practice-hub` repo (cloned read-only at `/home/user/practice-hub`; read its
 CLAUDE.md first). Same shape: keyed `/api/*`, the connector at `/mcp/<token>`, static assets otherwise.
+`public/_routes.json` lists only `/api/*`, `/mcp/*` and `/tiles/*`, so static files are served straight from the edge
+and never invoke the Worker (faster, and free on the plan). A worker test keeps that list in step with the router.
 
 - D1 tables: `users` (id, name, key_hash, mcp_token_hash), `projects`, `changes` (seq, project, batch_id, actor
   `user|claude`, summary, ops, inverse, undone), `settings`, `bug_reports`, `debug_traces`.
@@ -210,8 +212,12 @@ CLAUDE.md first). Same shape: keyed `/api/*`, the connector at `/mcp/<token>`, s
 
 ## The page: a small CAD workspace that behaves like the one she knows
 
-Match Civil 3D's conventions exactly where they are behaviour and layout; draw our own icons; never use Autodesk's
-name, logo or icon artwork.
+Match Civil 3D's conventions exactly where they are behaviour and layout. The owner (11 Nov 2026): "make the artwork
+and everything as similar to it so that the function is aided by this". So the look follows it too: the same dark
+theme, colours, proportions, fonts sizes and spacing; every button in the place she expects, with an icon of the same
+subject and style as the tool it stands for (a magnifier for zoom, a hand for pan, stacked sheets for layers, and so
+on) so it reads at a glance. The icons are drawn fresh as SVG: nothing is traced or extracted from Autodesk's files,
+and the page never shows Autodesk's name, logo or product names as its own.
 
 - Layout: ribbon tabs across the top (Home, Roundabout, Analyze, Output, Manage) with labelled panels and buttons; a
   Toolspace panel on the left (Prospector tree: project, options, roundabout, legs, paths, checks; a Settings tab with
