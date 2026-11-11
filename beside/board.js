@@ -116,6 +116,9 @@
       return timeIn(t, z) + ' ' + label + (dayKey && k !== dayKey ? ' (' + weekdayIn(t, z) + ')' : '');
     }).join('  ·  ');
   }
+  // "17:12": the 24 hour clock the Plans page writes both times in.
+  const hm = (t, z) => { const p = parts(t, z); return pad(p.h) + ':' + pad(p.mi); };
+  const dayPart = (hr) => { const w = partOfDay(hr); return w === 'night' ? 'at night' : 'in the ' + w; };
 
   // ---------- photos: shrunk here, so they're small to send and keep ----------
   const dataBytes = (d) => { const b = d.slice(d.indexOf(',') + 1); return Math.floor(b.length * 3 / 4) - (b.endsWith('==') ? 2 : b.endsWith('=') ? 1 : 0); };
@@ -314,35 +317,83 @@
   }
   // A date + time + "which home's clock" picker, shared by the countdown and the calendar.
   function whenPicker(allowAllDay) {
-    let zone = myZone();
+    let zone = zoneOf(whoMe());
     const date = h('input', { type: 'date', class: 'bb-pick', required: true, 'aria-label': 'Date' });
     const time = h('input', { type: 'time', class: 'bb-pick', 'aria-label': 'Time' + (allowAllDay ? ' (leave empty for all day)' : '') });
     const dayWords = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); return m ? fmt('UTC', { weekday: 'short', day: 'numeric', month: 'short' }).format(Date.UTC(+m[1], m[2] - 1, +m[3], 12)) : 'Pick a day'; };
     const timeWords = (v) => (/^\d{2}:\d{2}/.test(v) ? v.slice(0, 5) : allowAllDay ? 'All day' : 'Not set');
     const dayRow = whenRow(date, 'calendar', 'Day', dayWords);
     const timeRow = whenRow(time, 'clock', 'Time', timeWords);
-    const btns = ZONES.map(({ z, label }) => h('button', { type: 'button', 'data-z': z, 'aria-pressed': String(z === zone), onclick: () => { zone = z; paint(); } }, label + ' time'));
+    // "My time" or "Semal's time": my home's clock first (Mo's is London, Semal's is LA).
+    const zones = () => { const m = zoneOf(whoMe()); return [m, m === LA ? LONDON : LA]; };
+    const btns = [0, 1].map((i) => h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => { zone = zones()[i]; paint(); } }));
     const seg = h('div', { class: 'bb-seg', role: 'group', 'aria-label': 'Whose time' }, btns);
-    const paint = () => { btns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.z === zone))); dayRow.paint(); timeRow.paint(); };
-    const el = h('div', { class: 'bb-when' }, h('div', { class: 'bb-when-row' }, dayRow.row, timeRow.row), seg,
-      allowAllDay ? h('p', { class: 'bb-hint', text: 'No time means all day.' }) : null);
+    // The other person's time in words: "19:00 for you is 11:00 in the morning for Semal."
+    const both = h('p', { class: 'bb-hint bb-both', 'aria-live': 'polite' });
+    const words = () => {
+      const w = read();
+      const them = themName();
+      if (!w) return '';
+      if (w.allDay) return 'No time means all day, on the same date for both of you.';
+      const [mz, tz] = zones();
+      const [a, b, an, bn] = zone === tz ? [tz, mz, 'for ' + them, 'for you'] : [mz, tz, 'for you', 'for ' + them];
+      const pb = parts(w.at, b);
+      const k = keyOf(w.at, a), kb = keyOf(w.at, b);
+      return hm(w.at, a) + ' ' + an + ' is ' + hm(w.at, b) + ' ' + dayPart(pb.h) + (kb < k ? ' the day before' : kb > k ? ' the next day' : '') + ' ' + bn + '.';
+    };
+    const paint = () => {
+      const zs = zones();
+      btns.forEach((b, i) => { b.dataset.z = zs[i]; b.textContent = i ? themName() + '’s time' : 'My time'; b.setAttribute('aria-pressed', String(zs[i] === zone)); });
+      dayRow.paint(); timeRow.paint();
+      both.textContent = words();
+    };
+    [date, time].forEach((x) => { x.addEventListener('input', paint); x.addEventListener('change', paint); });
+    const el = h('div', { class: 'bb-when' }, h('div', { class: 'bb-when-row' }, dayRow.row, timeRow.row), seg, both);
+    function read() {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.value);
+      if (!m) return null;
+      const [y, mo, d] = [+m[1], +m[2], +m[3]];
+      const tm = /^(\d{2}):(\d{2})/.exec(time.value);
+      if (!tm && allowAllDay) return { at: Date.UTC(y, mo - 1, d, 12), allDay: true };
+      return { at: zoned(y, mo, d, tm ? +tm[1] : 0, tm ? +tm[2] : 0, zone), allDay: false };
+    }
+    paint();
     return {
       el,
+      paint,
       set(t, dateOnly) {
+        zone = zones()[0];
         const p = parts(t != null ? t : Date.now(), zone);
         date.value = p.y + '-' + pad(p.mo) + '-' + pad(p.d);
         time.value = t != null && !dateOnly ? pad(p.h) + ':' + pad(p.mi) : '';
         paint();
       },
-      read() {
-        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.value);
-        if (!m) return null;
-        const [y, mo, d] = [+m[1], +m[2], +m[3]];
-        const tm = /^(\d{2}):(\d{2})/.exec(time.value);
-        if (!tm && allowAllDay) return { at: Date.UTC(y, mo - 1, d, 12), allDay: true };
-        return { at: zoned(y, mo, d, tm ? +tm[1] : 0, tm ? +tm[2] : 0, zone), allDay: false };
-      },
+      read,
     };
+  }
+
+  // The countdown's form: a title, a day and a time. done() runs after Save, Cancel or Clear.
+  function cdForm(done) {
+    const title = h('input', { type: 'text', class: 'bb-in', maxlength: 300, placeholder: 'What are you counting down to?', 'aria-label': 'Countdown title', autocomplete: 'off', enterkeyhint: 'done' });
+    const when = whenPicker(false);
+    const clear = h('button', { type: 'button', class: 'bb-btn bb-danger', onclick: () => {
+      const old = view().countdown;
+      done();
+      send({ op: 'countdown.clear' }, 'that');
+      if (old) note('Countdown cleared.', { label: 'Undo', fn: () => send({ op: 'countdown.set', title: old.title, at: old.at }, 'the countdown') });
+    } }, 'Clear');
+    const form = h('form', { class: 'bb-form', onsubmit: (e) => {
+      e.preventDefault();
+      const t = title.value.trim();
+      const w = when.read();
+      if (!t) { title.focus(); return; }
+      if (!w) return;
+      done();
+      send({ op: 'countdown.set', title: t.slice(0, 300), at: w.at }, 'the countdown');
+    } }, title, when.el, h('div', { class: 'bb-acts' },
+      h('button', { type: 'submit', class: 'bb-btn bb-primary' }, 'Save'),
+      h('button', { type: 'button', class: 'bb-btn bb-quiet', onclick: done }, 'Cancel'), clear));
+    return { form, title, fill() { const c = view().countdown; title.value = c ? c.title : ''; when.set(c ? c.at : null); clear.hidden = !c; } };
   }
 
   function build() {
@@ -354,38 +405,23 @@
     SECTIONS.forEach((s) => { secs[s.id] = section(s); });
     ui.secs = secs;
 
-    // Countdown
+    // Countdown: the form lives in its section (the paper chain's sheet), and a second one in the Plans sheet.
     {
       const s = secs.countdown;
       ui.cdShow = h('div', { class: 'bb-cd' });
-      const title = h('input', { type: 'text', class: 'bb-in', maxlength: 300, placeholder: 'What are you counting down to?', 'aria-label': 'Countdown title', autocomplete: 'off', enterkeyhint: 'done' });
-      const when = whenPicker(false);
-      const clear = h('button', { type: 'button', class: 'bb-btn bb-danger', onclick: () => {
-        const old = view().countdown;
-        ui.cdForm.hidden = true;
-        send({ op: 'countdown.clear' }, 'that');
-        if (old) note('Countdown cleared.', { label: 'Undo', fn: () => send({ op: 'countdown.set', title: old.title, at: old.at }, 'the countdown') });
-      } }, 'Clear');
-      ui.cdForm = h('form', { class: 'bb-form', hidden: true, onsubmit: (e) => {
-        e.preventDefault();
-        const t = title.value.trim();
-        const w = when.read();
-        if (!t) { title.focus(); return; }
-        if (!w) return;
-        ui.cdForm.hidden = true;
-        send({ op: 'countdown.set', title: t.slice(0, 300), at: w.at }, 'the countdown');
-      } }, title, when.el, h('div', { class: 'bb-acts' },
-        h('button', { type: 'submit', class: 'bb-btn bb-primary' }, 'Save'),
-        h('button', { type: 'button', class: 'bb-btn bb-quiet', onclick: () => { ui.cdForm.hidden = true; render(); } }, 'Cancel'), clear));
+      const f = cdForm(() => { ui.cdForm.hidden = true; render(); });
+      ui.cdForm = f.form;
+      ui.cdForm.hidden = true;
       ui.cdOpen = () => {
-        const c = view().countdown;
-        title.value = c ? c.title : '';
-        when.set(c ? c.at : null);
-        clear.hidden = !c;
+        f.fill();
         ui.cdForm.hidden = false;
         render();
-        title.focus();
+        f.title.focus();
       };
+      if (S.split) {
+        const g = cdForm(() => sheetClose());
+        ui.cdSheet = () => { g.fill(); sheetOpen('Countdown', g.form, g.title); };
+      }
       s.body.append(ui.cdShow, ui.cdForm);
     }
 
@@ -414,25 +450,38 @@
       });
       const pick = h('button', { type: 'button', class: 'bb-btn bb-quiet', onclick: () => file.click() }, h('span', { html: I.photo }), h('span', { text: 'Add a photo' }));
       const extra = h('div', { class: 'bb-th-extra', hidden: true }, noteIn, h('div', { class: 'bb-acts' }, pick, file), prev);
+      // Hearts (tabs): one big round button with its words under it, and a quiet way to add a note or a photo.
+      const goWord = S.split ? 'Send a heart' : 'I’m thinking of you';
+      const moreWord = S.split ? 'Add a note or a photo' : 'Add a note or photo';
       const more = h('button', { type: 'button', class: 'bb-link', 'aria-expanded': 'false', onclick: () => {
         extra.hidden = !extra.hidden;
         more.setAttribute('aria-expanded', String(!extra.hidden));
-        more.textContent = extra.hidden ? 'Add a note or photo' : 'Just send it plain';
+        more.textContent = extra.hidden ? moreWord : 'Just send it plain';
         if (!extra.hidden) noteIn.focus(); else { noteIn.value = ''; photo = null; showPhoto(); }
-      } }, 'Add a note or photo');
-      const go = h('button', { type: 'button', class: 'bb-btn bb-primary bb-warm', onclick: () => {
+      } }, moreWord);
+      const circle = h('span', { class: 'bb-send-c', html: I.heart });
+      const go = h('button', { type: 'button', class: S.split ? 'bb-send' : 'bb-btn bb-primary bb-warm', onclick: () => {
         if (go.disabled) return;
         sendThink(noteIn.value.trim().slice(0, 300), photo);
         noteIn.value = ''; photo = null; showPhoto();
-        extra.hidden = true; more.textContent = 'Add a note or photo'; more.setAttribute('aria-expanded', 'false');
+        extra.hidden = true; more.textContent = moreWord; more.setAttribute('aria-expanded', 'false');
         go.disabled = true;
         go.classList.add('bb-sent');
         go.lastChild.textContent = 'Sent with love';
-        setTimeout(() => { go.disabled = false; go.classList.remove('bb-sent'); go.lastChild.textContent = 'I’m thinking of you'; }, 2500);
-      } }, h('span', { html: I.heart }), h('span', { text: 'I’m thinking of you' }));
+        circle.innerHTML = I.tick;
+        setTimeout(() => { go.disabled = false; go.classList.remove('bb-sent'); go.lastChild.textContent = goWord; circle.innerHTML = I.heart; }, 2500);
+      } }, circle, h('span', { class: 'bb-send-w', text: goWord }));
+      ui.thGo = go;
       ui.thSent = h('p', { class: 'bb-hint bb-center' });
       ui.thList = h('div');
-      s.body.append(ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra, ui.thSent), ui.thList);
+      if (S.split) {
+        // the week of hearts, and the row that opens every note and photo (all kept hearts)
+        ui.thEmpty = h('div', { class: 'bb-empty-pat', hidden: true });
+        ui.thWeek = h('div', { class: 'bb-hweek bb-card', role: 'img' });
+        ui.thNotes = h('button', { type: 'button', class: 'bb-rowbtn bb-card', 'aria-haspopup': 'dialog', onclick: () => notesOpen() },
+          h('span', { class: 'bb-ri', html: svg('note') }), h('span', { class: 'bb-rl', text: 'Notes and photos' }), h('span', { class: 'bb-rv' }), h('span', { class: 'bb-rc', html: svg('chev') }));
+        s.body.append(ui.thEmpty, ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra), ui.thWeek, ui.thNotes);
+      } else s.body.append(ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra, ui.thSent), ui.thList);
     }
 
     // To-do
@@ -447,7 +496,15 @@
         send({ op: 'todo.add', id: newId(), text: t.slice(0, 300) }, '“' + short(t) + '”');
       } }, inp, h('button', { type: 'submit', class: 'bb-btn bb-primary bb-add-btn', 'aria-label': 'Add to-do' }, h('span', { html: I.plus }), h('span', { class: 'bb-add-word', text: 'Add' })));
       ui.todoList = h('div', { class: 'bb-list-wrap' });
-      s.body.append(form, ui.todoList);
+      ui.todoIn = inp;
+      if (S.split) {
+        // tabs: the list, then the add line as the card's last row, then the done ones folded away
+        form.classList.add('bb-add-row');
+        form.prepend(h('span', { class: 'bb-ri', html: I.plus }));
+        ui.todoForm = form;
+        ui.todoDone = h('div');
+        s.body.append(ui.todoList, form, ui.todoDone);
+      } else s.body.append(form, ui.todoList);
     }
 
     // Calendar
@@ -471,8 +528,21 @@
       const open = h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide', onclick: () => { when.set(null); form.hidden = false; open.hidden = true; title.focus(); } },
         h('span', { html: I.plus }), h('span', { text: 'Add an event' }));
       ui.calAddOn = (t) => { when.set(t, true); form.hidden = false; open.hidden = true; title.focus(); };
-      if (S.split) { ui.week = h('div', { class: 'bb-cal', role: 'group', 'aria-label': 'Calendar' }); s.body.append(ui.week); }
-      s.body.append(ui.calList, open, form);
+      if (S.split) {
+        // tabs: a new plan is a sheet (the round add button, a tap on a free day, or "Add a plan" under the list)
+        form.hidden = false;
+        form.querySelector('[type=submit]').textContent = 'Add to plans';
+        form.querySelector('[type=submit]').className = 'bb-btn bb-ink bb-wide';
+        form.querySelector('.bb-btn.bb-quiet').remove();
+        title.placeholder = 'What is the plan?';
+        title.setAttribute('aria-label', 'Plan title');
+        form.addEventListener('submit', () => { if (form.hidden) { form.hidden = false; sheetClose(); } });
+        ui.planOpen = (t) => { when.set(t == null ? null : t, t != null); title.value = ''; sheetOpen('New plan', form, title); };
+        ui.calAddOn = (t) => ui.planOpen(t);
+        ui.week = h('div', { class: 'bb-cal bb-card', role: 'group', 'aria-label': 'Calendar' });
+        ui.calAdd = h('button', { type: 'button', class: 'bb-btn bb-quiet bb-wide bb-cal-add', onclick: () => ui.planOpen() }, h('span', { html: I.plus }), h('span', { text: 'Add a plan' }));
+        s.body.append(ui.week, ui.calList, ui.calAdd);
+      } else s.body.append(ui.calList, open, form);
     }
 
     // Say it: one sentence becomes to-dos, events or a countdown (the keyboard's mic does the listening).
@@ -529,6 +599,8 @@
     const n = names.map((x) => x[1]).find((x) => x && !isMe(x) && !placeholderName(x));
     return n || '';
   }
+  // The other person's name, for words like "for Semal" and "Semal's time".
+  const themName = () => nameFor(whoThem(), S && S.lastView) || 'them';
   const nameFor = (who, b) => (who === whoMe() ? (placeholderName(S.name) ? '' : S.name) : theirName(b)) || (FIG() ? FIG().NAME[who] : '');
   const figHtml = (who, o) => (FIG() ? FIG().figure(who, { name: nameFor(who, S.lastView), ...(o || {}) }) : '');
   const reduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -537,7 +609,10 @@
   function buildSplit(ui, secs) {
     const T = S.t;
     const put = (k, ...kids) => { if (T[k]) { T[k].classList.add('bboard', 'bb-tabs'); T[k].replaceChildren(...kids.filter(Boolean)); } };
-    ui.talk.prepend(h('span', { class: 'bb-talk-label', text: 'Say it. Type, or use your keyboard mic.' }));
+    // Say it: one line above the tab bar. Type it, or use the keyboard's own mic.
+    ui.talk.prepend(h('span', { class: 'bb-ri', html: svg('mic') }));
+    ui.talkIn.placeholder = 'Dinner Friday 7pm';
+    ui.talkIn.setAttribute('aria-label', 'Say it. Type, or use your keyboard mic.');
     // Home
     ui.hello = h('div', { class: 'bb-hello' }, h('span', { class: 'bb-hello-day' }), h('h1', { class: 'bb-hello-hi' }));
     ui.hThink = h('div', { class: 'bb-hcard bb-hthink' });
@@ -548,15 +623,120 @@
     put('homeThink', ui.hThink);
     put('countdown', secs.countdown.sec);
     put('next', ui.hNext);
-    // Plans
-    put('plans', ui.talk, h('div', { class: 'bb-grid' }, h('div', { class: 'bb-col' }, secs.cal.sec), h('div', { class: 'bb-col' }, secs.todo.sec)), ui.status);
-    // Hearts
-    ui.hScene = h('div', { class: 'bb-hscene bb-figs', html: FIG() ? FIG().pair({ label: 'Mo and Semal, hand in hand' }) : '' });
-    put('hearts', h('div', { class: 'bb-grid' }, h('div', { class: 'bb-col' }, ui.hScene, secs.think.sec), h('div', { class: 'bb-col bb-hist' }, ui.thHist = h('section', { class: 'bb-sec bb-card', 'data-sec': 'history' },
-      h('div', { class: 'bb-head bb-head-static' }, h('h3', { text: 'Earlier' })), ui.thHistBody = h('div', { class: 'bb-body' })))));
+    // Plans: the countdown leads (or, with nothing at all yet, the empty page), then the week and the plans, the
+    // to-dos, and Say it above the tab bar.
+    ui.pTop = h('div', { class: 'bb-ptop' });
+    ui.pGrid = h('div', { class: 'bb-grid' }, h('div', { class: 'bb-col' }, secs.cal.sec), h('div', { class: 'bb-col' }, secs.todo.sec));
+    put('plans', ui.pTop, ui.pGrid, ui.status, ui.talk);
+    const add = document.getElementById('bPlanAdd');
+    if (add && !add.dataset.wired) { add.dataset.wired = '1'; add.addEventListener('click', () => { if (S && S.ui && S.ui.planOpen) S.ui.planOpen(); }); }
+    // Hearts: their latest note, one big button, the week, and the row to every note and photo
+    put('hearts', secs.think.sec);
     put('note', ui.note);
   }
   const go = (tab) => { if (S && S.opts.go) S.opts.go(tab); };
+
+  // ---------- the board's own sheet (a new plan, the countdown, notes and photos) ----------
+  // Built once, the app's sheet look (index.html .sheet > .menu). It only fades in, like every sheet.
+  let SH = null;
+  function sheetEl() {
+    if (SH) return SH;
+    const title = h('h2', { id: 'bbSheetTitle', tabindex: '-1' });
+    const body = h('div', { class: 'body bboard bb-tabs bb-sheet-body' });
+    const x = h('button', { type: 'button', class: 'close', 'aria-label': 'Close', html: svg('x'), onclick: () => sheetClose() });
+    const el = h('div', { class: 'sheet bb-psheet', hidden: true, onclick: (e) => { if (e.target === el) sheetClose(); } },
+      h('div', { class: 'menu', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bbSheetTitle', onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); sheetClose(); } } },
+        h('header', {}, title, x), body));
+    document.body.append(el);
+    SH = { el, title, body, back: null, kind: '' };
+    return SH;
+  }
+  function sheetOpen(title, content, focus, kind) {
+    const sh = sheetEl();
+    const bs = document.getElementById('boardSheet');
+    sh.el.classList.toggle('dark', !!bs && bs.classList.contains('dark')); // in a call, sheets are dark
+    if (sh.el.hidden) sh.back = document.activeElement;
+    sh.title.textContent = title;
+    sh.kind = kind || '';
+    sh.body.replaceChildren(content);
+    sh.el.hidden = false;
+    const fine = !!(window.matchMedia && matchMedia('(pointer: fine)').matches);
+    try { (fine && focus ? focus : sh.title).focus({ preventScroll: true }); } catch (e) { /* nothing to focus */ }
+  }
+  function sheetClose() {
+    if (!SH || SH.el.hidden) return;
+    SH.el.hidden = true;
+    SH.kind = '';
+    const b = SH.back;
+    SH.back = null;
+    if (b && b.isConnected && b.focus) { try { b.focus({ preventScroll: true }); } catch (e) { /* gone */ } }
+  }
+
+  // ---------- a row you swipe to delete ----------
+  // Swipe left to show Delete; a long swipe deletes at once. The same Delete button is there for a keyboard and a
+  // screen reader (it slides into view when it has focus), and a right click or a mouse drag opens the row too.
+  const OPEN_W = 96;
+  function swipeRow(cls, label, kids, onDelete, data) {
+    const del = h('button', { type: 'button', class: 'bb-del', 'aria-label': 'Delete ' + label, onclick: () => onDelete() }, 'Delete');
+    const face = h('div', { class: 'bb-face' }, kids);
+    const row = h('div', { class: 'bb-swipe ' + (cls || ''), ...(data || {}) }, del, face);
+    let x0 = 0, y0 = 0, dx = 0, base = 0, on = false, drag = false, pid = null;
+    const put = (x, anim) => { face.style.transition = anim ? '' : 'none'; face.style.transform = x ? 'translateX(' + x + 'px)' : ''; };
+    const shut = () => { row.classList.remove('bb-open'); put(0, true); if (S && S.swOpen === row) S.swOpen = null; };
+    const open = () => {
+      if (S && S.swOpen && S.swOpen !== row && S.swOpen.bbShut) S.swOpen.bbShut();
+      row.classList.add('bb-open'); put(-OPEN_W, true); if (S) S.swOpen = row;
+    };
+    row.bbShut = shut;
+    face.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      x0 = e.clientX; y0 = e.clientY; dx = 0; on = true; drag = false; pid = e.pointerId;
+      base = row.classList.contains('bb-open') ? -OPEN_W : 0;
+    });
+    face.addEventListener('pointermove', (e) => {
+      if (!on || e.pointerId !== pid) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!drag) {
+        if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { on = false; return; } // a scroll
+        if (Math.abs(mx) < 8) return;
+        drag = true;
+        row.classList.add('bb-drag');
+        try { face.setPointerCapture(pid); } catch (er) { /* fine without */ }
+      }
+      dx = mx;
+      put(Math.min(0, Math.max(-row.clientWidth, base + dx)), false);
+    });
+    const end = () => {
+      if (!on) return;
+      on = false;
+      if (!drag) return;
+      row.classList.remove('bb-drag');
+      const x = base + dx;
+      face.dataset.swiped = '1';
+      setTimeout(() => { delete face.dataset.swiped; }, 0);
+      if (x < -row.clientWidth * 0.6) { put(-row.clientWidth, true); row.classList.add('bb-gone'); setTimeout(onDelete, 160); }
+      else if (x < -OPEN_W / 2) open(); else shut();
+    };
+    face.addEventListener('pointerup', end);
+    face.addEventListener('pointercancel', () => { on = false; if (drag) { row.classList.remove('bb-drag'); shut(); } });
+    // a tap after a swipe is not a tap on what is under the finger
+    face.addEventListener('click', (e) => { if (face.dataset.swiped) { e.stopPropagation(); e.preventDefault(); } else if (row.classList.contains('bb-open')) { e.stopPropagation(); e.preventDefault(); shut(); } }, true);
+    face.addEventListener('contextmenu', (e) => { if (e.pointerType === 'touch') return; e.preventDefault(); if (row.classList.contains('bb-open')) shut(); else open(); });
+    del.addEventListener('focus', () => { if (!row.classList.contains('bb-open')) open(); });
+    row.addEventListener('focusout', (e) => { if (!row.contains(e.relatedTarget) && row.classList.contains('bb-open') && !on) shut(); });
+    row.addEventListener('keydown', (e) => { if (e.key === 'Escape' && row.classList.contains('bb-open')) { e.stopPropagation(); shut(); } });
+    return row;
+  }
+
+  // ---------- empty moments: the two of you, one sentence, one button ----------
+  function emptyPat(head, line, btnText, fn, big) {
+    const f = FIG();
+    return h('div', { class: 'bb-empty-pat' + (big ? ' bb-big-empty' : '') },
+      h('span', { class: 'bb-pair bb-figs', html: f ? f.pair({ label: '' }) : '' }),
+      head ? h('p', { class: 'bb-empty-h', text: head }) : null,
+      h('p', { class: 'bb-empty-line', text: line }),
+      btnText ? h('button', { type: 'button', class: 'bb-btn bb-primary bb-empty-btn', onclick: fn }, h('span', { html: I.plus }), h('span', { text: btnText })) : null);
+  }
 
   // Thinking of you: sent at once, and on screen a soft heart floats from your figure to theirs as you both lean in.
   function sendThink(noteText, photo) {
@@ -809,7 +989,17 @@
       const sec = ui.secs.think;
       const top = b.thinks.find((t) => !mine(t));
       ui.thTop.replaceChildren();
-      if (top) {
+      if (top && S.split) {
+        // their latest heart leads: who and when, then their own words in the voice font
+        const fresh = S.seenThink && S.seenThink !== top.id;
+        const who = whoSent(top), f = FIG();
+        ui.thTop.append(h('div', { class: 'bb-latest bb-card' + (fresh ? ' bb-pulse' : '') },
+          h('p', { class: 'bb-latest-who' }, h('span', { class: 'bb-head-fig bb-fig-' + who, html: f ? f.figure(who, { pose: 'head', label: '' }) : I.heart }),
+            h('span', { text: 'From ' + top.from + ', ' + ago(top.at) })),
+          h('p', { class: top.note ? 'bb-latest-note' : 'bb-latest-plain', text: top.note || top.from + ' is thinking of you' }),
+          top.photo ? h('button', { type: 'button', class: 'bb-th-photo', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(top)) }, h('img', { src: photoUrl(top), alt: 'Photo from ' + top.from, loading: 'lazy' })) : null));
+        sec.sum.textContent = top.from + ' · ' + ago(top.at);
+      } else if (top) {
         const fresh = S.seenThink && S.seenThink !== top.id;
         ui.thTop.append(h('div', { class: 'bb-th-card' + (fresh ? ' bb-pulse' : '') },
           h('p', { class: 'bb-th-line' }, h('span', { html: I.heart, class: 'bb-th-heart' }), h('span', {}, h('b', { text: top.from }), ' is thinking of you'), h('span', { class: 'bb-ago', text: (S.split ? '' : ' · ') + ago(top.at) })),
@@ -837,6 +1027,8 @@
       const open = b.todos.filter((t) => !t.done).reverse(); // newest first
       const done = b.todos.filter((t) => t.done).sort((x, y) => (y.doneAt || 0) - (x.doneAt || 0));
       sec.sum.textContent = open.length ? open.length + ' to do' : done.length ? 'All done' : '';
+      if (S.split) todoSplit(open, done);
+      else {
       const row = (t) => h('div', { class: 'bb-row bb-todo' + (t.done ? ' bb-done' : ''), 'data-id': t.id },
         h('button', { type: 'button', class: 'bb-tick', role: 'checkbox', 'aria-checked': String(!!t.done), 'aria-label': (t.done ? 'Not done: ' : 'Done: ') + t.text, html: I.tick, onclick: () => send({ op: 'todo.toggle', id: t.id, done: !t.done }, '“' + short(t.text) + '”') }),
         h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-todo-text', text: t.text }), t.by && !isMe(t.by) ? h('p', { class: 'bb-sub', text: S.split ? 'Added by ' + t.by : t.by }) : null),
@@ -853,6 +1045,7 @@
         if (open.length > SHOW_TODOS) ui.todoList.append(fold('todoMore', ['Show ' + (open.length - SHOW_TODOS) + ' more', 'Show fewer'], h('div', { class: 'bb-list' }, open.slice(SHOW_TODOS).map(row))));
       }
       if (done.length) ui.todoList.append(fold('done', ['Done (' + done.length + ')', 'Hide done'], h('div', { class: 'bb-list' }, done.map(row))));
+      }
     }
 
     // Calendar
@@ -872,9 +1065,11 @@
       groups.forEach((g) => g.list.sort((x, y) => (y.allDay - x.allDay) || (x.at - y.at)));
       groups.sort((x, y) => (x.k < y.k ? -1 : x.k > y.k ? 1 : 0));
       sec.sum.textContent = up.length ? (dayLabel(groups[0].k)[0] === 'Today' ? 'Today' : 'Next: ' + dayLabel(groups[0].k)[0]) : '';
+      if (S.split) calSplit(b, today, up, past);
+      else {
       const evRow = (e, k) => h('div', { class: 'bb-row bb-ev', 'data-id': e.id },
         h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-ev-title', text: e.title }),
-          S.split && !e.allDay ? twoTimes(e.at, k) : h('p', { class: 'bb-sub bb-times', text: e.allDay ? 'All day' : bothTimes(e.at, k) })),
+          h('p', { class: 'bb-sub bb-times', text: e.allDay ? 'All day' : bothTimes(e.at, k) })),
         h('button', { type: 'button', class: 'bb-x', 'aria-label': 'Delete ' + e.title, html: I.x, onclick: () => {
           send({ op: 'event.delete', id: e.id }, 'that');
           note('Deleted “' + short(e.title) + '”.', { label: 'Undo', fn: () => send({ op: 'event.add', id: e.id, title: e.title, at: e.at, allDay: !!e.allDay }, '“' + short(e.title) + '”') });
@@ -898,11 +1093,13 @@
         });
         ui.calList.append(fold('past', ['Past (' + past.length + ')', 'Hide past'], h('div', { class: 'bb-list bb-past' }, rows)));
       }
+      }
     }
 
     ui.status.textContent = S.offline ? 'Can’t reach the board right now. It will keep trying.' : S.talking ? 'Reading that…' : S.pending.length ? 'Saving…' : '';
     ui.status.classList.toggle('bb-off', !!S.offline);
-    if (S.split) homeSplit(b, now);
+    if (S.split) { homeSplit(b, now); plansTop(b, now); }
+    if (SH && !SH.el.hidden && SH.kind === 'notes') notesFill();
     if (S.opts.onRender) { try { S.opts.onRender({ me: whoMe(), them: theirName(b), theirFigure: whoThem() }); } catch (e) { /* the app's own business */ } }
   }
 
@@ -934,25 +1131,13 @@
       h('p', { class: 'bb-cd-when', text: fmt(HERE, { weekday: 'short', day: 'numeric', month: 'short' }).format(c.at) }),
       h('button', { type: 'button', class: 'bb-link bb-cd-change', onclick: ui.cdOpen, 'aria-label': 'Change the countdown' }, 'Change'));
   }
-  // "7:00 pm", "London, evening", and where that sits in the day there.
-  function twoTimes(t, dayKey) {
-    const f = FIG();
-    return h('div', { class: 'bb-times bb-two' }, ZONES.map(({ z, label }) => {
-      const p = parts(t, z);
-      const k = keyOf(t, z);
-      const frac = (p.h * 60 + p.mi) / 1440;
-      return h('div', { class: 'bb-tz' },
-        h('span', { class: 'bb-tz-fig', html: f ? f.figure(z === LA ? 'semal' : 'mo', { pose: 'head', label: '' }) : '' }),
-        h('span', { class: 'bb-tz-words' }, h('b', { text: timeIn(t, z) + (dayKey && k !== dayKey ? ' ' + weekdayIn(t, z) : '') }), h('span', { text: label + ', ' + partOfDay(p.h) })),
-        h('span', { class: 'bb-tz-bar', 'aria-hidden': 'true' }, h('i', { class: 'bb-tz-mark', style: 'left:calc(' + (frac * 100).toFixed(1) + '% - 7px)' })));
-    }));
-  }
   // A full month, with the months before and after a tap away. A dot marks a day with plans. Tapping a day goes
   // to its plans in the list below, or starts a new plan on that day.
   const CAL_BACK = 12, CAL_AHEAD = 36; // how far it goes, in months
   function monthGrid(b, today) {
     const ui = S.ui;
     const has = new Set(b.events.map(evKey));
+    const by = planDots(b);
     const [ty, tm] = today.split('-').map(Number);
     const nowIdx = ty * 12 + tm - 1;
     const idx = Math.min(nowIdx + CAL_AHEAD, Math.max(nowIdx - CAL_BACK, S.calMonth == null ? nowIdx : S.calMonth));
@@ -980,14 +1165,8 @@
       const long = fmt('UTC', { weekday: 'long', day: 'numeric', month: 'long' }).format(noon);
       cells.push(h('button', { type: 'button', class: 'bb-cal-day' + (k === today ? ' bb-today' : '') + (plans ? ' bb-has' : '') + (past ? ' bb-past' : ''),
         'aria-label': long + (k === today ? ', today' : '') + (plans ? ', has plans' : ''), 'data-key': k, onclick: () => {
-          let g = ui.calList.querySelector('[data-day="' + k + '"]');
-          // Plans on that day sit in the "Show more days" fold: open it, then go to them.
-          if (!g && plans && !past && !S.folds.calMore) { S.folds.calMore = true; render(); g = ui.calList.querySelector('[data-day="' + k + '"]'); }
-          // A day gone by: its plans are in the Past fold.
-          if (!g && plans && past) { if (!S.folds.past) { S.folds.past = true; render(); } g = ui.calList.querySelector('.bb-past'); }
-          if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
-          else if (!past) ui.calAddOn(zoned(y, mo, d, 12, 0, myZone()));
-        } }, h('span', { class: 'bb-dn', text: String(d) }), h('i', { class: 'bb-wdot' })));
+          dayTap(k, y, mo, d, plans, past);
+        } }, h('span', { class: 'bb-dn', text: String(d) }), dotsFor(by[k])));
     }
     ui.week.replaceChildren(head, h('div', { class: 'bb-cal-names', 'aria-hidden': 'true' }, names), h('div', { class: 'bb-cal-grid' }, cells));
   }
@@ -998,26 +1177,218 @@
     return [h('div', { class: 'bb-list' }, rest.slice(0, SHOW_THINKS).map(row)),
       more > 0 ? fold('thinkMore', ['Show earlier hearts (' + more + ')', 'Hide earlier hearts'], S.folds.thinkMore ? h('div', { class: 'bb-list' }, rest.slice(SHOW_THINKS).map(row)) : []) : null].filter(Boolean);
   }
+  // Hearts (tabs): today's count in the heading, the week as dots in each person's colour, and the row to every
+  // note and photo. With no hearts at all: the two of you, one sentence, and the big button.
   function thSplit(b, rest) {
     const ui = S.ui;
-    const f = FIG();
-    ui.thHistBody.replaceChildren();
-    // One heart so far: it is already on show above, so there is nothing earlier to list.
-    const card = ui.thHistBody.closest('.bb-card');
-    if (card) card.hidden = !rest.length && b.thinks.length > 0;
-    if (!rest.length) {
-      ui.thHistBody.append(h('div', { class: 'bb-empty bb-empty-sofa' }, h('div', { class: 'bb-sofa', html: f ? f.sofa() : '' }),
-        h('p', { class: 'bb-empty-h', text: S.loaded ? 'No hearts yet' : 'Opening the board…' }), S.loaded ? h('p', { text: 'Send the first one. It takes one tap.' }) : null));
-      return;
+    const none = S.loaded && !b.thinks.length;
+    ui.thEmpty.hidden = !none;
+    if (none && !ui.thEmpty.firstChild) ui.thEmpty.append(emptyPat('No hearts yet', 'Send ' + themName() + ' a heart to say you are thinking of them.', '', null));
+    if (!none) ui.thEmpty.replaceChildren();
+    ui.thWeek.hidden = ui.thNotes.hidden = !b.thinks.length;
+    const now = Date.now();
+    const today = keyOf(now, HERE);
+    const cnt = document.getElementById('bHeartsToday');
+    const nToday = b.thinks.filter((t) => t.at && keyOf(t.at, HERE) === today).length;
+    if (cnt) cnt.textContent = S.loaded && nToday ? nToday + ' today' : '';
+    // the last seven days, today on the right
+    const days = [];
+    for (let i = 6; i >= 0; i--) { const t = now - i * DAY; days.push({ k: keyOf(t, HERE), t, me: 0, them: 0 }); }
+    const at = {};
+    days.forEach((d) => { at[d.k] = d; });
+    b.thinks.forEach((t) => { const d = t.at && at[keyOf(t.at, HERE)]; if (d) { if (mine(t)) d.me++; else d.them++; } });
+    const them = themName();
+    const sum = days.reduce((a, d) => [a[0] + d.me, a[1] + d.them], [0, 0]);
+    const MAX = 8; // dots per person per day; the words carry the exact numbers
+    const key = JSON.stringify(days.map((d) => [d.k, d.me, d.them])) + them;
+    if (ui.thWeek.dataset.k !== key) {
+      ui.thWeek.dataset.k = key;
+      ui.thWeek.setAttribute('aria-label', 'This week you sent ' + sum[0] + (sum[0] === 1 ? ' heart' : ' hearts') + ' and ' + them + ' sent ' + sum[1] + '.');
+      const dots = (n, c) => Array.from({ length: Math.min(MAX, n) }, () => h('i', { class: c }));
+      ui.thWeek.replaceChildren(
+        h('div', { class: 'bb-hweek-head', 'aria-hidden': 'true' }, h('h3', { text: 'This week' }),
+          h('span', { class: 'bb-key' }, h('span', {}, h('i', { class: 'bb-me' }), 'You'), h('span', {}, h('i', { class: 'bb-them' }), them))),
+        h('div', { class: 'bb-hweek-days', 'aria-hidden': 'true' }, days.map((d, i) => h('div', { class: 'bb-hday' + (i === 6 ? ' bb-today' : '') },
+          h('div', { class: 'bb-hdots' }, dots(d.me, 'bb-me'), dots(d.them, 'bb-them')),
+          h('span', { text: fmt(HERE, { weekday: 'narrow' }).format(d.t) })))));
     }
-    // The same day the walls on Home show (the last 24 hours), as numbers: the two should always agree.
-    const day = b.thinks.filter((t) => t.at && Date.now() - t.at < DAY);
-    const sent = day.filter(mine).length;
-    ui.thHistBody.append(h('p', { class: 'bb-hint', text: 'In the last day you sent ' + sent + ' and ' + (nameFor(whoThem(), b) || 'they') + ' sent ' + (day.length - sent) + '.' }));
-    ui.thHistBody.append(...thRows(rest, (t) => h('div', { class: 'bb-row bb-th-row' },
+    const notes = b.thinks.filter((t) => t.note || t.photo).length;
+    ui.thNotes.querySelector('.bb-rv').textContent = String(notes);
+    ui.thNotes.setAttribute('aria-label', 'Notes and photos, ' + notes);
+  }
+  // Notes and photos: every heart with words or a photo, newest first, then every kept heart under one fold.
+  function notesOpen() { sheetOpen('Notes and photos', h('div', { class: 'bb-notes' }), null, 'notes'); notesFill(); }
+  function notesFill() {
+    const b = S.lastView;
+    const f = FIG();
+    const box = SH.body.firstChild;
+    const row = (t) => h('div', { class: 'bb-row bb-th-row' },
       t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' }))
         : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + whoSent(t), html: f ? f.figure(whoSent(t), { pose: 'head', label: '' }) : I.heart }),
-      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: mine(t) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ', ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null))));
+      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: mine(t) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ', ' + ago(t.at) })), t.note ? h('p', { class: 'bb-th-note', text: t.note }) : null));
+    const withWords = b.thinks.filter((t) => t.note || t.photo);
+    const kids = [];
+    if (withWords.length) kids.push(h('div', { class: 'bb-list' }, withWords.slice(0, 30).map(row)));
+    else kids.push(h('p', { class: 'bb-hint', text: 'No notes or photos yet. Add one under Send a heart.' }));
+    if (withWords.length > 30) kids.push(fold('notesMore', ['Show earlier notes (' + (withWords.length - 30) + ')', 'Hide earlier notes'], S.folds.notesMore ? h('div', { class: 'bb-list' }, withWords.slice(30).map(row)) : []));
+    if (b.thinks.length) kids.push(fold('thinkAll', ['Every heart (' + b.thinks.length + ')', 'Hide every heart'], S.folds.thinkAll ? thRows(b.thinks, row) : []));
+    const fk = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fold : '';
+    box.replaceChildren(...kids);
+    if (fk) { const x = box.querySelector('[data-fold="' + fk + '"]'); if (x) x.focus(); }
+  }
+  // ---------- Plans (tabs) ----------
+  const whoBy = (by) => (by ? whoOf(by) : whoMe());
+  // "Tomorrow", "Sat", "27 Nov": the day word on the right of a plan.
+  function dayWord(k) {
+    const [y, mo, d] = k.split('-').map(Number);
+    const noon = Date.UTC(y, mo - 1, d, 12);
+    const [t0, t1, t2] = keyOf(Date.now(), HERE).split('-').map(Number);
+    const n = Math.round((noon - Date.UTC(t0, t1 - 1, t2, 12)) / DAY);
+    if (n === 0) return 'Today';
+    if (n === 1) return 'Tomorrow';
+    if (n > 1 && n < 7) return fmt('UTC', { weekday: 'short' }).format(noon);
+    return fmt('UTC', { weekday: 'short', day: 'numeric', month: 'short', ...(y !== t0 ? { year: 'numeric' } : {}) }).format(noon);
+  }
+  // "17:12 for you, 09:12 for Semal", with the weekday where it is another day there.
+  function bothLine(e) {
+    if (e.allDay) return 'All day';
+    const mz = zoneOf(whoMe()), tz = mz === LA ? LONDON : LA;
+    return hm(e.at, mz) + ' for you, ' + hm(e.at, tz) + (keyOf(e.at, tz) !== keyOf(e.at, mz) ? ' ' + weekdayIn(e.at, tz) : '') + ' for ' + themName();
+  }
+  function delEvent(e) {
+    send({ op: 'event.delete', id: e.id }, 'that');
+    note('Deleted “' + short(e.title) + '”.', { label: 'Undo', fn: () => send({ op: 'event.add', id: e.id, title: e.title, at: e.at, allDay: !!e.allDay }, '“' + short(e.title) + '”') });
+  }
+  function delTodo(t) {
+    send({ op: 'todo.delete', id: t.id }, 'that');
+    note('Deleted “' + short(t.text) + '”.', { label: 'Undo', fn: () => send({ op: 'todo.add', id: t.id, text: t.text }, '“' + short(t.text) + '”') });
+  }
+  // A tap on a day: go to its plans, or start a new plan on that day.
+  function dayTap(k, y, mo, d, plans, past) {
+    const ui = S.ui;
+    let g = ui.calList.querySelector('[data-day="' + k + '"]');
+    // Plans on that day sit in the "Show more" fold: open it, then go to them.
+    if (!g && plans && !past && !S.folds.calMore) { S.folds.calMore = true; render(); g = ui.calList.querySelector('[data-day="' + k + '"]'); }
+    // A day gone by: its plans are in the Past fold.
+    if (!g && plans && past) { if (!S.folds.past) { S.folds.past = true; render(); } g = ui.calList.querySelector('[data-day="' + k + '"]') || ui.calList.querySelector('.bb-past'); }
+    if (g) { g.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' }); g.classList.remove('bb-flash'); void g.offsetWidth; g.classList.add('bb-flash'); }
+    else if (!past) ui.calAddOn(zoned(y, mo, d, 12, 0, myZone()));
+  }
+  // Who has plans on which day: a dot in the colour of whoever added each.
+  function planDots(b) {
+    const m = {};
+    b.events.forEach((e) => { const k = evKey(e); (m[k] = m[k] || new Set()).add(whoBy(e.by)); });
+    return m;
+  }
+  const dotsFor = (set) => h('u', { class: 'bb-pdots', 'aria-hidden': 'true' }, ['mo', 'semal'].filter((w) => set && set.has(w)).map((w) => h('i', { class: 'bb-p-' + w })));
+  // One week, Monday first, today filled; "Whole month" opens the month in place.
+  function weekStrip(b, today) {
+    const ui = S.ui;
+    const by = planDots(b);
+    const [ty, tm, td] = today.split('-').map(Number);
+    const noon = Date.UTC(ty, tm - 1, td, 12);
+    const mon = noon - ((new Date(noon).getUTCDay() + 6) % 7) * DAY;
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const t = mon + i * DAY;
+      const k = keyOf(t, 'UTC');
+      const [y, mo, d] = k.split('-').map(Number);
+      const plans = by[k], past = k < today;
+      days.push(h('button', { type: 'button', class: 'bb-wday' + (k === today ? ' bb-today' : '') + (past ? ' bb-past' : ''), 'data-key': k,
+        'aria-label': fmt('UTC', { weekday: 'long', day: 'numeric', month: 'long' }).format(t) + (k === today ? ', today' : '') + (plans ? ', has plans' : ''),
+        onclick: () => dayTap(k, y, mo, d, !!plans, past) },
+      h('span', { class: 'bb-wl', text: fmt('UTC', { weekday: 'narrow' }).format(t) }), h('b', { text: String(d) }), dotsFor(plans)));
+    }
+    const toggle = h('button', { type: 'button', class: 'bb-month-go', 'aria-expanded': 'false', onclick: () => { S.folds.month = true; render(); const x = ui.week.querySelector('.bb-month-go'); if (x) x.focus(); } },
+      h('span', { text: 'Whole month' }), h('span', { html: svg('chevd') }));
+    ui.week.replaceChildren(h('div', { class: 'bb-week-head' }, h('h3', { text: fmt('UTC', { month: 'long' }).format(noon) }), toggle), h('div', { class: 'bb-week' }, days));
+  }
+  function calSplit(b, today, up, past) {
+    const ui = S.ui;
+    if (S.folds.month) {
+      monthGrid(b, today);
+      ui.week.append(h('div', { class: 'bb-center' }, h('button', { type: 'button', class: 'bb-month-go', 'aria-expanded': 'true', onclick: () => { S.folds.month = false; render(); const x = ui.week.querySelector('.bb-month-go'); if (x) x.focus(); } },
+        h('span', { text: 'One week' }), h('span', { class: 'bb-up', html: svg('chevd') }))));
+    } else weekStrip(b, today);
+    const list = up.slice().sort((x, y) => (evKey(x) < evKey(y) ? -1 : evKey(x) > evKey(y) ? 1 : (y.allDay - x.allDay) || (x.at - y.at)));
+    const row = (e, old) => {
+      const k = evKey(e);
+      return swipeRow('bb-prow' + (old ? ' bb-old' : ''), e.title, [
+        h('span', { class: 'bb-pbar bb-p-' + whoBy(e.by), 'aria-hidden': 'true' }),
+        h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-ev-title', text: e.title }), h('p', { class: 'bb-sub bb-times', text: bothLine(e) })),
+        h('span', { class: 'bb-dayw', text: old ? fmt(e.allDay ? 'UTC' : HERE, { weekday: 'short', day: 'numeric', month: 'short' }).format(e.at) : dayWord(k) })],
+      () => delEvent(e), { 'data-id': e.id, 'data-day': k });
+    };
+    const SHOW = 6;
+    const kids = [];
+    if (!list.length) {
+      if (S.loaded) kids.push(emptyPat('', 'Nothing planned yet. Add the next time you will see each other.', 'Add a plan', () => ui.planOpen()));
+    } else {
+      kids.push(h('div', { class: 'bb-list' }, list.slice(0, SHOW).map((e) => row(e))));
+      if (list.length > SHOW) kids.push(fold('calMore', ['Show ' + (list.length - SHOW) + ' more', 'Show fewer'], h('div', { class: 'bb-list' }, list.slice(SHOW).map((e) => row(e)))));
+    }
+    if (past.length) kids.push(fold('past', ['Past (' + past.length + ')', 'Hide past'], h('div', { class: 'bb-list bb-past' }, past.slice(0, 30).map((e) => row(e, true)))));
+    ui.calList.classList.add('bb-card', 'bb-plist');
+    ui.calList.classList.toggle('bb-none', !list.length);
+    ui.calList.replaceChildren(...kids);
+    ui.calAdd.hidden = !list.length;
+  }
+  function todoSplit(open, done) {
+    const ui = S.ui;
+    const row = (t) => swipeRow('bb-todo' + (t.done ? ' bb-done' : ''), t.text, [
+      h('button', { type: 'button', class: 'bb-tick', role: 'checkbox', 'aria-checked': String(!!t.done), 'aria-label': (t.done ? 'Not done: ' : 'Done: ') + t.text, html: I.tick, onclick: () => send({ op: 'todo.toggle', id: t.id, done: !t.done }, '“' + short(t.text) + '”') }),
+      h('div', { class: 'bb-row-main' }, h('p', { class: 'bb-todo-text', text: t.text }), t.by && !isMe(t.by) ? h('p', { class: 'bb-sub', text: 'From ' + t.by }) : null)],
+    () => delTodo(t), { 'data-id': t.id });
+    const none = !open.length && S.loaded;
+    ui.todoList.replaceChildren();
+    if (none) {
+      // the add line waits behind the one button until it is asked for
+      const shown = !!ui.todoForm.dataset.shown;
+      ui.todoList.append(emptyPat('', done.length ? 'All done. Add the next thing to do together.' : 'Nothing on the list yet. Add something to do together.', shown ? '' : 'Add a to-do', () => {
+        ui.todoForm.dataset.shown = '1'; render(); ui.todoIn.focus();
+      }));
+      ui.todoForm.hidden = !shown;
+    } else {
+      ui.todoForm.hidden = false;
+      ui.todoList.append(h('div', { class: 'bb-list' }, open.slice(0, SHOW_TODOS).map(row)));
+      if (open.length > SHOW_TODOS) ui.todoList.append(fold('todoMore', ['Show ' + (open.length - SHOW_TODOS) + ' more', 'Show fewer'], h('div', { class: 'bb-list' }, open.slice(SHOW_TODOS).map(row))));
+    }
+    ui.todoDone.replaceChildren();
+    if (done.length) ui.todoDone.append(fold('done', [done.length + ' done', 'Hide done'], h('div', { class: 'bb-list' }, done.map(row))));
+  }
+  // The top of Plans: the countdown leads; with nothing planned at all, the empty page instead.
+  function plansTop(b, now) {
+    const ui = S.ui;
+    const c = b.countdown;
+    const nothing = S.loaded && !c && !b.todos.length && !b.events.some((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5));
+    if (S.t.plans) S.t.plans.classList.toggle('bb-plans-empty', nothing);
+    const key = nothing ? 'none' : !c ? (S.loaded ? 'set' : '') : JSON.stringify([c.title, c.at, Math.floor((c.at - now) / 6e4), themName()]);
+    if (ui.pTop.dataset.k === key) return;
+    ui.pTop.dataset.k = key;
+    if (nothing) {
+      ui.pTop.replaceChildren(emptyPat('Nothing planned yet', 'Add the next time you will see each other, or something to do together.', 'Add a plan', () => ui.planOpen(), true));
+      return;
+    }
+    if (!c) {
+      ui.pTop.replaceChildren(S.loaded ? h('button', { type: 'button', class: 'bb-rowbtn bb-card', 'aria-haspopup': 'dialog', onclick: ui.cdSheet },
+        h('span', { class: 'bb-ri', html: svg('clock') }), h('span', { class: 'bb-rl', text: 'Set a countdown' }), h('span', { class: 'bb-rc', html: svg('chev') })) : '');
+      return;
+    }
+    const left = c.at - now;
+    let num = '', unit = '';
+    if (left > 0) {
+      const d = Math.floor(left / DAY), hr = Math.floor((left % DAY) / 36e5), mn = Math.max(1, Math.floor((left % 36e5) / 6e4));
+      if (d > 0) { num = String(d); unit = d === 1 ? 'day until' : 'days until'; } else if (hr > 0) { num = String(hr); unit = hr === 1 ? 'hour until' : 'hours until'; } else { num = String(mn); unit = mn === 1 ? 'minute until' : 'minutes until'; }
+    }
+    const mz = zoneOf(whoMe());
+    const p = parts(c.at, mz);
+    const when = fmt(mz, { weekday: 'short', day: 'numeric', month: 'short' }).format(c.at) + (p.h || p.mi ? ', ' + hm(c.at, mz) : '');
+    const words = left > 0 ? num + ' ' + unit + ' ' + c.title + ', ' + when : 'It’s here: ' + c.title;
+    ui.pTop.replaceChildren(h('button', { type: 'button', class: 'bb-hero', 'aria-label': words + '. Change the countdown', 'aria-haspopup': 'dialog', onclick: ui.cdSheet },
+      left > 0 ? h('b', { class: 'bb-hero-n', text: num }) : h('span', { class: 'bb-hero-n bb-hero-heart', html: I.heart }),
+      h('span', { class: 'bb-hero-w' },
+        h('span', { class: 'bb-hero-t' }, left > 0 ? unit + ' ' : 'It’s here: ', h('span', { class: 'bb-voice', text: c.title })),
+        h('span', { class: 'bb-hero-d', text: when }))));
   }
   function homeSplit(b, now) {
     const ui = S.ui;
@@ -1310,15 +1681,7 @@
 .bb-tabs .bb-hnext-chev svg{width:18px;height:18px;color:var(--ink-3)}
 .bb-tabs .bb-hnext-title{font:var(--headline);overflow-wrap:anywhere}
 .bb-tabs .bb-hnext-times{display:flex;flex-direction:column;font:var(--caption);color:var(--ink-2)}
-/* Plans: Say it, the week, both clocks on each plan */
-.bboard.bb-tabs .bb-talk{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l b" "i b";align-items:center;column-gap:10px;min-height:68px;padding:8px 8px 2px 18px;margin:0 0 14px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1)}
-.bb-tabs .bb-talk-label{grid-area:l;font:var(--caption);font-weight:600;color:var(--ink-2)}
-.bboard.bb-tabs .bb-talk .bb-in{grid-area:i;background:transparent;box-shadow:none;min-height:44px;height:44px;padding:0;border-radius:0}
-.bboard.bb-tabs .bb-talk .bb-in:focus{outline:none}
-.bboard.bb-tabs .bb-talk:focus-within{box-shadow:0 0 0 2px var(--ink)}
-.bboard.bb-tabs .bb-talk .bb-add-btn{grid-area:b;width:52px;height:52px;min-height:52px;padding:0;border-radius:50%}
-.bb-tabs .bb-talk .bb-add-word{display:none}
-.bb-tabs .bb-talk .bb-add-btn svg{width:22px;height:22px}
+/* Plans: the month (the week and the rest are under "Plans (tabs)" below) */
 /* the month calendar */
 .bb-tabs .bb-cal{margin:0 0 6px}
 .bb-tabs .bb-cal-head{display:flex;align-items:center;gap:6px;margin:0 0 8px}
@@ -1343,26 +1706,14 @@
 @keyframes bb-flash{0%,100%{background:transparent}30%{background:var(--fill)}}
 .bb-tabs .bb-day{border-radius:var(--r2)}
 .bb-tabs .bb-ev-title{font:var(--headline)}
-.bb-tabs .bb-two{display:grid;gap:4px;margin-top:6px}
-.bb-tabs .bb-tz{display:grid;grid-template-columns:30px 96px minmax(0,1fr);align-items:center;gap:10px;min-height:36px}
-.bb-tabs .bb-tz-fig{width:30px;height:30px;border-radius:50%;overflow:hidden}
-.bb-tabs .bb-tz-fig svg{width:100%;height:100%}
-.bb-tabs .bb-tz-words{display:flex;flex-direction:column;min-width:0}
-.bb-tabs .bb-tz-words b{font:var(--callout);font-weight:600;white-space:nowrap}
-.bb-tabs .bb-tz-words span{font:var(--caption);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* awake hours on a day bar: night a soft blue, day a soft gold */
-.bb-tabs .bb-tz-bar{position:relative;height:16px;border-radius:var(--round);background:linear-gradient(90deg,color-mix(in srgb,var(--mo) 34%,var(--surface)) 0 25%,color-mix(in srgb,var(--semal) 45%,var(--surface)) 25% 83.3%,color-mix(in srgb,var(--mo) 34%,var(--surface)) 83.3%)}
-.bb-tabs .bb-tz-mark{position:absolute;top:1px;width:14px;height:14px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--surface)}
 .bb-tabs .bb-ev{padding-left:0;align-items:flex-start;padding-top:8px;padding-bottom:8px}
 .bb-tabs .bb-ev::before{display:none}
 .bb-tabs .bb-past .bb-ev-title{font:var(--headline)}
 .bb-tabs .bb-empty-sofa{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 4px}
 .bb-tabs .bb-sofa{width:150px;margin-bottom:4px}
-.bb-tabs .bb-sofa svg,.bb-tabs .bb-hscene svg{width:100%;height:auto;display:block}
+.bb-tabs .bb-sofa svg{width:100%;height:auto;display:block}
 .bb-tabs .bb-empty-h{font:var(--headline);color:var(--ink)}
 /* Hearts */
-.bb-tabs .bb-hscene{display:grid;place-items:center;padding:18px 16px 8px;border-radius:var(--r3);background:linear-gradient(180deg,color-mix(in srgb,var(--mo) 10%,var(--surface)),color-mix(in srgb,var(--semal) 18%,var(--surface)))}
-.bb-tabs .bb-hscene svg{max-width:200px}
 .bb-tabs .bb-dot-fig{overflow:hidden}
 .bb-tabs .bb-dot-fig svg{width:100%;height:100%}
 .bb-tabs .bb-th-row .bb-dot.bb-dot-fig{width:40px;height:40px;border-radius:50%}
@@ -1370,6 +1721,138 @@
 .bb-tabs .bb-th-line{font:var(--headline);row-gap:2px}
 .bb-tabs .bb-th-line .bb-ago{flex-basis:100%;padding-left:28px}
 .bb-tabs [data-sec=think] .bb-head-static .bb-sum{display:none}
+/* ---------- Plans (tabs): the countdown leads, one week, the plans, the to-dos, Say it above the tab bar ---------- */
+.bb-tabs .bb-card{background:var(--surface);border-radius:var(--r3);box-shadow:var(--e1)}
+.bboard .bb-ink{background:var(--ink);color:var(--bg)}
+.bb-tabs .bb-ptop{margin:0 0 14px}
+.bb-tabs .bb-ptop:empty{display:none}
+.bb-tabs.bb-plans-empty .bb-grid{display:none}
+.bboard.bb-tabs .bb-hero{width:100%;display:flex;align-items:center;gap:16px;min-height:96px;padding:18px;border-radius:var(--r3);text-align:left;color:var(--on-mo);background:linear-gradient(120deg,var(--mo),color-mix(in srgb,var(--mo) 72%,var(--semal)));box-shadow:var(--e1);transition:transform var(--press) var(--ease)}
+.bboard.bb-tabs .bb-hero:active{transform:scale(.98)}
+.bb-tabs .bb-hero-n{font:var(--display);font-variant-numeric:lining-nums tabular-nums;flex:none}
+.bboard.bb-tabs .bb-hero-heart svg{width:34px;height:34px}
+.bb-tabs .bb-hero-w{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bb-tabs .bb-hero-t{font:var(--headline);overflow-wrap:anywhere}
+.bb-tabs .bb-voice{font-family:var(--font-voice);font-style:italic;font-weight:500}
+.bb-tabs .bb-hero-d{font:var(--callout);opacity:.86}
+.bboard.bb-tabs .bb-rowbtn{width:100%;display:flex;align-items:center;gap:13px;min-height:56px;padding:8px 16px;text-align:left;font:var(--body);font-weight:500;color:var(--ink)}
+.bb-tabs .bb-ri{flex:none;color:var(--ink-2);display:grid;place-items:center}
+.bboard.bb-tabs .bb-ri svg{width:22px;height:22px}
+.bb-tabs .bb-rl{flex:1;min-width:0}
+.bb-tabs .bb-rv{font:var(--callout);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.bb-tabs .bb-rc{color:var(--ink-3)}
+.bboard.bb-tabs .bb-rc svg{width:18px;height:18px}
+.bb-tabs .bb-hero:focus-visible,.bb-tabs .bb-rowbtn:focus-visible,.bb-tabs .bb-wday:focus-visible,.bb-tabs .bb-month-go:focus-visible,.bb-tabs .bb-send:focus-visible,.bb-tabs .bb-del:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* the calendar and the to-dos lose their card heads here: the page (or the sheet) names them */
+.bb-tabs .bb-sec[data-sec=cal],.bb-tabs .bb-sec[data-sec=think]{background:none;box-shadow:none;border-radius:0;overflow:visible}
+.bb-tabs [data-sec=cal] > .bb-head,.bb-tabs [data-sec=todo] > .bb-head,.bb-tabs [data-sec=think] > .bb-head{display:none}
+.bb-tabs [data-sec=cal] > .bb-body,.bb-tabs [data-sec=think] > .bb-body{padding:0;gap:14px}
+.bb-tabs [data-sec=todo] > .bb-body{padding:0;gap:0}
+/* one week, and the month a tap away */
+.bb-tabs .bb-cal.bb-card{margin:0;padding:12px 12px 8px}
+.bb-tabs .bb-week-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 6px 4px}
+.bb-tabs .bb-week-head h3{font:var(--headline)}
+.bboard.bb-tabs .bb-month-go{display:inline-flex;align-items:center;gap:2px;min-height:44px;padding:0 6px;font:var(--caption);color:var(--ink-2)}
+.bboard.bb-tabs .bb-month-go svg{width:18px;height:18px}
+.bb-tabs .bb-up svg{transform:rotate(180deg)}
+.bb-tabs .bb-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.bboard.bb-tabs .bb-wday{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:2px 0 4px;border-radius:var(--r2)}
+.bb-tabs .bb-wday .bb-wl{font:var(--caption);color:var(--ink-3)}
+.bb-tabs .bb-wday b{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;font:var(--headline);font-variant-numeric:tabular-nums}
+.bb-tabs .bb-wday.bb-today b{background:var(--ink);color:var(--bg)}
+.bb-tabs .bb-wday.bb-past b{color:var(--ink-3)}
+.bb-tabs .bb-pdots{display:flex;justify-content:center;gap:3px;height:6px;text-decoration:none}
+.bb-tabs .bb-pdots i{display:block;width:6px;height:6px;border-radius:50%}
+.bb-tabs .bb-p-mo{background:var(--mo)}
+.bb-tabs .bb-p-semal{background:var(--semal)}
+.bb-tabs .bb-cal-day.bb-today .bb-pdots i{box-shadow:0 0 0 1px var(--bg)}
+/* the plans: title, both times in one line, the day on the right */
+.bb-tabs .bb-plist{gap:0;padding:0;overflow:hidden}
+.bb-tabs .bb-plist.bb-none{padding:4px 0}
+.bb-tabs .bb-plist > .bb-fold,.bb-tabs [data-sec=todo] .bb-fold{border-top:1px solid var(--line);padding:0 8px 0 16px}
+.bb-tabs .bb-plist > .bb-fold > .bb-list,.bb-tabs [data-sec=todo] .bb-fold > .bb-list{margin:0 -8px 0 -16px}
+.bboard.bb-tabs .bb-plist .bb-fold-btn,.bboard.bb-tabs [data-sec=todo] .bb-fold-btn{width:100%;justify-content:space-between;min-height:52px;padding:0;font:var(--callout);color:var(--ink-2)}
+.bb-tabs .bb-fold-btn .bb-chev{transform:none}
+.bb-tabs .bb-fold.bb-open > .bb-fold-btn .bb-chev{transform:rotate(180deg)}
+.bb-tabs .bb-pbar{width:4px;align-self:stretch;border-radius:var(--round);flex:none}
+.bb-tabs .bb-dayw{font:var(--caption);color:var(--ink-2);white-space:nowrap;padding-top:3px}
+.bb-tabs .bb-prow .bb-face{align-items:flex-start;padding:12px 16px}
+.bb-tabs .bb-old .bb-ev-title{color:var(--ink-2)}
+.bb-tabs .bb-old .bb-pbar{opacity:.4}
+.tabpanel .bb-cal-add{display:none}
+/* a row you swipe: Delete waits underneath */
+.bb-tabs .bb-swipe{position:relative;overflow:hidden;border-radius:0}
+.bboard.bb-tabs .bb-del{position:absolute;top:0;right:0;bottom:0;width:96px;display:grid;place-items:center;background:var(--end);color:var(--on-end);font:var(--headline)}
+.bb-tabs .bb-face{position:relative;z-index:1;display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 16px;background:var(--surface);touch-action:pan-y;-webkit-user-select:none;user-select:none;transition:transform var(--move) var(--ease)}
+.bb-tabs .bb-swipe:not(.bb-open):not(.bb-drag) .bb-del{opacity:0}
+.bb-tabs .bb-cal-title,.bb-tabs .bb-ev-title,.bb-tabs .bb-todo-text,.bb-tabs .bb-latest-note,.bb-tabs .bb-latest-plain,.bb-tabs .bb-notes .bb-th-note{color:var(--ink)}
+.bb-tabs .bb-list > .bb-swipe + .bb-swipe::before{content:"";position:absolute;z-index:2;left:16px;right:0;top:0;height:1px;background:var(--line)}
+.bb-tabs .bb-swipe.bb-gone{opacity:0;transition:opacity var(--move) var(--ease)}
+.bb-tabs .bb-swipe.bb-flash .bb-face{animation:bb-flash var(--arrive) var(--ease)}
+/* the to-dos: the round tick, "From Semal", the add line, the done ones folded */
+.bb-tabs .bb-todo .bb-face{gap:8px;padding:6px 16px 6px 12px}
+.bb-tabs .bb-todo .bb-tick{margin-left:-4px}
+.bb-tabs .bb-todo-text{font:var(--body)}
+.bb-tabs .bb-list-wrap:empty{display:none}
+.bboard.bb-tabs .bb-add-row{display:flex;align-items:center;gap:10px;min-height:56px;padding:4px 6px 4px 16px;border-top:1px solid var(--line)}
+.bb-tabs .bb-list-wrap:empty + .bb-add-row,.bb-tabs .bb-list-wrap:has(> .bb-empty-pat) + .bb-add-row{border-top:0}
+.bboard.bb-tabs .bb-add-row .bb-in{flex:1;background:transparent;padding:0;min-height:44px;border-radius:0}
+.bboard.bb-tabs .bb-add-row .bb-in:focus{outline:none}
+.bboard.bb-tabs .bb-add-row:focus-within{box-shadow:inset 0 0 0 2px var(--ink);border-radius:var(--r2)}
+.bboard.bb-tabs .bb-add-row .bb-add-btn{min-height:44px;height:44px;padding:0 16px}
+.bb-tabs .bb-add-row .bb-ri{color:var(--ink-3)}
+/* Say it: one line that stays above the tab bar */
+.bboard.bb-tabs .bb-talk{position:sticky;bottom:8px;z-index:4;display:flex;align-items:center;gap:8px;min-height:52px;padding:4px 4px 4px 16px;margin:14px 0 0;border-radius:var(--round);background:var(--surface);box-shadow:var(--e2)}
+.tabpanel .bboard.bb-tabs .bb-talk{bottom:calc(var(--tabbar-h,84px) + env(safe-area-inset-bottom) + 8px)}
+.bboard.bb-tabs .bb-talk .bb-in{flex:1;background:transparent;padding:0;min-height:44px;border-radius:0}
+.bboard.bb-tabs .bb-talk .bb-in:focus{outline:none}
+.bboard.bb-tabs .bb-talk:focus-within{box-shadow:0 0 0 2px var(--ink),var(--e2)}
+.bboard.bb-tabs .bb-talk .bb-add-btn{width:44px;height:44px;min-height:44px;padding:0;border-radius:50%}
+.bb-tabs .bb-talk .bb-add-word{display:none}
+.bb-tabs .bb-talk .bb-ri{color:var(--ink-2)}
+/* empty moments: the two of you, one sentence, one button */
+.bb-tabs .bb-empty-pat{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 16px}
+.bboard.bb-tabs .bb-pair{display:block;width:104px;margin-bottom:6px}
+.bboard.bb-tabs .bb-pair svg{width:100%;height:auto;display:block}
+.bb-tabs .bb-empty-pat .bb-empty-h{font:var(--title);color:var(--ink)}
+.bb-tabs .bb-empty-line{font:var(--body);color:var(--ink-2);max-width:32ch;text-wrap:balance}
+.bb-tabs .bb-empty-btn{margin-top:10px}
+.bb-tabs .bb-big-empty{min-height:max(320px,calc(100dvh - 360px));justify-content:center}
+/* Hearts: their latest note, one big button, the week as dots, the row to every note */
+.bb-tabs .bb-latest{display:grid;gap:10px;padding:16px 18px}
+.bb-tabs .bb-latest-who{display:flex;align-items:center;gap:10px;font:var(--caption);color:var(--ink-2)}
+.bb-tabs .bb-head-fig{width:36px;height:36px;border-radius:50%;overflow:hidden;flex:none;background:color-mix(in srgb,var(--mo) 20%,var(--surface))}
+.bb-tabs .bb-head-fig.bb-fig-semal{background:color-mix(in srgb,var(--semal) 26%,var(--surface))}
+.bboard.bb-tabs .bb-head-fig svg{width:100%;height:100%}
+.bb-tabs .bb-latest-note{font:var(--title);font-family:var(--font-voice);font-style:italic;font-weight:400;letter-spacing:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.bb-tabs .bb-latest-plain{font:var(--headline)}
+.bb-tabs .bb-th-send{gap:0;padding:4px 0 0}
+.bboard.bb-tabs .bb-send{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 12px 2px;border-radius:var(--r3)}
+.bb-tabs .bb-send-c{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;background:var(--them);color:var(--on-them);box-shadow:var(--e2);transition:transform var(--press) var(--ease),background-color var(--move) var(--ease)}
+.bboard.bb-tabs .bb-send-c svg{width:44px;height:44px}
+.bb-tabs .bb-send:active .bb-send-c{transform:scale(.94)}
+.bb-tabs .bb-send.bb-sent .bb-send-c{background:var(--go);color:var(--on-go)}
+.bboard.bb-tabs .bb-send:disabled{opacity:1}
+.bb-tabs .bb-send-w{font:var(--headline)}
+.bboard.bb-tabs .bb-th-send .bb-link{text-decoration:none;color:var(--ink-2)}
+.bb-tabs .bb-th-extra{max-width:520px}
+.bb-tabs .bb-hweek{padding:16px 14px 12px}
+.bb-tabs .bb-hweek-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:0 4px 10px}
+.bb-tabs .bb-hweek-head h3{font:var(--headline)}
+.bb-tabs .bb-key{display:flex;gap:10px;font:var(--caption);color:var(--ink-2);min-width:0}
+.bb-tabs .bb-key > span{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bb-tabs .bb-key i,.bb-tabs .bb-hdots i{display:block;flex:none;width:9px;height:9px;border-radius:50%}
+.bb-tabs .bb-hweek .bb-me{background:var(--me)}
+.bb-tabs .bb-hweek .bb-them{background:var(--them)}
+.bb-tabs .bb-hweek-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));align-items:end}
+.bb-tabs .bb-hday{display:flex;flex-direction:column;align-items:center;gap:6px}
+.bb-tabs .bb-hdots{display:flex;flex-direction:column-reverse;justify-content:flex-start;gap:3px;min-height:92px}
+.bb-tabs .bb-hday span{font:var(--caption);color:var(--ink-3)}
+.bb-tabs .bb-hday.bb-today span{color:var(--ink);font-weight:700}
+.bb-tabs .bb-notes{display:grid;gap:6px}
+.bb-tabs .bb-notes .bb-th-note{font:var(--callout);font-family:var(--font-voice);font-style:italic;font-weight:400;margin-top:2px}
+.bb-psheet .menu{max-width:560px}
+.bb-psheet .bb-both{text-align:center}
 /* notes sit above the tab bar */
 .bboard.bb-notewrap,.bb-notewrap{container-type:normal}
 .bb-notewrap .bb-note{position:fixed;z-index:62;left:50%;top:auto;bottom:max(calc(86px + env(safe-area-inset-bottom)),calc(var(--kb,0px) + 12px));transform:translateX(-50%);width:max-content;max-width:min(calc(100% - 32px),520px);margin:0;animation:bb-up var(--move) var(--ease)}
