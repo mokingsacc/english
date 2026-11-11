@@ -888,6 +888,43 @@ button:disabled{opacity:.55;cursor:default}
 .tabbar button:focus-visible{outline-offset:-2px}
 .tabpill{position:absolute;z-index:0;top:0;bottom:0;width:calc(100% / 3);border-radius:var(--round);background:var(--fill);left:calc(var(--i,0) * 100% / 3);transition:left var(--move) var(--ease)}
 @media (max-width:340px){.tabbar button{gap:5px;padding:0 4px}.tabbar button svg{width:20px;height:20px}}
+/* iPad and Mac (700 px wide and up): the same three tabs become a sidebar on the left, an icon rail up to 900 px and
+   then with words, the mark at the top and Calls and setup at the bottom. --side-w is what the page keeps clear of it:
+   its width while it shows, 0 when a call, the join screen or the ended screen fills the window. There is no bar at
+   the bottom then, so --tabbar-top is only the home bar's room. */
+:root{--side-w:0px}
+.tabbar :is(.side-brand,.side-setup){display:none}
+@media (min-width:700px){
+  :root{--side-size:calc(80px + env(safe-area-inset-left))}
+  :root:has(#boardZone:not([hidden])):not(:has(#joinStage:not([hidden]),.endsheet:not([hidden]))){--side-w:var(--side-size);--tabbar-top:env(safe-area-inset-bottom,0px)}
+  .shell{padding:max(24px,calc(env(safe-area-inset-top) + 8px)) max(24px,env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) calc(var(--side-w) + 24px)}
+  .tabbar{left:0;top:0;bottom:0;transform:none;width:var(--side-size);display:flex;flex-direction:column;gap:4px;padding:max(20px,calc(env(safe-area-inset-top) + 8px)) 12px max(16px,env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));border:0;border-right:1px solid var(--line);border-radius:0;box-shadow:none;--side-bg:color-mix(in srgb,var(--surface) 60%,var(--bg));background:var(--side-bg);-webkit-backdrop-filter:none;backdrop-filter:none;overflow-y:auto;overscroll-behavior:contain}
+  .tabbar .brand{display:flex;justify-content:center;height:44px;margin-bottom:14px}
+  .tabbar .brand .mark .dot{box-shadow:0 0 0 3px var(--side-bg)}
+  .tabbar .brand .name{display:none}
+  .tabbar-in{display:flex;flex-direction:column;gap:4px}
+  .tabbar button{min-height:48px;justify-content:center;padding:0;border-radius:var(--r2)}
+  /* the rail: icons only; each tab keeps its word for a screen reader (and a tooltip, set in tabsBoot) */
+  .tabbar button span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .tabpill{left:0;right:0;width:auto;height:48px;top:calc(var(--i,0) * 52px);border-radius:var(--r2);transition:top var(--move) var(--ease)}
+  .tabbar .side-setup{display:flex;align-items:center;margin-top:auto;color:var(--ink-2);font:var(--callout);font-weight:600;white-space:nowrap;transition:background-color var(--press) var(--ease),color var(--press) var(--ease)}
+  @media (hover:hover){.tabbar button:hover{color:var(--ink)}.side-setup:hover{background:var(--fill)}}
+  .side-setup:active{background:var(--fill)}
+  /* the round button on Home opened the same sheet; the sidebar has it now */
+  #homeSetupBtn{display:none}
+  /* sheets and short messages sit over the page, clear of the sidebar */
+  .sheet{padding-left:calc(16px + var(--side-w))}
+  .note,#bNote .bb-note{left:calc(50% + var(--side-w) / 2)}
+  :root:has(#boardZone:not([hidden])):not(:has(#joinStage:not([hidden]),.endsheet:not([hidden]))) :is(.note,#bNote .bb-note){bottom:max(24px,calc(env(safe-area-inset-bottom) + 12px),calc(var(--kb,0px) + 12px))}
+}
+@media (min-width:900px){
+  :root{--side-size:calc(240px + env(safe-area-inset-left))}
+  .tabbar{padding-left:calc(14px + env(safe-area-inset-left));padding-right:14px}
+  .tabbar .brand{justify-content:flex-start;padding:0 10px;margin-bottom:18px}
+  .tabbar .brand .name{display:block}
+  .tabbar button{justify-content:flex-start;gap:12px;padding:0 12px}
+  .tabbar button span{position:static;width:auto;height:auto;overflow:visible;clip-path:none}
+}
 /* the call has ended: a card above whichever tab you're on */
 .endcard{max-width:1100px;margin:0 auto 14px;position:relative;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;padding:16px 60px 16px 18px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1);animation:rise var(--arrive) var(--ease) both}
 .endcard-words{flex:1 1 220px;min-width:0}
@@ -933,6 +970,49 @@ button:disabled{opacity:.55;cursor:default}
 #bHomeThink .hnote-from{font:var(--caption);color:var(--ink-2)}
 #bHomeThink .hnote-text{font:var(--body);font-family:var(--font-voice);font-style:italic;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 #bHomeThink .hnote:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* on a phone the cards' box is not drawn: its parts are the line, the Ring row and the note, as above */
+.home-cards{display:contents}
+.nd-wx2,#homeHeartBtn span{display:none}
+/* iPad and Mac (with the sidebar): Home lays out by its own width. Up to 840 px of it (an iPad held upright) the
+   phone's tall house, bigger and centred, the cards in two columns under it; from 840 px (an iPad on its side, a Mac)
+   one long roof over three rooms in a row and the cards in one row: Ring with Send a heart, each place with its time
+   and weather, and their note. */
+@media (min-width:700px){
+  #tabHome{max-width:1100px;gap:16px;container:home / inline-size}
+  .hometop{padding:0} /* its title lines up with the Plans and Hearts titles */
+  .home-cards{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"ring note" "lon la"}
+  .home-cards:not(:has(#bHomeThink .hnote)){grid-template-areas:"ring lon" "ring la"}
+  .home-cards .nd-words{display:contents}
+  .home-cards .nd-words p,.home-cards .home-acts{border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1)}
+  .home-cards .nd-words p{grid-area:lon;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;margin:0;padding:14px 18px}
+  .home-cards .nd-words p + p{grid-area:la}
+  .home-cards .nd-words b{font:var(--caption);color:var(--ink-2)}
+  .home-cards .nd-words span[id^=ndTime]{font:var(--title);color:var(--ink);font-variant-numeric:tabular-nums}
+  .home-cards .nd-words :is(#ndWxMo,#ndWxSemal){display:none}
+  .home-cards .nd-words .nd-wx2{display:block;font:var(--callout);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
+  .home-cards .home-acts{grid-area:ring;justify-content:center;padding:16px}
+  .ringrow{flex-direction:column;align-items:stretch}
+  .ringrow .ringmain{flex:none}
+  /* the heart beside Ring becomes Send a heart, in words */
+  .ringrow #homeHeartBtn{width:auto;height:auto;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;padding:0 18px;border-radius:var(--round);font:var(--headline)}
+  #homeHeartBtn span{display:inline}
+  /* their note: a card of its own, their words bigger, without the little figure */
+  #bHomeThink{grid-area:note;display:grid}
+  #bHomeThink > .bb-hthink{display:grid;align-items:stretch}
+  #bHomeThink .hnote{padding:16px 18px}
+  #bHomeThink .hnote-fig{display:none}
+  #bHomeThink .hnote-words{gap:6px}
+  #bHomeThink .hnote-text{font:var(--title);font-family:var(--font-voice);font-style:italic;font-weight:400;letter-spacing:0}
+}
+@container home (max-width:839.98px){
+  /* one column, centred, as big as the page allows while Ring stays in view */
+  #tabHome > :is(.hometop,.linkask,.house,.home-cards){width:100%;max-width:max(460px,calc((100vh - 628px) * 1.72));margin-inline:auto}
+}
+@container home (min-width:840px){
+  .home-cards{grid-template-columns:minmax(0,1.25fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.35fr);grid-template-areas:"ring lon la note"}
+  .home-cards:not(:has(#bHomeThink .hnote)){grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"ring lon la"}
+}
+}
 /* Calls and setup: grouped rows that each show their state */
 .setupsheet .body{gap:12px}
 .rowbtn .rv{flex:none;max-width:45%;font:var(--callout);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1209,6 +1289,34 @@ button:disabled{opacity:.55;cursor:default}
 .nd-more,.nd-none{font-weight:600;opacity:.6}
 .nd-cal:active,.nd-fridge:active{transform:scale(.97)}
 .nd-cal:focus-visible,.nd-fridge:focus-visible,.nd-chain:focus-visible,.nd-fig:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:6px}
+/* iPad and Mac: a bigger house, so the calendar's dates are 15 px in taller rows */
+@media (min-width:700px){
+  .nd-cal-m{height:32px;font-size:17px}
+  .nd-cal-g{font-size:15px}
+  .nd-cal-g i{height:28px}
+  .nd-cal-g .t::before{width:29px;height:29px}
+  .nd-cal-next{height:34px;font-size:16px}
+}
+/* From 840 px of Home's width (an iPad on its side, a Mac): one long roof over three rooms in a row, Mo's room, the
+   shared kitchen, Semal's room, and the paper chain across the top of all three. A room keeps its pieces; when the
+   kitchen needs more height, or the window has room to spare, the rooms grow a little taller and the window and the
+   figure stay on the floor, so there is more bare wall for hearts. The kitchen's floor lines up with the rooms'. */
+@container home (min-width:840px){
+  .house{--rw:calc((100cqw - 28px) / 3.45)}
+  .nd-top,.nd-roof{height:60px}
+  .nd-chimney{top:14px}
+  .nd-smoke{top:-11px}
+  .nd-frame{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr) minmax(0,1fr);gap:8px}
+  .nd-up{display:contents}
+  #ndRoomMo{grid-area:1/1}
+  #ndRoomSemal{grid-area:1/3}
+  .nd-room{aspect-ratio:auto;align-self:stretch;min-height:max(calc(var(--rw) * 196 / 169),min(calc(100vh - 380px),calc(var(--rw) * 1.32)))}
+  .nd-fig{top:auto;bottom:5.28cqw}
+  .nd-win{top:auto;bottom:18.98cqw}
+  /* the kitchen: the calendar starts under the paper chain and its tag, the fridge stands on the floor */
+  .nd-kit{grid-area:1/2;margin-top:0;padding:50px 14px calc(var(--rw) * .13 - 4px)}
+  .nd-kit .nd-floor{height:calc(var(--rw) * .13);border-top-width:calc(var(--rw) * .03)}
+}
 /* paint:end */
 /* under the house: both places in one line */
 /* each place stays on one line; when both don't fit side by side, Los Angeles goes under London, to the right */
@@ -1283,7 +1391,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
     <!-- how the other person is, by their clock: asleep (their lamp is off, 11 pm to 6 am there) or awake -->
     <header class="hometop">
       <div class="hometop-words"><h1 id="homeTitle">Beside</h1><p id="homeSub"></p></div>
-      <button class="rb rb44" id="homeSetupBtn" aria-label="Calls and setup" aria-haspopup="dialog"><i data-icon="sliders" data-size="20"></i></button>
+      <button class="rb rb44" id="homeSetupBtn" data-setup-open aria-label="Calls and setup" aria-haspopup="dialog"><i data-icon="sliders" data-size="20"></i></button>
     </header>
     <div class="linkask" id="linkAsk" hidden>
       <p><b>First, paste your Beside link.</b> Use the link you were sent, or your own room link (on your Mac: Calls and setup, then Use my room on another device).</p>
@@ -1348,18 +1456,22 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       </div>
     </div>
     <!-- paint:end -->
+    <!-- under the house: on a phone, one line, the Ring button and their note; on an iPad or a Mac, cards (each place
+         with its time and weather, Ring with Send a heart, their note) -->
+    <div class="home-cards">
     <!-- both places in one line, under the house -->
-    <div class="nd-words"><p><b>London</b> <span id="ndTimeMo"></span><span id="ndWxMo"></span></p><p><b>Los Angeles</b> <span id="ndTimeSemal"></span><span id="ndWxSemal"></span></p></div>
+    <div class="nd-words"><p><b>London</b> <span id="ndTimeMo"></span><span id="ndWxMo"></span><span class="nd-wx2" id="ndWx2Mo"></span></p><p><b>Los Angeles</b> <span id="ndTimeSemal"></span><span id="ndWxSemal"></span><span class="nd-wx2" id="ndWx2Semal"></span></p></div>
     <div class="home-acts">
       <label class="namefield" id="nameRow" data-role="guest"><span>Your name</span><input id="nameInput" maxlength="20" autocomplete="given-name" placeholder="so they know it’s you"></label>
       <!-- one Ring button: a video call that rings their devices (voice is chosen inside the call), and a heart -->
       <div class="ringrow">
         <button class="btn primary ringmain" id="homeRingBtn"><i data-icon="video"></i><span id="homeRingText">Ring them</span></button>
-        <button class="rb" id="homeHeartBtn" aria-label="Send a heart"><i data-icon="heart"></i></button>
+        <button class="rb" id="homeHeartBtn" aria-label="Send a heart"><i data-icon="heart"></i><span>Send a heart</span></button>
       </div>
-      <div id="bHomeThink"></div>
       <!-- the board still draws these; the house shows them now, and the chain opens the countdown -->
       <div hidden><div id="bSkies"></div><div id="bHomeCount"></div><div id="bHomeNext"></div></div>
+    </div>
+    <div id="bHomeThink"></div>
     </div>
   </div>
 
@@ -1374,12 +1486,15 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </div>
 
   <nav class="tabbar" aria-label="Beside">
+    <!-- iPad and Mac: the bar is a sidebar, with the mark at the top and Calls and setup at the bottom -->
+    <div class="brand side-brand" aria-hidden="true"><span class="mark"><span class="big"></span><span class="dot"></span></span><span class="name">Beside</span></div>
     <div class="tabbar-in" role="tablist">
       <span class="tabpill" aria-hidden="true"></span>
       <button role="tab" id="tb-home" data-go="home" aria-controls="tabHome" aria-selected="true"><i data-icon="home"></i><span>Home</span></button>
       <button role="tab" id="tb-plans" data-go="plans" aria-controls="tabPlans" aria-selected="false" tabindex="-1"><i data-icon="calendar"></i><span>Plans</span></button>
       <button role="tab" id="tb-hearts" data-go="hearts" aria-controls="tabHearts" aria-selected="false" tabindex="-1"><i data-icon="heart"></i><span>Hearts</span></button>
     </div>
+    <button type="button" class="side-setup" id="sideSetupBtn" data-setup-open aria-haspopup="dialog"><i data-icon="sliders"></i><span>Calls and setup</span></button>
   </nav>
 </section>
 <div class="bb-notewrap" id="bNote"></div>
@@ -1746,6 +1861,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="icons.js?v=1"></script>
 <script src="board.js?v=20"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=53"></script>
+<script src="app.js?v=54"></script>
 </body>
 </html>
