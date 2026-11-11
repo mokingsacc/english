@@ -211,7 +211,7 @@ export class Board {
   }
 
   // A heart was saved: a soft ping on the other person's devices. Never stops the heart itself being saved.
-  // (Mo, 11 Nov 2026: "whenever we send hearts the notifications appear straight away".) The ping is held a day for a
+  // (Mo, 10 Nov 2026: "whenever we send hearts the notifications appear straight away".) The ping is held a day for a
   // device that can't be reached just then (it used to be dropped at once, or after a minute in a browser), tried once
   // more if the push service didn't take it, and on the iPhone it comes through a Focus or a notification summary
   // (Time Sensitive). Only late at night there (11 pm to 6 am, when the house on Home says a heart will wait) is it an

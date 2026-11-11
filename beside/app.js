@@ -305,7 +305,7 @@
     }
   }
   // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a heart on the wall of the one it was sent to.
-  // It only ever sits on bare wall (Mo, 11 Nov 2026: "now they kinda go and hide behind the person"): clear of the whole
+  // It only ever sits on bare wall (Mo, 10 Nov 2026: "now they kinda go and hide behind the person"): clear of the whole
   // figure with room to wave and lean, the window, clock, picture, calendar, fridge, lamp and the paper chain. The bare
   // wall is cut into heart-sized places and each heart takes the place its id picks, so it stays put. More hearts than
   // places: they shrink a little, and past that the newest ones show. A new one pops on (not with reduced motion).
@@ -2714,7 +2714,9 @@
     if (!n || !n.voip || !/^[0-9a-f]{64,200}$/.test(n.voip)) return;
     if (!isGuest && !store.get('beside.room.linked')) return; // not yet given a link: no room of its own to ring
     const alert = typeof n.alert === 'string' && /^[0-9a-f]{64,200}$/.test(n.alert) ? n.alert : '';
-    const mark = n.voip + '|' + alert + '|' + boardRoom() + '|' + ringRole() + '|' + boardName();
+    // Handed over again each day: if the server ever dropped this phone's codes (Apple said one was gone), it gets
+    // them back within a day, so rings and heart pings can't stay lost.
+    const mark = n.voip + '|' + alert + '|' + boardRoom() + '|' + ringRole() + '|' + boardName() + '|' + new Date().toISOString().slice(0, 10);
     if (store.get('beside.voip.sent') === mark) return;
     ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), voip: n.voip, alert: alert || undefined, env: n.env === 'sandbox' ? 'sandbox' : 'production' })
       .then(() => store.set('beside.voip.sent', mark)).catch(() => {});
