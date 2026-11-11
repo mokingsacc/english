@@ -17,7 +17,9 @@ test('the health check needs no key; everything else under /api does', async () 
 test('a wrong key is refused, a right one names its user', async () => {
   const t = await setup();
   assert.equal((await t.call('GET', '/api/me', { key: 'x'.repeat(43) })).status, 401);
-  assert.equal((await t.call('GET', '/api/me', { key: `${t.alice.key.slice(0, -1)}A` })).status, 401);
+  // One character changed (the last one, to one it is not, so the wrong key is never the right one by chance).
+  const k = t.alice.key;
+  assert.equal((await t.call('GET', '/api/me', { key: `${k.slice(0, -1)}${k.at(-1) === 'A' ? 'E' : 'A'}` })).status, 401);
   assert.equal((await t.call('GET', '/api/me', { key: 'short' })).status, 401);
   const me = await t.call('GET', '/api/me');
   assert.equal(me.status, 200);
