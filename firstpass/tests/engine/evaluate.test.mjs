@@ -111,12 +111,12 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   assert.equal(geo.status, 'warn');
   const warn = geo.items.filter((i) => i.status === 'warn');
   assert.equal(warn.length, 1);
-  assert.match(warn[0].text, /^The East leg's entry curve and the North leg's exit curve meet with no circle between them, so they are built at \d+ ft and \d+ ft, not 50 ft and 65 ft\.$/);
+  assert.match(warn[0].text, /^The East leg's entry curve and the North leg's exit curve meet with no circle between them, so they are built at \d+ ft and \d+ ft, not 65 ft and 100 ft\.$/);
   assert.ok(geo.fix && geo.fix.length);
   assert.equal(turned.headline.warns, 1);
   assert.ok(turned.movements.every((m) => m.ok));
   const E = turned.geometry.legs.find((L) => L.id === 'E'), N = turned.geometry.legs.find((L) => L.id === 'N');
-  assert.ok(E.entryRadiusBuilt < 50 && N.exitRadiusBuilt < 65);
+  assert.ok(E.entryRadiusBuilt < 65 && N.exitRadiusBuilt < 100);
   assert.equal(turned.legs.find((L) => L.id === 'E').entryRadiusBuilt, E.entryRadiusBuilt);
 
   // Too close for even the smallest radii: ok false, the two legs named and how far apart they need to be.
@@ -124,7 +124,7 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   close.legs[0].bearing = 30;
   const bad = evaluate(close, {});
   assert.equal(bad.ok, false);
-  assert.match(bad.problems[0], /^The East leg and the North leg are too close together\. .* Spread the two legs about 8 degrees further apart, or make that entry or exit narrower\.$/);
+  assert.match(bad.problems[0], /^The East leg and the North leg are too close together\. .* Spread the two legs about 6 degrees further apart, or make that entry or exit narrower\.$/);
   assert.equal(bad.geometry, null);
   assert.equal(bad.checks.length, CHECKS.length);
   bad.checks.forEach(assertCheckShape);
@@ -132,8 +132,8 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   for (const c of bad.checks.slice(1)) assert.equal(c.status, 'info');
   assert.equal(bad.headline.fails, 1);
   assert.match(bad.headline.text, /cannot be built/);
-  // The 8 degrees is right: 8 degrees back, it builds.
-  close.legs[0].bearing = 22;
+  // The 6 degrees is right: 6 degrees back, it builds.
+  close.legs[0].bearing = 24;
   assert.ok(evaluate(close, {}).ok);
 });
 
@@ -195,4 +195,25 @@ test('legs, movements and checks are plain data that survive JSON', () => {
   const back = JSON.parse(JSON.stringify(e));
   assert.equal(back.movements.length, e.movements.length);
   assert.equal(back.checks.length, e.checks.length);
+});
+
+test('ordinary curb radii evaluate: every movement fits and the shape check does not fail', () => {
+  // Entry 30 to 150 ft and exit 40 to 400 ft on circles of 110 to 200 ft, at the default widths. Where
+  // neighbouring curves crowd, the corner is built with shorter radii and the geometry check warns.
+  for (const icd of [110, 130, 160, 200]) {
+    for (const er of [30, 65, 100, 150]) {
+      for (const xr of [40, 100, 200, 400]) {
+        const r = defaultRoundabout();
+        r.icd = icd;
+        r.legs.forEach((l) => Object.assign(l, { entryRadius: er, exitRadius: xr }));
+        const e = evaluate(r, {});
+        const label = `ICD ${icd} radii ${er} and ${xr}`;
+        assert.equal(e.ok, true, `${label}: ${e.problems}`);
+        assert.ok(e.movements.every((m) => m.ok && m.solver.converged), label);
+        const geo = e.checks.find((c) => c.id === 'geometry');
+        assert.notEqual(geo.status, 'fail', label);
+        for (const it of geo.items.filter((i) => i.status === 'warn')) assert.match(it.text, /meet with no circle between them/, label);
+      }
+    }
+  }
 });

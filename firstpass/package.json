@@ -10,6 +10,7 @@
     "map": "node scripts/agent-map.mjs"
   },
   "devDependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "proj4": "2.15.0"
   }
 }

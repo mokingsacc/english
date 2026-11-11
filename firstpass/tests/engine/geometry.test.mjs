@@ -279,7 +279,9 @@ test('a shortened corner: both curves meet on the circle at one point, tangent, 
   // are kept clear of.
   assert.equal(E.entryArc.r, E.entryRadiusBuilt);
   assert.equal(N.exitArc.r, N.exitRadiusBuilt);
-  assert.equal(E.islandEntryRadius, E.entryRadiusBuilt + E.entryWidth);
+  // The island's entry edge is concentric with the built curve, or (a curve this tight) a square step.
+  if (E.entrySide.kind === 'step') assert.equal(E.islandEntryRadius, null);
+  else assert.equal(E.islandEntryRadius, E.entryRadiusBuilt + E.entryWidth);
   assert.ok(Math.abs(E.entryWidthBuilt - 16.5) < 1e-9 && Math.abs(N.exitWidthBuilt - 18) < 1e-9);
   const right = movementChains(G, 1, 0).right;
   assert.ok(right.includes(E.entryArc) && right.includes(N.exitArc));

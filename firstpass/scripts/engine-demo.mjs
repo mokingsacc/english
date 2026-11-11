@@ -5,8 +5,9 @@
 //   node scripts/engine-demo.mjs out.svg t          a three-leg T (bearings 0, 90, 270)
 //   node scripts/engine-demo.mjs out.svg skew       a skewed four-leg (bearings 0, 75, 180, 255), default sizes
 //   node scripts/engine-demo.mjs out.svg turned     the default with the North leg turned 20 degrees
-//   node scripts/engine-demo.mjs out.svg tightest   the North leg turned as far as it can go (22 degrees)
-//   node scripts/engine-demo.mjs out.svg big        the largest circle, with long splitter islands
+//   node scripts/engine-demo.mjs out.svg tightest   the North leg turned as far as it can go (24 degrees)
+//   node scripts/engine-demo.mjs out.svg icd150     a 150 ft circle with 100 ft entry and 200 ft exit curb radii
+//   node scripts/engine-demo.mjs out.svg big        a 300 ft circle with large curb radii and long splitter islands
 //   node scripts/engine-demo.mjs out.svg small      a small circle with tight curbs
 //   node scripts/engine-demo.mjs out.svg six        six legs
 //   node scripts/engine-demo.mjs out.svg offset     legs shifted to the left and right, with uneven sizes
@@ -29,20 +30,25 @@ function shape(name) {
   if (name === 't') { r.legs = [0, 90, 270].map((b) => defaultLeg(b)); return r; }
   if (name === 'skew') { r.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); return r; }
   if (name === 'turned') { r.legs[0].bearing = 20; return r; }
-  if (name === 'tightest') { r.legs[0].bearing = 22; return r; }
+  if (name === 'tightest') { r.legs[0].bearing = 24; return r; }
+  if (name === 'icd150') {
+    r.icd = 150;
+    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 100, exitRadius: 200 }); });
+    return r;
+  }
   if (name === 'big') {
     r.icd = 300; r.circWidth = 24; r.apronWidth = 16;
-    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 60, exitRadius: 70, splitterLength: 200, splitterWidth: 20, entryWidth: 26, exitWidth: 26 }); });
+    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 120, exitRadius: 200, splitterLength: 150, splitterWidth: 20, entryWidth: 20, exitWidth: 22 }); });
     return r;
   }
   if (name === 'six') {
     r.icd = 200; r.circWidth = 20;
-    r.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5 }));
+    r.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 50, exitRadius: 80, splitterWidth: 10, entryWidth: 19, exitWidth: 21.5 }));
     return r;
   }
   if (name === 'offset') {
     r.icd = 150;
-    r.legs.forEach((l) => { Object.assign(l, { exitRadius: 80, entryWidth: 20, exitWidth: 21 }); });
+    r.legs.forEach((l) => { Object.assign(l, { entryWidth: 20, exitWidth: 21 }); });
     Object.assign(r.legs[0], { offsetLeft: 12 });
     Object.assign(r.legs[1], { offsetLeft: -8, bearing: 95, exitWidth: 23 });
     Object.assign(r.legs[2], { approachSpeed: 30, entryRadius: 100, entryWidth: 22.5 });
@@ -51,7 +57,7 @@ function shape(name) {
   }
   if (name === 'small') {
     r.icd = 90; r.circWidth = 20; r.apronWidth = 10;
-    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 40 }); });
+    r.legs.forEach((l) => { Object.assign(l, { entryRadius: 35, exitRadius: 45, splitterWidth: 6, entryWidth: 14.5, exitWidth: 15.5, splitterLength: 45 }); });
     return r;
   }
   return JSON.parse(readFileSync(name, 'utf8'));
@@ -90,12 +96,16 @@ for (const L of result.legs) {
 }
 console.log('');
 if (result.ok) {
-  console.log('leg   entry width  exit width  (ft, as built)  |  entry radius  exit radius  (ft, as built)');
+  console.log('leg   entry width  exit width  |  entry radius  exit radius  |  island at circle  island length  (ft, as built)');
   for (const L of result.geometry.legs) {
-    console.log(`${L.id.padEnd(4)}  ${L.entryWidthBuilt.toFixed(2).padStart(11)} ${L.exitWidthBuilt.toFixed(2).padStart(11)}                  | ${L.entryRadiusBuilt.toFixed(1).padStart(13)} ${L.exitRadiusBuilt.toFixed(1).padStart(12)}`);
+    console.log(`${L.id.padEnd(4)}  ${L.entryWidthBuilt.toFixed(2).padStart(11)} ${L.exitWidthBuilt.toFixed(2).padStart(11)}  | ${L.entryRadiusBuilt.toFixed(1).padStart(13)} ${L.exitRadiusBuilt.toFixed(1).padStart(12)}  | ${L.splitterWidthAtCircle.toFixed(2).padStart(17)} ${L.splitterLengthBuilt.toFixed(1).padStart(14)}`);
   }
-  const corners = result.checks.find((c) => c.id === 'geometry').items.filter((i) => i.status === 'warn');
+  const items = result.checks.find((c) => c.id === 'geometry').items;
+  const corners = items.filter((i) => i.status === 'warn');
   if (corners.length) console.log('Warnings:\n  ' + corners.map((i) => i.text).join('\n  '));
+  const notes = items.filter((i) => i.status === 'info');
+  if (notes.length) console.log('Notes:\n  ' + notes.map((i) => i.text).join('\n  '));
+  console.log(`Land take: ${Math.round(result.geometry.landTake.sqft)} square feet (${result.geometry.landTake.acres.toFixed(2)} acres).`);
   console.log('');
 }
 for (const c of result.checks) console.log(`${c.status.padEnd(4)}  ${c.title}${c.value !== null ? `: ${typeof c.value === 'number' ? Math.round(c.value * 10) / 10 : c.value} ${c.unit || ''}` : ''}`);
@@ -166,9 +176,15 @@ function svg(res, round) {
   // Islands.
   parts.push(`<path d="${pathOf(G.layers.island, true)}" fill="#d8cdb0" stroke="#222" stroke-width="${lw(1.6)}"/>`);
   if (G.layers.apron.length) parts.push(`<path d="${pathOf(G.layers.apron, true)}" fill="#8fb27a" stroke="#222" stroke-width="${lw(1.6)}"/>`);
-  for (let i = 0; i < G.layers.splitter.length; i += 3) {
-    parts.push(`<path d="${pathOf(G.layers.splitter.slice(i, i + 3), true)}" fill="#8fb27a" stroke="#222" stroke-width="${lw(1.6)}"/>`);
+  // Each splitter island is one closed run of pieces in the layer: start a new one wherever a piece does not
+  // carry on from the last.
+  const islands = [];
+  for (const p of G.layers.splitter) {
+    const cur = islands[islands.length - 1];
+    if (cur && Math.hypot(cur[cur.length - 1].b.x - p.a.x, cur[cur.length - 1].b.y - p.a.y) < 1e-6) cur.push(p);
+    else islands.push([p]);
   }
+  for (const run of islands) parts.push(`<path d="${pathOf(run, true)}" fill="#8fb27a" stroke="#222" stroke-width="${lw(1.6)}"/>`);
   // Lines.
   parts.push(`<path d="${pathOf(G.layers.curb)}" fill="none" stroke="#111" stroke-width="${lw(2)}"/>`);
   for (const p of G.layers.edge) parts.push(`<path d="${pathOf([p])}" fill="none" stroke="#fff" stroke-width="${lw(1.4)}"/>`);
@@ -224,9 +240,10 @@ function svg(res, round) {
   }
   parts.push(`<text x="${lx}" y="${ly + 56 / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#7b4fd6">Purple: sight triangle along the entering path. Orange: along the circulating path.</text>`);
   parts.push(`<text x="${lx}" y="${ly + 74 / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#1f6fd6">Blue: entry and exit widths, measured square to the curb from where the splitter island meets the circle.</text>`);
-  const warns = res.checks.find((c) => c.id === 'geometry').items.filter((i) => i.status === 'warn');
-  warns.forEach((w, i) => {
-    parts.push(`<text x="${lx}" y="${ly + (94 + 18 * i) / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="#a04000">${esc(w.text)}</text>`);
+  const geoItems = res.checks.find((c) => c.id === 'geometry').items;
+  const lines = [...geoItems.filter((i) => i.status === 'warn'), ...geoItems.filter((i) => i.status === 'info')];
+  lines.forEach((w, i) => {
+    parts.push(`<text x="${lx}" y="${ly + (94 + 18 * i) / sc}" font-family="sans-serif" font-size="${lw(12)}" fill="${w.status === 'warn' ? '#a04000' : '#335'}">${esc(w.text)}</text>`);
   });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}">${parts.join('\n')}</svg>\n`;

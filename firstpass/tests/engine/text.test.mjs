@@ -31,7 +31,7 @@ function collect() {
   const cases = [...Object.values(shapes())];
   const skew = defaultRoundabout(); skew.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); cases.push(skew);
   // The new words of the second engine pass: a corner built with shorter radii, legs too close for any radii,
-  // widths that cannot be met for each reason, and a lane that narrows beside its island.
+  // widths that cannot be met for each reason.
   const close = defaultRoundabout(); close.legs[0].bearing = 30; cases.push(close);
   const close1 = defaultRoundabout(); close1.legs[0].bearing = 23; cases.push(close1);
   const wide = defaultRoundabout(); wide.legs[0].splitterLength = 20; cases.push(wide);
@@ -39,6 +39,16 @@ function collect() {
   const pinch = defaultRoundabout(); pinch.legs[0].entryWidth = 15; pinch.legs[1].exitWidth = 16; cases.push(pinch);
   const cross = defaultRoundabout(); Object.assign(cross.legs[0], { entryWidth: 12, splitterWidth: 4 }); cases.push(cross);
   const tight = defaultRoundabout(); tight.circWidth = 12; tight.legs.forEach((l) => { l.entryWidth = 12; l.exitWidth = 12; l.exitRadius = 100; l.splitterWidth = 30; }); cases.push(tight);
+  // The third pass: a curb too far out to turn onto the circle, a width the curve cannot reach, an entry and
+  // exit that overlap at the circle, an island built longer than asked, and an island tip cut back.
+  const miss = defaultRoundabout(); miss.icd = 70; miss.circWidth = 14; miss.apronWidth = 0;
+  Object.assign(miss.legs[0], { splitterWidth: 40, approachWidth: 20 }); cases.push(miss);
+  const reach = defaultRoundabout(); reach.icd = 70; reach.circWidth = 14; reach.apronWidth = 0;
+  Object.assign(reach.legs[0], { splitterWidth: 20, approachWidth: 20, entryRadius: 30 }); cases.push(reach);
+  const overlap = defaultRoundabout();
+  Object.assign(overlap.legs[0], { entryRadius: 30, exitRadius: 40, entryWidth: 26, exitWidth: 26, splitterWidth: 4 }); cases.push(overlap);
+  const longer = defaultRoundabout(); longer.icd = 150; longer.legs.forEach((l) => { l.entryRadius = 100; l.exitRadius = 200; }); cases.push(longer);
+  const tip = defaultRoundabout(); tip.icd = 90; Object.assign(tip.legs[0], { entryRadius: 30, exitRadius: 40, splitterWidth: 6 }); cases.push(tip);
   const junk = defaultRoundabout(); junk.icd = 'x'; junk.legs[0].entryRadius = 9999; cases.push(junk);
   cases.push(null, { legs: [] });
   for (const r of cases) sentences.push(...sentencesOf(evaluate(r, {})));

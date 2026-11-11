@@ -5,7 +5,7 @@ import { validate, defaultRoundabout } from '../../public/js/engine/roundabout/m
 import { resolveRules } from '../../public/js/engine/rules.js';
 import { movementChains, compileMovement, clearanceFor } from '../../public/js/engine/roundabout/corridor.js';
 import { listMovements, solveMovement, createPathWorkspace, pathRadii, passOptions } from '../../public/js/engine/roundabout/fastest-path.js';
-import { chainSlack } from '../../public/js/engine/geom.js';
+import { chainSlack, arcSweep } from '../../public/js/engine/geom.js';
 import { evaluate } from '../../public/js/engine/evaluate.js';
 import { shapes } from './helpers.mjs';
 
@@ -102,44 +102,95 @@ function legR1(r) {
   return e.legs[0].R.R1;
 }
 
+// The radius measurement fits arcs over a window along a discretised path, so a radius may wobble by a percent
+// or two from one setting to the next; the monotonic tests allow that much.
+const WOBBLE = 0.02;
+
+/** R1 (or R3) of the through movement from leg i (or into leg j). */
+function throughR(r, k, leg, key) {
+  const e = evaluate(r, {});
+  assert.ok(e.ok, String(e.problems));
+  const m = e.movements.find((x) => x.kind === 'through' && (key === 'R1' ? x.from === e.legs[leg].id : x.to === e.legs[leg].id));
+  assert.ok(m && m.ok, `${k}: no through movement`);
+  return m.R[key];
+}
+
 test('a wider entry never lowers R1', () => {
-  // The entry width is measured at the circle, so a wider entry moves the whole curb line out beside the island
-  // and gives the path more room. (Below 16 ft at the default 50 ft radius the lane beside the island narrows
-  // too far for a car; see the geometry check.)
-  let prev = -Infinity;
-  for (let w = 16.5; w <= 26; w += 0.5) {
-    const r = defaultRoundabout();
-    r.legs[0].entryWidth = w;
-    const R1 = legR1(r);
-    assert.ok(R1 >= prev - 0.05, `entry width ${w}: R1 ${R1} after ${prev}`);
-    prev = R1;
+  // The lane follows the curb, so a wider entry only moves the island's edge in; the path keeps its room.
+  for (const icd of [110, 130, 160, 200]) {
+    let prev = -Infinity;
+    for (let w = 14; w <= 24; w += 1) {
+      const r = defaultRoundabout();
+      r.icd = icd;
+      r.legs[0].entryWidth = w;
+      const R1 = throughR(r, `ICD ${icd} entry width ${w}`, 0, 'R1');
+      assert.ok(R1 >= prev * (1 - WOBBLE), `ICD ${icd} entry width ${w}: R1 ${R1} after ${prev}`);
+      prev = Math.max(prev, R1);
+    }
+  }
+});
+
+test('a larger entry radius never lowers R1', () => {
+  for (const icd of [110, 130, 160, 200]) {
+    let prev = -Infinity;
+    for (const er of [30, 40, 50, 65, 80, 100, 125, 150]) {
+      const r = defaultRoundabout();
+      r.icd = icd;
+      r.legs[0].entryRadius = er;
+      const R1 = throughR(r, `ICD ${icd} entry radius ${er}`, 0, 'R1');
+      assert.ok(R1 >= prev * (1 - WOBBLE), `ICD ${icd} entry radius ${er}: R1 ${R1} after ${prev}`);
+      prev = Math.max(prev, R1);
+    }
+  }
+});
+
+test('a larger exit radius never lowers R3', () => {
+  // R3 of the through movement that leaves by the changed leg.
+  for (const icd of [110, 130, 160, 200]) {
+    let prev = -Infinity;
+    for (const xr of [40, 60, 80, 100, 150, 200, 300, 400]) {
+      const r = defaultRoundabout();
+      r.icd = icd;
+      r.legs[0].exitRadius = xr;
+      const R3 = throughR(r, `ICD ${icd} exit radius ${xr}`, 0, 'R3');
+      assert.ok(R3 >= prev * (1 - WOBBLE), `ICD ${icd} exit radius ${xr}: R3 ${R3} after ${prev}`);
+      prev = Math.max(prev, R3);
+    }
   }
 });
 
 test('a bigger entry radius changes R1 smoothly', () => {
-  // With the width at the circle held, a bigger radius pulls the curb line in beside the island, so R1 need
-  // not grow; it must still change smoothly, with no jumps.
+  // No jumps while dragging: at most 5 percent from one foot to the next (the point spacing changing with the
+  // size gives steps of up to about 4 percent).
   let prev = null;
-  for (let er = 30; er <= 70; er += 1) {
+  for (let er = 30; er <= 150; er += 1) {
     const r = defaultRoundabout();
-    r.legs.forEach((l) => { l.entryWidth = 20; l.exitWidth = 21; });
     r.legs[0].entryRadius = er;
     const R1 = legR1(r);
-    if (prev !== null) assert.ok(Math.abs(R1 - prev) < 4, `entry radius ${er}: R1 ${R1} after ${prev}`);
+    if (prev !== null) assert.ok(Math.abs(R1 - prev) <= 0.05 * prev, `entry radius ${er}: R1 ${R1} after ${prev}`);
     prev = R1;
   }
 });
 
-test('shifting the approach further left never raises R1', () => {
-  let prev = Infinity;
-  for (let o = -7; o <= 8; o += 1) {
+test('shifting the approach left bends the entry curb further, and R1 changes smoothly', () => {
+  // The entry curb curve is tangent to the circle at its built radius, so a left offset turns it through a larger
+  // angle. Near the circle the shape only rotates, so the fastest path's R1 changes by a few percent at most.
+  let prevSweep = -Infinity, prevR1 = null;
+  const R1s = [];
+  for (let o = -6; o <= 6; o += 1) {
     const r = defaultRoundabout();
-    r.legs.forEach((l) => { l.entryWidth = 20; l.exitWidth = 21; });
     r.legs[0].offsetLeft = o;
+    const G = derive(validate(r).value, rr);
+    assert.ok(G.ok, String(G.problems));
+    const sweep = arcSweep(G.legs[0].entryArc);
+    assert.ok(sweep > prevSweep, `offset ${o}: the entry curve turns ${sweep} after ${prevSweep}`);
+    prevSweep = sweep;
     const R1 = legR1(r);
-    assert.ok(R1 <= prev + 0.05, `offset ${o}: R1 ${R1} after ${prev}`);
-    prev = R1;
+    if (prevR1 !== null) assert.ok(Math.abs(R1 - prevR1) <= 0.05 * prevR1, `offset ${o}: R1 ${R1} after ${prevR1}`);
+    prevR1 = R1;
+    R1s.push(R1);
   }
+  assert.ok(Math.max(...R1s) <= 1.1 * Math.min(...R1s), `R1 over the offsets: ${R1s.join(', ')}`);
 });
 
 test('the stopping rules used on drag frames agree with a solve to rounding', () => {
@@ -168,9 +219,11 @@ test('solver.converged says whether each path was solved to its stopping rules',
     const e = evaluate(r, {});
     for (const m of e.movements.filter((x) => x.ok)) {
       assert.equal(m.solver.converged, true, `${name} ${m.id}: ${m.solver.stopReason}`);
-      assert.ok(m.solver.stopReason === 'gradient' || m.solver.stopReason === 'objective');
+      assert.ok(['gradient', 'objective', 'no descent'].includes(m.solver.stopReason), m.solver.stopReason);
       assert.ok(m.solver.gradTol > 0 && Number.isFinite(m.solver.gradNorm));
       if (m.solver.stopReason === 'gradient') assert.ok(m.solver.gradNorm <= m.solver.gradTol);
+      // A stop with no descent left is at rounding: within 100 times the tolerance.
+      if (m.solver.stopReason === 'no descent') assert.ok(m.solver.gradNorm <= 100 * m.solver.gradTol);
     }
   }
   // Cut short, the same solve says so.
