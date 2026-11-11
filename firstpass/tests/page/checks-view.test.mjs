@@ -25,6 +25,14 @@ test('a value that would read the same as its limit is written with another deci
   assert.equal(fmtCheckValue(null, 'mph'), '-');
 });
 
+test('counts read as whole numbers with no limit: no problems, 1 problem, 1 warning, 2 warnings', () => {
+  assert.deepEqual(valueAndLimit({ value: 0, limit: 0, unit: 'problems' }), ['No problems', '']);
+  assert.deepEqual(valueAndLimit({ value: 1, limit: 0, unit: 'problem' }), ['1 problem', '']);
+  assert.deepEqual(valueAndLimit({ value: 1, limit: 0, unit: 'warning' }), ['1 warning', '']);
+  assert.deepEqual(valueAndLimit({ value: 2, limit: 0, unit: 'warnings' }), ['2 warnings', '']);
+  assert.deepEqual(valueAndLimit({ value: 3, limit: null, unit: 'problems' }), ['3 problems', '']);
+});
+
 test('the notes under a check are its warning and information lines, and an information-only check has none', () => {
   // A leg turned until a corner is built with shorter curves, and an entry widened until its island is built longer:
   // both found by stepping one value, so no engine number is written here.

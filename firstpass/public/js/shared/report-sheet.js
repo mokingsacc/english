@@ -1,8 +1,8 @@
 // Report a problem: the sheet, loaded only when opened (ported from practice-hub). One text box, Add a screenshot, and
 // Copy for Claude: a short ready prompt goes on the clipboard at once (report-prompt.js: the report's id and her words;
 // Claude Code with the First Pass code reads it in full and follows the fix-bugs skill, any other Claude tells her to
-// send it to the person who looks after First Pass), and the report is saved in the background; once it is, the sheet
-// says "Saved. The person who looks after First Pass can read it.":
+// send it to the person who runs First Pass), and the report is saved in the background; once it is, the sheet
+// says "Saved. The person who runs First Pass can read it.":
 //   1. the last few read-only GETs are asked again with X-Trace-Keep: 1, so the server keeps their traces;
 //   2. POST /api/bugs with an id made here (a resend is the same report): her words, the page and fpState() (with the
 //      full current project), the last 10 calls (address, status, time, trace id, an error's first 2 KB), the last 30
@@ -17,7 +17,7 @@ export { claudePrompt };
 const QUEUE = 'fp.bugq', KEY = 'fp.key';
 const SHOT = { side: 1600, maxBytes: 700_000 };
 const RETRACE_OK = /^\/api\/(projects(\/[^/?]+)?|me|settings)$/;
-export const SAVED = 'Saved. The person who looks after First Pass can read it.';
+export const SAVED = 'Saved. The person who runs First Pass can read it.';
 export const WAITING = 'Not sent yet. It waits in this browser and goes when the server answers.';
 const ls = (k, v) => { try { return v === undefined ? localStorage.getItem(k) : v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { return null; } };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

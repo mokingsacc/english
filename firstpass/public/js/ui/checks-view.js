@@ -4,18 +4,22 @@
 // highlights it in the drawing. Rows are kept by check id and only changed cells are written, so it follows a drag live.
 import { h, ico, setText, setAttr, setClass, keyed, whole, STATUS_WORD } from './dom.js';
 
+// Units that count things ("1 warning", "2 problems"): whole numbers, and no limit column (the limit is always none).
+const COUNTS = { problem: 'problem', problems: 'problem', warning: 'warning', warnings: 'warning' };
+export const isCount = (unit) => Object.hasOwn(COUNTS, unit || '');
+
 export function fmtCheckValue(v, unit, isLimit = false, places = 1) {
   if (v === null || v === undefined) return '-';
   if (typeof v !== 'number') return String(v);
   if (unit === 'sq ft') return `${whole(v)} sq ft`;
-  if (unit === 'problems') return isLimit ? '' : v === 0 ? 'No problems' : `${v} problem${v === 1 ? '' : 's'}`;
+  if (isCount(unit)) return isLimit ? '' : v === 0 ? `No ${COUNTS[unit]}s` : `${whole(v)} ${COUNTS[unit]}${v === 1 ? '' : 's'}`;
   if (unit === 'ft') return `${whole(v)} ft`;
   return `${v.toFixed(places)}${unit ? ` ${unit}` : ''}`;
 }
 
 /** The value and limit as written in a row; the value gets another decimal when the two would read the same but differ. */
 export function valueAndLimit(c) {
-  const lim = c.limit === null || c.limit === undefined ? (c.unit === 'problems' ? '' : '-') : fmtCheckValue(c.limit, c.unit, true);
+  const lim = c.limit === null || c.limit === undefined ? (isCount(c.unit) ? '' : '-') : fmtCheckValue(c.limit, c.unit, true);
   let val = fmtCheckValue(c.value, c.unit);
   if (val === lim && typeof c.value === 'number' && c.value !== c.limit) val = fmtCheckValue(c.value, c.unit, false, 2);
   return [val, lim];
@@ -70,7 +74,7 @@ export function createChecksView(app, body) {
     setText(t, c.title);
     const [vt, lt] = valueAndLimit(c);
     setText(v, vt);
-    setClass(v, 'calm', c.unit === 'problems' && c.value === 0);   // "No problems" is not coloured as a warning
+    setClass(v, 'calm', isCount(c.unit) && c.value === 0);   // "No problems" is not coloured as a warning
     setText(l, lt);
     // One line each, as a table; the whole text shows on the chosen row and when the pointer rests on it.
     setText(e, c.explain); setAttr(e, 'title', c.explain || null);

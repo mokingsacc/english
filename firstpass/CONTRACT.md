@@ -409,3 +409,39 @@ and the build, before anything changes in Cloudflare; the D1 database made if no
 North America) and its id written over the placeholder in `wrangler.toml` (an id that differs from the account's
 stops it); the Pages project made if missing, production branch `main`; the remote migrations; `pages deploy
 --branch main`; and the production address, read back from the project's domains.
+
+## The page after the review (11 Nov 2026)
+
+Fixes from the independent review of 11 Nov, before the first deploy. Mo chose "Go live first, trucks after".
+
+- An ok answer that is not First Pass's JSON (a network sign-in page, a proxy notice, a cut-off answer) counts as no
+  server. The change waits and is sent again, the poll carries on, and the status bar says "A sign-in page on this
+  network may be in the way." Saving and polling always reschedule, whatever an answer holds.
+- The poll runs every 1.5 s for 2 minutes after her last input or the last change, then every 5 s, then every 15 s
+  after 10 quiet minutes. Input, focus, the tab showing again or a poll that brings a change put it back to 1.5 s.
+  A hidden tab does not poll.
+- DXF `$INSUNITS` is 21 (US survey feet) by default; Settings, DXF units, International feet writes 2 with the same
+  coordinates. The page says "Saved <file> in US survey feet, California zone N (EPSG E). Insert it at 0,0 with scale
+  1." Value 21 in an R2000 file passes ezdxf's audit but still needs one check in Civil 3D.
+- Zoomed out, R1 to R5 label the paths the checks read: the through movement with the highest V1, V2 and V3; the left
+  turn with the highest V4; the right turn with the highest V5.
+- Touch: one finger taps, drags a grip or drags out a window; two fingers pinch-zoom and pan and never select; a
+  cancelled touch puts the grip back.
+- Trackpad and mouse: Ctrl+wheel (a pinch) zooms gently; small or sideways pixel steps pan; a wheel notch zooms at the
+  pointer; Space plus a left drag pans; a middle drag pans. Settings has Scrolling on the drawing: Auto, Zoom, Pan.
+- A curb radius grip sits where the curve starts on the curb line and moves at most 1 ft per pixel. The box shows the
+  built radius, and "asked X ft, built Y ft" when they differ.
+- On release, a radius built smaller than asked is stored as built, rounded down to a whole foot. So is the next leg's
+  curve that the engine shrank in the same corner, in the same change, so one undo takes both back. A line names each
+  other radius that moved by more than 1 ft.
+- Check myself judges speed on frame time p90 under 34 ms, and every line is in her words.
+- `index.html` preloads every module the page starts with (`scripts/module-graph.mjs`; the build runs it, and a test
+  fails when the list is stale).
+- Under 700 px high the ribbon folds to its tabs, and a tab opens its panels over the drawing. On narrow screens the
+  status bar hides the photo, zone and MODEL before Check myself.
+- Undo says whose change it undid: "Undid Claude's change: ..." or "Undid your change: ...".
+- After saving a report: "Saved. The person who runs First Pass can read it." Copy for Claude starts "First Pass problem
+  report <id>:" and works wherever it is pasted: Claude Code in this code follows the fix-bugs skill; any other Claude
+  tells her to send it on. A key in the page address is replaced with `<key>`.
+- The aerial photo is drawn into its own bitmap, so a grip drag does not redraw the tiles, and it is placed again
+  when the project's zone changes.

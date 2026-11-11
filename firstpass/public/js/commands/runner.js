@@ -1,4 +1,4 @@
-// Runs commands the AutoCAD way. A line she enters is split into words (a space ends a word as Enter does): the first
+// Runs commands the way a CAD command line does. A line she enters is split into words (a space ends a word as Enter does): the first
 // word names a command and the rest answer its prompts in turn, so "ICD 110" sets the diameter in one go. A running
 // command asks with ctx.number / point / text / keyword / leg; the answer comes from the command line, a click in the
 // drawing, or a clicked option. Esc cancels ("*Cancel*"). Enter on an empty line repeats the last command.

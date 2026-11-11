@@ -88,8 +88,8 @@ copy and the server's), so a geometry problem replays as a test fixture. Traces 
 SQL text (never the values), time and error; they are kept when a call failed, ran slow, or a report asked. The setting
 `debug_capture` (`PUT /api/settings`) turns it all off.
 
-She does not fix problems herself: she sends the sheet's Copy for Claude text (a prompt, "In Claude Code: fix this
-First Pass problem. Report <id>: ...") to the person who runs First Pass, and the owner's Claude Code fixes it with the
+She does not fix problems herself: she sends the sheet's Copy for Claude text (a prompt, "First Pass problem
+report <id>: ...") to the person who runs First Pass, and the owner's Claude Code fixes it with the
 owner's connector or key. The owner is the admin user (`add-user.mjs --admin`): `bugs` and `GET /api/bugs?all=1` show
 every user's reports with the reporter's name; everyone else sees only their own.
 

@@ -121,7 +121,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/commands/option.js: OPTION: copies the option on screen to the next letter (Option A to Option B) and shows the copy.
 - public/js/commands/pan.js: PAN (P): real-time pan. The cursor becomes a hand; drag to move the drawing; Esc or Enter ends it.
 - public/js/commands/panorama.js: PANORAMA: shows or hides the Panorama window (Checks and Compare) under the drawing.
-- public/js/commands/parser.js: The command line's words, in the AutoCAD manner, as pure functions (tests/page/commands.test.mjs): finding a command
+- public/js/commands/parser.js: The command line's words, in the manner of a CAD command line, as pure functions (tests/page/commands.test.mjs): finding a command
 - public/js/commands/properties.js: PROPERTIES (PR): opens the Properties palette for the selection. Ctrl+1 does the same.
 - public/js/commands/qsave.js: QSAVE (SAVE): every change is saved as she makes it; this sends anything still waiting and says where things stand.
 - public/js/commands/redo.js: REDO: puts back the change the last undo took away. Ctrl+Y does the same.
@@ -129,7 +129,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/commands/rename.js: RENAME: renames the option on screen, or the selected leg.
 - public/js/commands/report.js: REPORT: opens Report a problem (public/js/shared/report.js): her words, a screenshot, and Copy for Claude.
 - public/js/commands/rotate.js: ROTATE (RO): turns a leg to a new bearing (typed, or picked as the direction from the centre), or by an angle.
-- public/js/commands/runner.js: Runs commands the AutoCAD way. A line she enters is split into words (a space ends a word as Enter does): the first
+- public/js/commands/runner.js: Runs commands the way a CAD command line does. A line she enters is split into words (a space ends a word as Enter does): the first
 - public/js/commands/settings.js: SETTINGS: opens the Settings tab of the Toolspace: every design limit, where it comes from, editable for this project.
 - public/js/commands/site.js: SITE (LOCATE): places the roundabout at a place in California from its latitude and longitude, pasted as Google Maps
 - public/js/commands/toolspace.js: TOOLSPACE (TS): shows or hides the Toolspace palette (Prospector and Settings) on the left.

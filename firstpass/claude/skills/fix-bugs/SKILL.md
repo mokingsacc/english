@@ -1,6 +1,6 @@
 ---
 name: "fix-bugs"
-description: "Fix a First Pass problem report in the owner's Claude Code: read the report with its traces, screenshot and project, say in plain words what you understood and wait for a yes, reproduce it as a failing test, fix it, run the tests, and close the report with the commit or pull request link. Use when the owner pastes \"In Claude Code: fix this First Pass problem. Report ...\" (the sheet's Copy for Claude, which she sends to the owner), or says \"fix the open First Pass bugs\"."
+description: "Fix a First Pass problem report in the owner's Claude Code: read the report with its traces, screenshot and project, say in plain words what you understood and wait for a yes, reproduce it as a failing test, fix it, run the tests, and close the report with the commit or pull request link. Use when the owner pastes \"First Pass problem report <id>: ...\" (the sheet's Copy for Claude, which she sends to the owner), or says \"fix the open First Pass bugs\"."
 ---
 
 # Fix a First Pass problem report

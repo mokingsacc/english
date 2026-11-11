@@ -62,7 +62,7 @@ async function photos(env, ctx, origin) {
     failed(new Error(got.error), 'selfcheck photo tile');
     return { id: 'tiles', ok: false, text: 'The aerial photo service did not answer just now. The drawing works without photos; try again later.' };
   }
-  return { id: 'tiles', ok: true, text: 'Aerial photos load (USGS NAIP).' };
+  return { id: 'tiles', ok: true, text: 'The aerial photos load.' };
 }
 
 function connector(user) {

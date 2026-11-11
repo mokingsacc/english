@@ -43,7 +43,7 @@ export async function runSelfCheck(app) {
 
   // 1. The data service.
   if (!has) lines.push({ id: 'data', ok: false, title: 'Data service', text: NO_KEY });
-  else if (down) lines.push({ id: 'data', ok: false, title: 'Data service', text: 'The First Pass server cannot be reached, so changes are not being saved. Check the internet connection. If it is working, tell the person who looks after First Pass.' });
+  else if (down) lines.push({ id: 'data', ok: false, title: 'Data service', text: 'The First Pass server cannot be reached, so changes are not being saved. Check the internet connection. If it is working, tell the person who runs First Pass.' });
   else if (!sc.ok) lines.push({ id: 'data', ok: false, title: 'Data service', text: `The server answered with a problem: ${sc.error}` });
   else {
     const db = server('database'), us = server('users');

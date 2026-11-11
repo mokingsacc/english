@@ -2,7 +2,7 @@
 // value in each row marked. Clicking a column header puts that option on screen. Each option is worked out once and
 // kept (app/evaluator.js), and the option on screen follows a grip drag live. A new row: one entry in ROWS.
 import { h, setText, setClass, whole, STATUS_WORD } from './dom.js';
-import { fmtCheckValue } from './checks-view.js';
+import { fmtCheckValue, isCount } from './checks-view.js';
 
 const RANK = { pass: 0, info: 1, warn: 2, fail: 3 };
 
@@ -68,7 +68,7 @@ export function createCompareView(app, body) {
           const c = res.checks.find((x) => x.id === r.check);
           if (!c) return { v: null, text: '-' };
           const num = typeof c.value === 'number' ? c.value : null;
-          const shown = num !== null && !(c.unit === 'problems' && num === 0);   // "Pass", not "Pass, none"
+          const shown = num !== null && !(isCount(c.unit) && num === 0);   // "Pass", not "Pass, none"
           return { v: r.better === 'rank' ? RANK[c.status] : num, status: c.status, text: `${STATUS_WORD[c.status]}${shown ? `, ${fmtCheckValue(num, c.unit)}` : ''}` };
         });
         const nums = vals.map((x) => x.v).filter((v) => v !== null && v !== undefined);

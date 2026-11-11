@@ -1,4 +1,4 @@
-// The command line's words, in the AutoCAD manner, as pure functions (tests/page/commands.test.mjs): finding a command
+// The command line's words, in the manner of a CAD command line, as pure functions (tests/page/commands.test.mjs): finding a command
 // by name or alias, prompt text with options in square brackets and the shortcut letters in capitals ("[Undo/eXit]"),
 // matching what she types against those options, numbers ("110", "110 ft", "110'"), points ("x,y" for easting and
 // northing, "@dx,dy" from the last point) and the autocomplete list.
@@ -79,7 +79,7 @@ export function suggest(list, typed, max = 8) {
   return out.slice(0, max);
 }
 
-/** Splits a typed line into words; a space ends a word as Enter does, as in AutoCAD. */
+/** Splits a typed line into words; a space ends a word as Enter does, as on a CAD command line. */
 export function words(line) {
   return String(line || '').trim().split(/\s+/).filter(Boolean);
 }

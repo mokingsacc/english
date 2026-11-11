@@ -32,7 +32,7 @@ test('every line Check myself writes on the page is in her words', async () => {
     }
     const data = lines.find((l) => l.id === 'data');
     assert.equal(data.ok, false);
-    if (app.api.hasKey()) assert.match(data.text, /tell the person who looks after First Pass\.$/);
+    if (app.api.hasKey()) assert.match(data.text, /tell the person who runs First Pass\.$/);
   }
   assert.equal(engineSelfTest().ok, true);
   assert.equal(exportSelfTest().ok, true);
