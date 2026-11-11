@@ -97,6 +97,9 @@
   const hashM = location.hash.slice(1).match(/^([a-z0-9]{8})(?:-(.*))?$/);
   const guestCode = hashM ? hashM[1] : '';
   const isGuest = !!guestCode;
+  // Your accent is the other person: the host's devices wear Semal's colour on the main button, the guest's Mo's.
+  document.documentElement.classList.toggle('as-semal', isGuest);
+  document.documentElement.classList.toggle('as-mo', !isGuest);
   function cleanName(n) { return String(n || '').replace(/[^\p{L}\p{N} .'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20); }
   // Your own other devices (iPad, iPhone) host the same room: open  .../?room=k7m2abcd  once there, or add that to the
   // Home Screen. Your partner keeps the usual link.
@@ -125,10 +128,11 @@
     const into = SHELL.includes(prev) && !SHELL.includes(state);
     const back = !!prev && !SHELL.includes(prev) && SHELL.includes(state);
     const snap = into ? tvSnap() : null; // before the tabs go
-    if (into) { ['inviteSheet', 'soundSheet'].forEach((id) => { const sh = $(id); if (sh) sh.hidden = true; }); boardSheet(false); }
+    if (into) { ['inviteSheet', 'soundSheet'].forEach((id) => { const sh = $(id); if (sh) sh.hidden = true; }); boardSheet(false); homeSheetsClose(); }
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
+    callDark(state === 'live' || state === 'watching');
     document.querySelectorAll('[data-state]').forEach((el) => {
       if (el.dataset.state === 'check') return; // the check panel is an overlay
       if (el.hasAttribute('data-shell')) { el.hidden = !SHELL.includes(state); return; } // the Calls tab, for host or guest
@@ -137,11 +141,18 @@
     boardPlace(state);
     if (into) tvOpen(snap);
     else if (back) tvClose();
-    if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); if (SHELL.includes(state)) roomOff(); }
+    if (state !== 'join') joinStage(false);
+    if (state === 'live' || state === 'watching') { ringBanner(''); layout(); wakeControls(); clockRun(true); }
+    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); if (SHELL.includes(state)) callReset(); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
+  // Calls are always dark: the sheets, banners and notes that open over a call take the call's dark set.
+  function callDark(on) {
+    ['note', 'moreSheet', 'shareSheet', 'boardSheet', 'linkBanner', 'bNote'].forEach((id) => { const el = $(id); if (el) el.classList.toggle('dark', on); });
+    const ck = document.querySelector('.sheet[data-state="check"]');
+    if (ck) ck.classList.toggle('dark', on);
+  }
   // ---------- OUR BOARD ----------
   // The countdown, Thinking of you, to-dos and calendar (board.js) belong to the room: the host's room code, which
   // the guest's link carries. Shown under the start and join screens, and from More during a call.
@@ -201,20 +212,19 @@
       boardSheetBack();
     }
   }
-  // Who is who: Mo's figure lives in London, Semal's in LA. The Ring button says their name once it's known.
+  // Who is who: Mo's figure lives in London, Semal's in LA. The top of Home and the Ring button say their name.
   function boardRendered(pp) {
     app.people = pp;
-    const n = isGuest ? theirName : pp.them;
-    text('homeRingText', n ? 'Ring ' + n : 'Ring them');
     houseDraw();
   }
 
-  // ---------- HOME: the house (Next Door) ----------
-  // Two rooms, a thin wall between: each with its own clock, a window with that city's weather and day or night, and a
-  // light that is off late at night there. The calendar, the fridge and the paper chain open their part of the board.
-  // Tap your own figure and it waves (only on this screen: the board has no wave message to send).
+  // ---------- HOME: the house (Next Door), version A: a kitchen downstairs ----------
+  // Upstairs, two rooms side by side, each with its own clock, a window with that city's weather and day or night, and a
+  // light that is off late at night there. Downstairs, one shared kitchen: the calendar opens the month, the note on the
+  // fridge opens the list, and the paper chain opens the countdown. Tap your own figure and it waves (only on this
+  // screen: the board has no wave message to send).
   const ROOM_ID = { mo: 'ndRoomMo', semal: 'ndRoomSemal' };
-  const HAND = { mo: ['#1B1D23', '#E2AE88'], semal: ['#1C1D22', '#E7B48F'] };
+  const HAND = { mo: ['#1B1D23', '#E2AE88'], semal: ['#1C1D22', '#E7B48F'] }; // paint: the figures' own sleeve and skin
   let houseOn = false;
   function houseBoot() {
     if (houseOn || !$('house') || !window.BesideFigures) return;
@@ -225,17 +235,30 @@
       b.addEventListener('click', () => { b.classList.remove('wave'); void b.offsetWidth; b.classList.add('wave'); });
       b.addEventListener('animationend', (e) => { if (e.target === b) b.classList.remove('wave'); });
     });
-    on('ndCal', 'click', () => boardSheet(true, 'cal'));
-    on('ndFridge', 'click', () => boardSheet(true, 'todo'));
+    on('ndCal', 'click', () => calSheet(true));
+    on('ndFridge', 'click', () => todoSheet(true));
     on('ndChain', 'click', () => boardSheet(true, 'count'));
     let rz = 0;
     addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(houseDraw, 150); }); // the hearts find room again
+    // The house also changes size without the window doing so: the sidebar comes and goes, Home comes back from
+    // another tab, the house turns wide. The hearts and the chain are placed again then too.
+    if (window.ResizeObserver) new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(houseDraw, 150); }).observe($('house'));
+  }
+  // The top of Home: how the other person is, by their own clock. Asleep is the same 11 pm to 6 am that turns their
+  // lamp off. The guest's phone says the same about the host.
+  const dayPart = (h) => (h < 12 ? 'in the morning' : h < 17 ? 'in the afternoon' : h < 21 ? 'in the evening' : 'at night');
+  function homeTop(hs) {
+    const r = hs.rooms.find((x) => !x.mine);
+    if (!r) return;
+    const nm = r.name || (r.who === 'mo' ? 'Mo' : 'Semal');
+    text('homeTitle', nm + (r.late ? ' is asleep' : ' is awake'));
+    text('homeRingText', 'Ring ' + nm);
+    text('homeSub', r.late ? 'It is night for them. A heart will wait.' : 'It is ' + r.clock + ' ' + dayPart(r.h) + ' for them.');
   }
   function houseDraw() {
     houseBoot();
     const hs = houseOn && window.BesideBoard && window.BesideBoard.house ? window.BesideBoard.house() : null;
     if (!hs) return;
-    let late = '';
     hs.rooms.forEach((r) => {
       const room = $(ROOM_ID[r.who]);
       if (!room) return;
@@ -248,26 +271,36 @@
       mn.style.transform = 'rotate(' + r.mi * 6 + 'deg)';
       const nm = r.name || (r.who === 'mo' ? 'Mo' : 'Semal');
       const id = r.who === 'mo' ? 'Mo' : 'Semal';
-      text('ndTime' + id, nm + ', ' + r.time.toLowerCase());
-      text('ndWx' + id, r.words || r.place);
+      // under the house, one line: "London 12:24, 11° drizzle"
+      text('ndTime' + id, r.clock);
+      text('ndWx' + id, r.wx ? ', ' + r.wx : '');
+      text('ndWx2' + id, r.wx || ''); // the same weather on its own line, in that place's card (iPad and Mac)
       const fig = $('ndFig' + id);
       fig.disabled = !r.mine;
-      fig.setAttribute('aria-label', r.mine ? 'Wave' : nm + ' in ' + r.place);
-      if (!r.mine && r.late) late = 'It is late at night for ' + nm + '. A heart will wait for them.';
+      fig.setAttribute('aria-label', r.mine ? 'Wave' : nm + ' in ' + r.place + (r.late ? ', asleep' : ''));
     });
-    const lt = $('ndLate');
-    if (lt) { lt.textContent = late; lt.hidden = !late; }
+    homeTop(hs);
     const c = hs.countdown;
     const tag = !c ? 'Countdown' : c.today ? 'Today' : c.past ? c.title : c.days === 1 ? '1 day' : c.days + ' days';
     text('ndTag', tag);
     const ch = $('ndChain');
     if (ch) {
-      ch.style.setProperty('--chain', c && !c.past && !c.today ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) + '%' : '60%');
+      // longer the more days are left, but always between the two lamps, so it hangs in front of neither
+      let cap = 96;
+      const box = ch.offsetParent && ch.offsetParent.getBoundingClientRect();
+      const lamps = [...document.querySelectorAll('#house .nd-lamp')].map((l) => l.getBoundingClientRect()).filter((r) => r.width);
+      if (box && box.width && lamps.length === 2) {
+        const mid = box.left + box.width / 2;
+        const half = Math.min(mid - Math.min(lamps[0].right, lamps[1].right), Math.max(lamps[0].left, lamps[1].left) - mid) - 6;
+        cap = Math.max(20, (half * 2) / box.width * 100);
+      }
+      ch.style.setProperty('--chain', Math.min(cap, c && !c.past && !c.today ? Math.max(26, Math.min(96, 26 + c.days * 1.2)) : 60).toFixed(1) + '%');
       ch.setAttribute('aria-label', !c ? 'Countdown: set one' : c.past ? 'Countdown: ' + c.title + ' has been' : 'Countdown: ' + tag + ' to ' + c.title);
     }
+    // the calendar on the kitchen wall: the month at 13 px, today ringed, a dot on days with plans, the next plan
     const m = hs.month;
     text('ndCalMonth', m.name);
-    text('ndCalNext', hs.next ? hs.next.day + ', ' + hs.next.title : '');
+    text('ndCalNext', hs.next ? hs.next.day + ', ' + hs.next.title : hs.loaded ? 'No plans yet' : '');
     const grid = $('ndCalGrid');
     const gk = [m.name, m.first, m.count, m.today, m.plans.join(',')].join('|');
     if (grid && grid.dataset.k !== gk) {
@@ -275,26 +308,28 @@
       const cell = (t, cls) => { const i = document.createElement('i'); i.textContent = t; if (cls) i.className = cls; return i; };
       const cells = 'MTWTFSS'.split('').map((d) => cell(d, 'wd'));
       for (let i = 0; i < m.first; i++) cells.push(cell('', ''));
-      for (let d = 1; d <= m.count; d++) cells.push(cell(d, [d === m.today ? 't' : d < m.today ? 'o' : '', m.plans.includes(d) ? 'p' : ''].filter(Boolean).join(' ')));
+      for (let d = 1; d <= m.count; d++) cells.push(cell(d, [d === m.today ? 't' : '', m.plans.includes(d) ? 'p' : ''].filter(Boolean).join(' ')));
       grid.replaceChildren(...cells);
     }
     if ($('ndCal')) $('ndCal').setAttribute('aria-label', 'Calendar, ' + m.name + (hs.next ? '. Next: ' + hs.next.title + ', ' + hs.next.day : ''));
+    // the note on the fridge: the first three, and how many more
     const notes = $('ndNotes');
     if (notes) {
-      const top = hs.todos.slice(0, 3);
-      const key = top.join('|') || '-';
+      // newest first, as in the list it opens
+      const top = hs.todos.slice().reverse().slice(0, 3);
+      const more = hs.todos.length - top.length;
+      const key = top.join('|') + '|' + more + '|' + hs.loaded;
       if (notes.dataset.k !== key) {
         notes.dataset.k = key;
-        if (!top.length) {
-          const n = document.createElement('span'); n.className = 'nd-none'; n.textContent = 'Nothing yet. Tap to add.';
-          notes.replaceChildren(n);
-        } else {
+        const line = (cls, t) => { const n = document.createElement('span'); n.className = cls; n.textContent = t; return n; };
+        if (!top.length) notes.replaceChildren(line('nd-none', hs.loaded ? 'Nothing yet. Tap to add.' : ''));
+        else {
           notes.replaceChildren(...top.map((t) => {
             const row = document.createElement('span'); row.className = 'nd-todo';
             const sp = document.createElement('span'); sp.textContent = t;
             row.append(document.createElement('i'), sp);
             return row;
-          }));
+          }), ...(more > 0 ? [line('nd-more', 'and ' + more + ' more')] : []));
         }
       }
       $('ndFridge').setAttribute('aria-label', 'To-do list: ' + (hs.todos.length ? hs.todos.length + ' to do' : 'nothing yet'));
@@ -303,12 +338,18 @@
       ['mo', 'semal'].forEach((who) => heartWall($(ROOM_ID[who]), (hs.hearts || []).filter((x) => x.who === who).slice(-30)));
       heartsReady = true; // the hearts already there on opening just sit; later ones pop on
     }
+    // the calendar and the list, if open, follow the board too
+    if (HS.cal) calDraw();
+    if (HS.todo) todoDraw();
   }
   // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a heart on the wall of the one it was sent to.
-  // It only ever sits on bare wall (Mo, 10 Nov 2026: "now they kinda go and hide behind the person"): clear of the whole
-  // figure with room to wave and lean, the window, clock, picture, calendar, fridge, lamp and the paper chain. The bare
-  // wall is cut into heart-sized places and each heart takes the place its id picks, so it stays put. More hearts than
-  // places: they shrink a little, and past that the newest ones show. A new one pops on (not with reduced motion).
+  // It only ever sits on bare wall (Mo, 10 Nov 2026: "now they kinda go and hide behind the person"). The rule: a heart
+  // keeps clear of the drawn paper chain and its tag, of both figures (the whole body, with room to wave and lean), and
+  // of everything drawn or tapped on the wall: the window, clock, picture and its name, and the lamp. (The calendar and
+  // the fridge are downstairs in the kitchen, where no hearts go.) The chain's tap area reaches a little below the drawn
+  // chain; a heart may sit there, as it covers nothing. The bare wall is cut into heart-sized places and each heart
+  // takes the place its id picks, so it stays put. More hearts than places: they shrink a little, and past that the
+  // newest ones show. A new one pops on (not with reduced motion).
   const HEART_SVG = '<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21.2C5.6 16.4 1 12.5 1 7.4 1 3.9 3.7 1.2 7 1.2c2 0 3.8 1 5 2.6 1.2-1.6 3-2.6 5-2.6 3.3 0 6 2.7 6 6.2 0 5.1-4.6 9-11 13.8z"/></svg>';
   const heartSeen = new Set();
   let heartsReady = false;
@@ -328,9 +369,9 @@
     const own = (e, px, py) => ({ l: e.offsetLeft - px, t: e.offsetTop - py, r: e.offsetLeft + e.offsetWidth + px, b: e.offsetTop + e.offsetHeight + py });
     const R = room.getBoundingClientRect();
     const box = (e, pad) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.bottom - R.top + pad }; };
-    const keep = [...room.querySelectorAll('.nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => own(e, 5, 5));
+    const keep = [...room.querySelectorAll('.nd-clock, .nd-pic, .nd-lamp')].map((e) => own(e, 5, 5));
     const win = room.querySelector('.nd-win');
-    if (win) keep.push(own(win, 5, 11)); // with its sill
+    if (win) { const w = own(win, 5, 5); w.b += 3; keep.push(w); } // with its shadow
     const fig = room.querySelector('.nd-fig');
     if (fig) keep.push(own(fig, Math.max(6, fig.offsetWidth * 0.18), 6)); // the whole body, and the room its wave and lean take
     // the picture's name can be wider than the picture; the chain crosses both rooms (its rings and its tag)
@@ -376,12 +417,14 @@
   }
 
   // ---------- TABS ----------
-  const TABS = ['home', 'plans', 'calls', 'hearts'];
+  // Three tabs. Calls is no longer a tab: anything that still asks for it lands on Home with Calls and setup open.
+  const TABS = ['home', 'plans', 'hearts'];
   const tabEl = (t) => $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
   const tabScroll = {};
   app.tab = 'home';
   function setTab(name, instant) {
-    if (!TABS.includes(name)) return;
+    if (name === 'calls') { setTab('home', instant); if (SHELL.includes(app.state)) setupSheet(true); return; }
+    if (!TABS.includes(name)) name = 'home';
     const prev = app.tab;
     if (prev !== name) tabScroll[prev] = window.scrollY;
     app.tab = name;
@@ -406,15 +449,306 @@
   function tabsBoot() {
     document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.go)));
     const bar = document.querySelector('.tabbar-in');
+    // From 700 px wide the bar is a sidebar (up and down), an icon rail up to 900 px: there each tab and Calls and
+    // setup show their word as a tooltip (a screen reader has the word all along).
+    const side = window.matchMedia && matchMedia('(min-width:700px)'), rail = window.matchMedia && matchMedia('(min-width:700px) and (max-width:899.98px)');
+    const fit = () => {
+      if (bar) bar.setAttribute('aria-orientation', side && side.matches ? 'vertical' : 'horizontal');
+      document.querySelectorAll('.tabbar button').forEach((b) => { if (rail && rail.matches) b.title = b.textContent.trim(); else b.removeAttribute('title'); });
+    };
+    fit();
+    [side, rail].forEach((m) => { if (m && m.addEventListener) m.addEventListener('change', fit); });
     if (bar) bar.addEventListener('keydown', (e) => {
-      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
       if (!d) return;
+      e.preventDefault(); // up and down move between tabs here, not the page
       const t = TABS[(TABS.indexOf(app.tab) + d + TABS.length) % TABS.length];
       setTab(t);
       const b = $('tb-' + t);
       if (b) b.focus();
     });
     setTab('home', true);
+  }
+
+  // ---------- HOME: one Ring button, a heart, and three sheets (Calls and setup, the calendar, the note on the fridge) ----------
+  // The calendar and the fridge note each open a sheet that does the board's own work, so the house is never just a
+  // picture (Mo, 11 Nov 2026: "the house style i like becaise the calender/ the to do list ect has functionality, keep
+  // that functionality").
+  const HS = { setup: false, cal: false, todo: false, back: {}, todoKey: '', calKey: '' };
+  const HOME_SHEETS = { setup: 'setupSheet', cal: 'calSheet', todo: 'todoSheet' };
+  // A sheet from Home fades in with its close button focused; closing it gives focus back to what opened it.
+  function homeSheet(k, open, back) {
+    const sh = $(HOME_SHEETS[k]);
+    if (!sh || HS[k] === !!open) return;
+    HS[k] = !!open;
+    sh.hidden = !open;
+    if (open) {
+      HS.back[k] = back || document.activeElement;
+      const x = sh.querySelector('.close');
+      if (x) x.focus({ preventScroll: true });
+    } else {
+      let b = HS.back[k];
+      HS.back[k] = null;
+      if (k === 'setup' && !(b && b.getClientRects().length)) b = setupBtn(); // the round button is not on an iPad or a Mac
+      if (b && b.focus && b.getClientRects().length) b.focus({ preventScroll: true });
+    }
+  }
+  function homeSheetsClose() { Object.keys(HOME_SHEETS).forEach((k) => homeSheet(k, false)); }
+  // whichever button opens Calls and setup on this screen size (Home's round one, or the sidebar's)
+  const setupBtn = () => [...document.querySelectorAll('[data-setup-open]')].find((b) => b.getClientRects().length) || $('homeSetupBtn');
+  function setupSheet(open) { if (open) homeSetupVals(); homeSheet('setup', open, $('homeSetupBtn')); }
+  function calSheet(open) { homeSheet('cal', open, $('ndCal')); if (open) calDraw(); }
+  function todoSheet(open) { homeSheet('todo', open, $('ndFridge')); if (open) todoDraw(true); }
+  // Each row says how things are: the last check, the mic's way, rings on or off, the guest's name.
+  function homeSetupVals() {
+    text('setupSoundVal', MODE_TEXT[CLEAR.mode] ? MODE_TEXT[CLEAR.mode][0] : '');
+    setupHealth();
+    ringMeUi();
+    text('nameRowVal', cleanName(store.get('beside.name') || ($('nameInput') && $('nameInput').value) || '') || 'Not set');
+  }
+  // "All good" once Check my setup found nothing wrong, or what it found. Before a check, only what is plain without
+  // one: a browser that can't make calls, or a mic that is blocked.
+  const CHECK_SHORT = { basics: 'Calls can’t work here', mic: 'Mic problem', server: 'Can’t reach Beside', net: 'Network problem', relay: 'Network problem', link: 'Connection problem' };
+  function setupHealth() {
+    const el = $('setupCheckVal');
+    if (!el) return;
+    const put = (t, bad) => { el.textContent = t; el.toggleAttribute('data-ok', !!t && !bad); el.toggleAttribute('data-bad', !!bad); };
+    if (!window.RTCPeerConnection) { put(CHECK_SHORT.basics, true); return; }
+    if (app.checkDone && app.checks) {
+      const bad = Object.keys(app.checks).filter((k) => app.checks[k].state === 'bad');
+      put(!bad.length ? 'All good' : bad.length === 1 ? CHECK_SHORT[bad[0]] || '1 problem' : bad.length + ' problems', bad.length > 0);
+      return;
+    }
+    put(app.checks && Object.keys(app.checks).length ? 'Checking…' : '');
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' }).then((p) => { if (p.state === 'denied' && !app.checkDone) put('Mic is blocked', true); }).catch(() => {});
+    }
+  }
+  // Ring them: a video call that rings their devices, the way Ring does inside a call. The host starts the room and
+  // rings once it is open (unless they come in first); a guest knocks, and rings if the host isn't there yet.
+  function homeRing() {
+    homeSheetsClose();
+    if (isGuest) {
+      G.ringOnMiss = Date.now();
+      guestJoin(true).then(() => { if (!G.left && !G.cam && G.peer) guestCam(); });
+      return;
+    }
+    H.ringOnReady = Date.now();
+    RG.ringAt = Date.now();
+    hostStart('video');
+  }
+  // The round heart beside it: the same quick heart as before, with a tick for a moment.
+  function homeHeart() {
+    const b = $('homeHeartBtn');
+    if (!b || b.disabled || !window.BesideBoard || !window.BesideBoard.heart) return;
+    if (!window.BesideBoard.heart()) { note('Your hearts open in a moment. Try again.', 'info'); return; }
+    b.disabled = true;
+    const ico = (n) => (window.BesideIcons ? window.BesideIcons.svg(n, 22) : '');
+    // the words show on an iPad or a Mac, where it is a button with words
+    b.innerHTML = ico('check') + '<span>Sent</span>';
+    b.setAttribute('aria-label', 'Sent');
+    setTimeout(() => { b.disabled = false; b.innerHTML = ico('heart') + '<span>Send a heart</span>'; b.setAttribute('aria-label', 'Send a heart'); }, 2500);
+  }
+  // The calendar, opened: this month with a dot in each person's colour on their plan days, and the next plan.
+  const WEEK_NAMES = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  function calDraw() {
+    const B = window.BesideBoard;
+    const grid = $('calGrid');
+    if (!grid || !B || !B.month) return;
+    const m = B.month();
+    const key = JSON.stringify([m.name, m.today, m.days, m.next, m.loaded]);
+    if (key === HS.calKey) return;
+    HS.calKey = key;
+    text('calTitle', m.name);
+    const names = $('calNames');
+    if (names && !names.firstChild) WEEK_NAMES.forEach((w) => { const sp = document.createElement('span'); sp.textContent = w; names.append(sp); });
+    const cells = [];
+    for (let i = 0; i < m.first; i++) cells.push(document.createElement('span'));
+    for (let d = 1; d <= m.count; d++) {
+      const info = m.days[d];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'hcal-day' + (d === m.today ? ' today' : '');
+      const n = document.createElement('b');
+      n.textContent = String(d);
+      const dots = document.createElement('u');
+      dots.setAttribute('aria-hidden', 'true');
+      (info ? info.who : []).forEach((w) => { const s2 = document.createElement('s'); if (w === 'semal') s2.className = 'semal'; dots.append(s2); });
+      b.append(n, dots);
+      const long = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(Date.UTC(m.y, m.mo - 1, d, 12));
+      b.setAttribute('aria-label', long + (d === m.today ? ', today' : '') + (info ? ', ' + info.titles.join(', ') : ''));
+      if (d === m.today) b.setAttribute('aria-current', 'date');
+      const k = m.key + String(d).padStart(2, '0');
+      b.addEventListener('click', () => { calSheet(false); B.planDay(k); });
+      cells.push(b);
+    }
+    grid.replaceChildren(...cells);
+    const nx = $('calNext');
+    if (nx) {
+      nx.replaceChildren();
+      if (m.next) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'hnext';
+        const bar = document.createElement('i');
+        if (m.next.who === 'semal') bar.className = 'semal';
+        const w = document.createElement('span');
+        const t = document.createElement('b');
+        t.textContent = m.next.title;
+        const l = document.createElement('small');
+        l.textContent = m.next.line;
+        w.append(t, l);
+        b.append(bar, w);
+        b.insertAdjacentHTML('beforeend', window.BesideIcons ? window.BesideIcons.svg('chev', 18) : '');
+        b.setAttribute('aria-label', 'Next plan: ' + m.next.title + ', ' + m.next.line + '. Open Plans');
+        b.addEventListener('click', () => { calSheet(false); B.planDay(m.next.key); });
+        nx.append(b);
+      } else if (m.loaded) {
+        const p = document.createElement('p');
+        p.className = 'hempty';
+        p.textContent = 'No plans yet this month.';
+        nx.append(p);
+      }
+    }
+  }
+  // The note on the fridge, opened: each row one tap to tick; swipe left (or the cross, with a mouse) to delete.
+  function todoDraw(force) {
+    const B = window.BesideBoard;
+    const list = $('todoList');
+    if (!list || !B || !B.todoList) return;
+    const t = B.todoList();
+    const key = JSON.stringify(t);
+    if (!force && key === HS.todoKey) return;
+    // A row being swiped is left alone; the list catches up when the finger lifts.
+    if (list.querySelector('.hrow-go.drag')) return;
+    HS.todoKey = key;
+    const had = document.activeElement && list.contains(document.activeElement) ? document.activeElement : null;
+    const hadId = had ? (had.closest('.hrow') || {}).dataset : null;
+    const openId = (list.querySelector('.hrow.open') || { dataset: {} }).dataset.id;
+    const icon = (n, z) => (window.BesideIcons ? window.BesideIcons.svg(n, z) : '');
+    list.replaceChildren(...t.items.map((it) => {
+      const row = document.createElement('div');
+      row.className = 'hrow' + (it.done ? ' done' : '');
+      row.dataset.id = it.id;
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'hrow-go';
+      go.setAttribute('role', 'checkbox');
+      go.setAttribute('aria-checked', String(it.done));
+      const tick = document.createElement('span');
+      tick.className = 'hrow-tick';
+      tick.innerHTML = icon('check', 16);
+      const w = document.createElement('span');
+      w.className = 'hrow-words';
+      const b = document.createElement('b');
+      b.textContent = it.text;
+      w.append(b);
+      if (it.from) { const sm = document.createElement('small'); sm.textContent = 'From ' + it.from; w.append(sm); }
+      go.append(tick, w);
+      go.addEventListener('click', (e) => {
+        if (go.dataset.swiped) { delete go.dataset.swiped; e.preventDefault(); return; }
+        if (row.classList.contains('open')) { row.classList.remove('open'); return; }
+        B.todoTick(it.id);
+      });
+      swipeRow(row, go);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'hrow-del';
+      del.setAttribute('aria-label', 'Delete ' + it.text);
+      del.innerHTML = icon('x', 20);
+      const dw = document.createElement('span');
+      dw.textContent = 'Delete';
+      del.append(dw);
+      del.addEventListener('click', () => B.todoDelete(it.id));
+      row.append(go, del);
+      return row;
+    }));
+    if (openId) { const r = list.querySelector('.hrow[data-id="' + CSS.escape(openId) + '"]'); if (r) r.classList.add('open'); }
+    let empty = $('todoEmpty');
+    if (!empty) { empty = document.createElement('p'); empty.id = 'todoEmpty'; empty.className = 'hempty'; list.after(empty); }
+    const open = t.items.filter((x) => !x.done).length;
+    empty.textContent = !t.loaded ? 'Opening the list…' : !t.items.length ? 'Nothing on the list yet.' : !open ? 'All done.' : '';
+    empty.hidden = !empty.textContent;
+    if (hadId && hadId.id) {
+      const r = list.querySelector('.hrow[data-id="' + CSS.escape(hadId.id) + '"]');
+      const f = r && r.querySelector('.hrow-go');
+      if (f) f.focus({ preventScroll: true });
+      else { const inp = $('todoInput'); if (inp) inp.focus({ preventScroll: true }); }
+    }
+  }
+  // Swipe a row left to show Delete; a short swipe springs back. Up and down still scroll the sheet.
+  function swipeRow(row, go) {
+    let x0 = 0, y0 = 0, dx = 0, id = null, sliding = false;
+    const open0 = () => row.classList.contains('open');
+    go.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = 0; sliding = false;
+    });
+    go.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!sliding) {
+        if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { id = null; return; }
+        if (Math.abs(mx) < 10) return;
+        sliding = true;
+        go.classList.add('drag');
+        try { go.setPointerCapture(id); } catch (x) {}
+      }
+      dx = Math.max(-120, Math.min(0, mx + (open0() ? -96 : 0)));
+      go.style.transform = 'translateX(' + dx + 'px)';
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (!sliding) return;
+      sliding = false;
+      go.classList.remove('drag');
+      go.style.transform = '';
+      go.dataset.swiped = '1';
+      setTimeout(() => { delete go.dataset.swiped; }, 400);
+      $('todoList').querySelectorAll('.hrow.open').forEach((r) => { if (r !== row) r.classList.remove('open'); });
+      row.classList.toggle('open', dx < -48);
+      todoDraw();
+    };
+    go.addEventListener('pointerup', end);
+    go.addEventListener('pointercancel', end);
+  }
+  function homeBoot() {
+    // Calls and setup: the round button on Home (phone) or the sidebar's row (iPad and Mac); closing gives focus back to it
+    document.querySelectorAll('[data-setup-open]').forEach((b) => b.addEventListener('click', () => { setupSheet(true); HS.back.setup = b; }));
+    on('homeRingBtn', 'click', homeRing);
+    on('homeHeartBtn', 'click', homeHeart);
+    on('setupClose', 'click', () => setupSheet(false));
+    on('calClose', 'click', () => calSheet(false));
+    on('todoClose', 'click', () => todoSheet(false));
+    on('calAdd', 'click', () => { calSheet(false); if (window.BesideBoard && window.BesideBoard.planDay) window.BesideBoard.planDay(''); });
+    on('todoForm', 'submit', (e) => {
+      e.preventDefault();
+      const inp = $('todoInput');
+      if (!inp) return;
+      if (window.BesideBoard && window.BesideBoard.todoAdd && window.BesideBoard.todoAdd(inp.value)) inp.value = '';
+      inp.focus();
+    });
+    // The rows that open a sheet of their own close this one first; Ring this phone and Use my room stay in it.
+    const setupRows = $('setupSheet');
+    if (setupRows) setupRows.addEventListener('click', (e) => {
+      const r = e.target.closest && e.target.closest('[data-check-open], [data-sound-open], #inviteRowBtn, #nameRowBtn, #startBtn, #joinBtn');
+      if (r) homeSheet('setup', false);
+    }, true);
+    on('nameRowBtn', 'click', () => { const row = $('nameRow'), inp = $('nameInput'); if (row) row.hidden = false; if (inp) { inp.focus(); inp.select(); } });
+    Object.keys(HOME_SHEETS).forEach((k) => {
+      const sh = $(HOME_SHEETS[k]);
+      if (!sh) return;
+      sh.addEventListener('click', (e) => { if (e.target === sh) homeSheet(k, false); });
+      sh.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); homeSheet(k, false); } });
+    });
+    // A tap anywhere but an open row closes it.
+    document.addEventListener('pointerdown', (e) => {
+      const l = $('todoList');
+      if (!l || !HS.todo) return;
+      const r = e.target.closest && e.target.closest('.hrow');
+      l.querySelectorAll('.hrow.open').forEach((x) => { if (x !== r) x.classList.remove('open'); });
+    }, true);
   }
 
   // ---------- MOTION: the TV opens into the call, and the call shrinks back into it ----------
@@ -485,14 +819,17 @@
       pane.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: lead + 500, easing: 'ease-in-out', fill: 'forwards' });
     }
     const scr = document.createElement('div');
-    scr.className = 'tvfx-screen';
+    scr.className = 'tvfx-screen dark';
     fx.append(scr);
     document.body.append(fx);
+    const ground = getComputedStyle(scr).getPropertyValue('--bg').trim();
     const from = { ...snap.screen, round: snap.tv ? 3 : 32 };
     scr.animate([
+      // paint:start (the TV's warm glow and its switched-off grey belong to the drawing)
       { clipPath: clip(from), opacity: snap.tv ? 0 : 1, backgroundColor: '#E8A87C' },
       { clipPath: clip(from), opacity: 1, backgroundColor: '#E8A87C', offset: lead ? lead / (lead + 700) : 0.001 },
-      { clipPath: clip(FULL()), opacity: 1, backgroundColor: '#1C1712' },
+      { clipPath: clip(FULL()), opacity: 1, backgroundColor: ground },
+      // paint:end
     ], { duration: lead + 700, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
     const end = fx.animate([{ opacity: 1 }, { opacity: 1, offset: (lead + 700) / (lead + 1050) }, { opacity: 0 }], { duration: lead + 1050, fill: 'forwards' });
     end.onfinish = () => { if (tvFx === fx) tvDone(); };
@@ -505,32 +842,21 @@
     fx.setAttribute('aria-hidden', 'true');
     tvFx = fx;
     const scr = document.createElement('div');
-    scr.className = 'tvfx-screen';
+    scr.className = 'tvfx-screen dark';
     fx.append(scr);
     document.body.append(fx);
+    const ground = getComputedStyle(scr).getPropertyValue('--bg').trim();
     const tv = app.tab === 'calls' && $('tvBox') && $('tvBox').querySelector('.tv-screen');
     const r = tv && tv.getClientRects().length ? { ...rectOf(tv.getBoundingClientRect()), round: 3 } : { left: innerWidth / 2 - 50, top: innerHeight / 2 - 32, width: 100, height: 64, round: 18 };
     scr.animate([
-      { clipPath: clip(FULL()), backgroundColor: '#1C1712', opacity: 1 },
-      { clipPath: clip(r), backgroundColor: tv ? '#2A2D35' : '#1C1712', opacity: 1, offset: 0.8 },
+      // paint:start
+      { clipPath: clip(FULL()), backgroundColor: ground, opacity: 1 },
+      { clipPath: clip(r), backgroundColor: tv ? '#2A2D35' : ground, opacity: 1, offset: 0.8 },
       { clipPath: clip(r), backgroundColor: '#2A2D35', opacity: 0 },
+      // paint:end
     ], { duration: 760, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).onfinish = () => { if (tvFx === fx) tvDone(); };
   }
 
-  // While it rings, their figure peeks in from the edge and hops.
-  let ringFigT = 0;
-  function ringHop() {
-    const el = $('ringFig');
-    if (!el || !window.BesideFigures) return;
-    const me = window.BesideBoard ? window.BesideBoard.people().me : 'mo';
-    el.innerHTML = window.BesideFigures.figure(me === 'mo' ? 'semal' : 'mo', { label: '' });
-    el.hidden = false;
-    el.classList.remove('go');
-    void el.offsetWidth;
-    el.classList.add('go');
-    clearTimeout(ringFigT);
-    ringFigT = setTimeout(() => { el.classList.remove('go'); el.hidden = true; }, 8000);
-  }
   function on(id, ev, fn) { const el = $(id); if (el) el.addEventListener(ev, fn); }
   let noteTimer = 0;
   function note(msg, kind) {
@@ -542,22 +868,29 @@
     el.textContent = msg;
     const x = document.createElement('button');
     x.setAttribute('aria-label', 'Close');
-    x.textContent = '×';
+    x.innerHTML = window.BesideIcons ? window.BesideIcons.svg('x', 18) : '';
     x.onclick = () => { el.hidden = true; };
     el.appendChild(x);
     el.dataset.kind = kind || 'info';
     el.hidden = false;
     if (kind !== 'stay') noteTimer = setTimeout(() => { el.hidden = true; }, 7000);
   }
+  // The call shows no speed number (Check my setup keeps the numbers). "Weak connection" shows only once the round
+  // trip has been bad (200 ms or more) for a few seconds, and goes a few seconds after it is fine again.
+  const LAG = { bad: 0, ok: 0, q: '' };
   function setLag(id, ms) {
     const el = $(id);
     if (!el) return;
-    const tgt = el.querySelector('b') || el;
     const q = ms == null ? 'none' : ms < 80 ? 'calm' : ms < 200 ? 'ok' : 'bad';
-    el.classList.remove('none', 'calm', 'ok', 'bad');
-    el.classList.add(q);
-    tgt.textContent = ms == null ? '–' : Math.round(ms) + ' ms';
-    el.title = ms == null ? '' : 'Round trip between you: ' + Math.round(ms) + ' ms. Under 80 is great, under 200 is fine.';
+    const now = Date.now();
+    LAG.q = q;
+    el.dataset.q = q;
+    if (q === 'bad') { LAG.ok = 0; if (!LAG.bad) LAG.bad = now; if (now - LAG.bad >= 3500) el.hidden = false; }
+    else {
+      LAG.bad = 0;
+      if (!LAG.ok) LAG.ok = now;
+      if (q === 'none' || now - LAG.ok >= 3500) el.hidden = true;
+    }
   }
   function setPressed(id, pressed, onLabel, offLabel) {
     const el = $(id);
@@ -668,6 +1001,8 @@
       return s;
     }
   }
+  // A blocked camera gets its own small sheet of steps; anything else stays a short message.
+  function camFail(e, kind) { if (e && e.name === 'NotAllowedError' && steps(/system/i.test(e.message || '') ? 'camMac' : 'cam')) return; note(camError(e), kind); }
   function camError(e) {
     const n = e && e.name;
     if (n === 'NotAllowedError' && /system/i.test((e && e.message) || '')) return 'Your Mac is blocking the camera for this browser. Open System Settings, Privacy & Security, Camera, turn your browser on, then reopen it.';
@@ -1359,7 +1694,7 @@
   function sndLogShow() {
     const box = $('sndLog'), list = $('sndLogList');
     if (!box || !list) return;
-    const sum = box.querySelector('summary');
+    const sum = box.querySelector('summary .sl-t') || box.querySelector('summary');
     if (sum) sum.textContent = 'Sound log, ' + (SW.log.length ? SW.log.length + (SW.log.length === 1 ? ' line' : ' lines') : 'nothing yet');
     const cur = $('sndNow');
     if (cur) cur.textContent = !inCallNow() ? '' : !outCtx() ? 'Right now the sound engine is closed: voices play straight through the page.' : 'Right now the sound engine is on.';
@@ -1609,11 +1944,15 @@
     if (why === 'reset') setTimeout(() => micAgain('Your mic was started again.', true), 800);
   }
 
-  // Who is talking: the host listens to every voice and tells everyone; a green ring marks them.
+  // Who is talking: the host listens to every voice and tells everyone. The chip's dot pulses softly while someone
+  // else talks (no outlines on any picture).
   const T = { ids: new Set(), sig: '', timer: 0, last: new Map(), buf: null };
   function renderTalk() {
     const has = (el) => !!el.dataset.pid && T.ids.has(el.dataset.pid);
     document.querySelectorAll('#watchRoot .tile').forEach((el) => el.classList.toggle('talking', has(el)));
+    const me = isGuest ? G.peer && G.peer.id : H.me;
+    const chip = $('callChip');
+    if (chip) chip.classList.toggle('talking', [...T.ids].some((id) => id && id !== me));
     if (mini.els) mini.els.grid.querySelectorAll('.fw-tile').forEach((el) => el.classList.toggle('talking', has(el)));
   }
   function setTalk(ids) {
@@ -1685,35 +2024,21 @@
   }
 
   // ---------- VIEW (one call stage for both roles) ----------
-  // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
-  // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
-  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false, plain: store.get('beside.plaincall') === '1', roomOk: false, swapT: 0, noClick: 0 };
-  // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
-  // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
-  const LAYOUT_ICON = {
-    split: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg>',
-    focus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="13" y="13" width="6" height="5" rx="1.2" fill="currentColor"/></svg>',
-  };
-  function setLayout(mode, focus) {
-    V.mode = mode === 'focus' ? 'focus' : 'split';
-    if (focus) V.focus = focus;
-    store.set('beside.layout', V.mode);
-    layout();
-  }
-  function layoutButton() {
-    const b = $('layoutBtn');
-    if (!b) return;
-    b.hidden = !V.pair || V.room; // in the room both of you are always there: you in the photo, them in the window
-    const toFocus = V.mode === 'split';
-    const lab = toFocus ? 'Focus: show one of you big' : 'Split: show you both, half and half';
-    if (b.dataset.to !== (toFocus ? 'focus' : 'split')) {
-      b.dataset.to = toFocus ? 'focus' : 'split';
-      b.innerHTML = LAYOUT_ICON[toFocus ? 'focus' : 'split'];
-      b.setAttribute('aria-label', lab);
-      b.title = toFocus ? 'Focus' : 'Split';
-    }
-  }
-  const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  // The Beside look: their picture fills the pane and you are a round dot at its corner. Drag the dot to any corner,
+  // tap it to swap; both are kept for this call only. The same stage has other views (#watchRoot[data-view]):
+  // alone (ringing, or waiting for someone), split (Side by side, from More), share (the shared thing on top, the
+  // faces below) and film (the film on top, their face below). With three or more, the others are small round
+  // pictures down the right: tap one to make it big.
+  const V = { pin: '', auto: '', focus: 'them', sbs: false, corner: 'br', pair: false, view: '', since: 0, lastWith: 0, withName: '', faceName: '', skyAt: 0, clock: 0, snapAt: 0 };
+  const ico = (n, s, o) => (window.BesideIcons ? window.BesideIcons.svg(n, s, o) : '');
+  const PERSON = ico('person');
+  // Which figure is whose: yours, and the other one's.
+  function whoMe() { const b = window.BesideBoard; return b ? b.people().me : isGuest ? 'semal' : 'mo'; }
+  function whoThem() { return whoMe() === 'mo' ? 'semal' : 'mo'; }
+  function headSvg(who) { return window.BesideFigures && who ? window.BesideFigures.figure(who, { pose: 'head', label: '' }) : ''; }
+  function putHead(el, who) { if (!el || el.dataset.who === who) return; el.dataset.who = who; el.innerHTML = headSvg(who); }
+  // The other one's room on Home: their name there, their time and their weather.
+  function theirRoom() { try { const h = window.BesideBoard && window.BesideBoard.house(); return (h && h.rooms.find((r) => !r.mine)) || null; } catch (e) { return null; } }
   function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
   function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
   function screenSource() {
@@ -1731,35 +2056,26 @@
     if (v.paused) v.play().catch(() => {});
   }
   function hostLabel() { return theirName || (G.hostName || ''); }
-  function titleText() {
+  function sharerName() {
     const sid = sharerId();
-    if (isGuest) {
-      if (amSharing()) return 'You’re sharing';
-      const n = hostLabel();
-      if (sid && screenSource()) {
-        const who = sid === hostId ? n : (G.room && G.room.name) || '';
-        return who ? who + '’s screen' : 'Their screen';
-      }
-      return n ? 'With ' + n : 'In the call';
-    }
-    const live = watchers();
-    const joining = H.guests.size - live.length;
-    const who = live.length === 1 ? live[0].name || 'your guest' : live.length + ' people';
-    if (amSharing()) return live.length ? 'You’re sharing with ' + who : 'You’re sharing';
-    if (sid && roomTrack()) { const g = guestById(sid); return g && g.name ? g.name + '’s screen' : 'Their screen'; }
-    if (live.length === 1) return 'With ' + who;
-    if (live.length > 1) return live.length + ' people are here';
-    if (joining === 1) { const j = [...H.guests.values()].find((g) => !g.live); return ((j && j.name) || 'Someone') + ' is joining…'; }
-    if (joining) return joining + ' people are joining…';
-    return 'Waiting for someone to open your link';
+    if (isGuest) return sid === hostId ? hostLabel() : (G.room && G.room.name) || '';
+    const g = guestById(sid);
+    return (g && g.name) || '';
+  }
+  const pad2 = (n) => (n < 10 ? '0' : '') + n;
+  function lasted(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return (h ? h + ':' + pad2(m) : m) + ':' + pad2(s % 60);
   }
   function layout() {
-    const root = $('watchRoot'), bigSlot = $('bigSlot'), bub = $('bubbles'), park = $('parking');
-    if (!root || !bigSlot || !bub || !park) return;
+    const root = $('watchRoot'), bigSlot = $('bigSlot'), bub = $('bubbles'), park = $('parking'), dot = $('dotSlot');
+    if (!root || !bigSlot || !bub || !park || !dot) return;
+    preCam();
     const scr = screenSource();
     setTrack($('screenTile'), scr);
     const others = [];
-    let alone = false, name = '', self = null, avatarId = '';
+    let alone = false, name = '', avatarId = '', many = false, mine = null;
+    const selfT = $(isGuest ? 'gSelf' : 'selfFace');
     if (isGuest) {
       const pc = G.call && G.call.peerConnection;
       const face = G.camOn && app.state === 'watching' && pc ? lane(pc, 1) : null;
@@ -1780,79 +2096,107 @@
       for (const [id, tile] of G.tiles) if (!keep.has(id)) { setTrack(tile, null); tile.remove(); G.tiles.delete(id); }
       name = hostLabel();
       avatarId = hostId;
-      const mine = G.cam && G.cam.getVideoTracks()[0];
-      setTrack($('gSelf'), mine || null);
-      if ($('gSelf')) $('gSelf').dataset.pid = (G.peer && G.peer.id) || '';
-      if (mine) self = $('gSelf');
+      mine = G.cam && G.cam.getVideoTracks()[0];
+      many = G.people.length > 0;
+      if (selfT) selfT.dataset.pid = (G.peer && G.peer.id) || '';
     } else {
       const live = watchers();
       alone = !live.length;
       live.forEach((g) => { if (g.tile) others.push(g.tile); });
       name = live.length ? live[0].name || '' : '';
       avatarId = live.length ? live[0].id : '';
-      setTrack($('selfFace'), H.cam ? H.camSlot : null);
-      if ($('selfFace')) $('selfFace').dataset.pid = H.me || '';
-      if (H.cam) self = $('selfFace');
+      mine = H.cam ? H.camSlot : null;
+      many = live.length > 1;
+      if (selfT) selfT.dataset.pid = H.me || '';
     }
-    if ($('avatarTile')) $('avatarTile').dataset.pid = avatarId;
+    // you: your camera, or your figure's head while it is off
+    setTrack(selfT, mine || null);
+    if (selfT) { selfT.classList.toggle('nocam', !mine); putHead(selfT.querySelector('.self-fig'), whoMe()); }
+    const avatar = $('avatarTile');
+    if (avatar) avatar.dataset.pid = avatarId;
     const screen = scr ? $('screenTile') : null;
-    const visible = [screen].concat(others, [self]).filter(Boolean);
-    const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
-    V.auto = auto ? auto.dataset.key : '';
-    let big = auto;
-    // Just the two of you, your camera on, nothing shared: Split or Focus. More people, a shared screen, a video
-    // together or a voice call keep the usual view.
-    const them = others[0] || $('avatarTile');
-    V.pair = !alone && !screen && !!self && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1) && !(!!W.id && !!$('ytBox') && !$('ytBox').hidden);
-    let halves = null;
-    if (V.pair) {
-      if (V.mode === 'split') { halves = [them, self]; big = null; }
-      else big = V.focus === 'self' ? self : them;
-    } else if (!alone && V.pin) {
-      const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
-      if (p) big = p; else V.pin = '';
-    }
-    // Watching YouTube together: the video takes the middle, everyone's faces float beside it.
     const ytOn = !!W.id && !!$('ytBox') && !$('ytBox').hidden;
-    if (ytOn) big = null;
-    // The faces window is open: the faces are there, so the shared screen here stays clear.
-    const smalls = halves ? [] : V.pair ? [big === self ? them : self] : mini.win && big === screen ? [] : visible.filter((el) => el !== big);
-    root.dataset.faces = ytOn && smalls.length ? '1' : '';
-    root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
-    // Next Door: just one other person and nothing shared, so the call is one room (see roomLook).
-    V.roomOk = !alone && !screen && !ytOn && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1);
-    roomLook(root, V.roomOk && !V.plain);
-    app.zoomed = V.roomOk && V.plain; // the plain call is showing (for the automated tests)
+    const them = others[0] || avatar; // their camera, or the sky where they are
+    V.pair = !alone && !many;
+    const sbsOk = V.pair && !screen && !ytOn;
+    const view = alone ? 'alone' : ytOn ? 'film' : screen ? 'share' : sbsOk && V.sbs ? 'split' : 'beside';
+    let big = null, halves = null, dotT = null, smalls = [];
+    if (view === 'alone') big = $('inviteTile');
+    else if (view === 'split') halves = [them, selfT];
+    else if (view === 'share') {
+      V.auto = 'screen';
+      big = screen;
+      if (V.pin) { const p = others.concat([avatar]).find((el) => el && el.dataset.key === V.pin); if (p) big = p; else V.pin = ''; }
+      // The faces window is open: the faces are there, so the shared screen here stays clear.
+      smalls = mini.win && big === screen ? [] : [screen].concat(others.length ? others : [avatar], [selfT]).filter((el) => el && el !== big);
+    } else if (V.pair) {
+      big = V.focus === 'self' ? selfT : them;
+      dotT = big === selfT ? them : selfT;
+    } else {
+      // three or more: one big (the first, or the one you tapped), the others small, you in the dot
+      const first = others[0] || avatar;
+      V.auto = first ? first.dataset.key : '';
+      big = first;
+      if (V.pin) { const p = others.find((el) => el.dataset.key === V.pin); if (p) big = p; else V.pin = ''; }
+      smalls = others.filter((el) => el !== big);
+      dotT = selfT;
+    }
+    V.view = view;
+    root.dataset.view = view;
+    root.dataset.faces = smalls.length ? '1' : '';
+    root.dataset.ring = view === 'alone' && ringingNow() ? '1' : '';
+    // the dot stays clear of the small pictures down the right and of the film's controls
+    const corner = view === 'film' || (smalls.length && view !== 'share') ? 'b' + V.corner.charAt(1) : V.corner;
+    dot.dataset.corner = corner;
+    const keep = new Set([big, dotT].concat(smalls, halves || []).filter(Boolean));
     root.querySelectorAll('.tile').forEach((el) => {
-      if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
+      if (keep.has(el)) return;
       el.hidden = true;
-      el.classList.remove('big', 'small', 'half');
+      el.classList.remove('big', 'small', 'half', 'dot');
       if (el.parentNode !== park) park.appendChild(el);
     });
-    const put = (el, box, i, half) => {
+    const put = (el, box, i, kind) => {
       el.hidden = false;
-      el.classList.toggle('half', !!half);
-      el.classList.toggle('big', !half && box === bigSlot);
-      el.classList.toggle('small', box !== bigSlot);
+      ['big', 'small', 'half', 'dot'].forEach((k) => el.classList.toggle(k, k === kind));
       if (box.children[i] !== el) {
         box.insertBefore(el, box.children[i] || null);
         const v = el.querySelector('video');
         if (v && v.srcObject) v.play().catch(() => {}); // iPhone can pause a moved video
       }
     };
-    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, true));
-    else if (big) put(big, bigSlot, 0);
-    smalls.forEach((el, i) => put(el, bub, i));
-    layoutButton();
-    // their initial (or a plain figure) while their camera is off
+    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, 'half'));
+    else if (big) put(big, bigSlot, 0, 'big');
+    smalls.forEach((el, i) => put(el, bub, i, 'small'));
+    if (dotT) put(dotT, dot, 0, 'dot');
+    document.body.dataset.toast = view === 'share' && smalls.length ? 'faces' : dotT && corner.charAt(0) === 'b' ? 'dot' : '';
+    const lb = $('layoutBtn');
+    if (lb) { lb.hidden = !sbsOk; lb.setAttribute('aria-pressed', view === 'split' ? 'true' : 'false'); }
+    // their initial (or a plain figure) while their camera is off; the board draws their figure instead when it
+    // knows who they are (an event, nothing else), and then the tile is the sky where they are
     const ini = $('avatarInitial');
     if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
-    // the board draws their character there instead, when it knows who they are (an event, nothing else)
     if (name !== V.faceName) { V.faceName = name; document.dispatchEvent(new CustomEvent('beside:face', { detail: { name: name || '' } })); }
     text('avatarName', name || (isGuest ? 'Your host' : 'Your guest'));
-    text('callTitle', titleText());
-    const mine = isGuest ? G.screenTrack : H.video;
-    text('shareLabel', amSharing() ? shareWhat(mine) : titleText());
+    text('avatarLabel', name);
+    const fig = $('avatarFig');
+    if (avatar) { avatar.classList.toggle('sky', !!(fig && fig.dataset.who)); if (avatar.classList.contains('sky')) skyDraw(); }
+    // the chip: who, and how long; their camera off says so
+    const camOff = V.pair && them === avatar;
+    const n = isGuest ? 2 + G.people.length : watchers().length + 1;
+    text('callTitle', !V.pair ? n + ' people' : camOff ? (name ? name + '’s camera is off' : 'Their camera is off') : name || 'In the call');
+    const chatEl = $('chat');
+    if (chatEl) chatEl.classList.toggle('many', n > 2); // the chat names who wrote only when three or more are in
+    const chip = $('callChip');
+    if (chip) chip.classList.toggle('camoff', camOff);
+    if (inCallWithSomeone() && !(isGuest ? G.left : H.stopping)) { // not while the call is being taken down
+      const now = Date.now();
+      if (!V.since || now - V.lastWith > 60000) { V.since = now; snapClear(); }
+      V.lastWith = now;
+      if (name && V.pair) V.withName = name;
+    }
+    callClock();
+    shareBar(screen);
+    if (view === 'alone') aloneDraw();
     document.body.dataset.alone = alone ? '1' : '';
     const gs = $('gScreenBtn');
     if (gs) gs.hidden = !(isGuest && G.hostVer >= 2 && app.state === 'watching');
@@ -1865,93 +2209,216 @@
     miniRender();
     renderTalk();
   }
-
-  // ---------- NEXT DOOR: the call as one room ----------
-  // When the call connects, the wall between your rooms folds down (a plain fade with reduced motion). Their camera
-  // fills the big window, yours is the framed photo on the sill, and the two of you sit on one sofa, seen from
-  // behind. Double tap anywhere but the controls for the plain call screen from before the house (Mo, 6 Nov 2026:
-  // "when i double click on the screen i want exactly the same video call setting that was present before this
-  // whole re-design"); double tap again for the room. Each device remembers which one it last showed.
-  // More people, a shared screen or a video together keep the usual view.
-  function roomLook(root, on) {
-    if (on && !V.room) {
-      const so = $('ndSofa');
-      if (so && !so.firstChild && window.BesideFigures) so.innerHTML = window.BesideFigures.sofaBack({ label: '' });
-      if (!V.folded) { V.folded = true; foldWall(); }
+  // The clock in the chip, once a second; a still of their picture now and then for the sheet when the call ends.
+  function callClock() {
+    const on = (app.state === 'live' || app.state === 'watching') && inCallWithSomeone();
+    text('callTime', on && V.since ? lasted(Date.now() - V.since) : '');
+    if (on) { V.lastWith = Date.now(); if (Date.now() - V.snapAt > 5000) snapTake(); }
+  }
+  function clockRun(on) {
+    clearInterval(V.clock);
+    V.clock = on ? setInterval(callClock, 1000) : 0;
+  }
+  function snapTake() {
+    V.snapAt = Date.now();
+    const v = document.querySelector('#bigSlot .tile.big:not(.self):not(.screen) video');
+    const bg = $('endBg');
+    if (!v || !bg || v.readyState < 2 || !v.videoWidth) return;
+    let c = bg.querySelector('canvas');
+    if (!c) { c = document.createElement('canvas'); bg.appendChild(c); }
+    c.width = 96; c.height = Math.max(1, Math.round((96 * v.videoHeight) / v.videoWidth));
+    try { c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); } catch (e) {}
+  }
+  function snapClear() { const c = document.querySelector('#endBg canvas'); if (c) c.remove(); }
+  // Out of the call: the dot, the swap and Side by side start fresh next time.
+  function callReset() {
+    V.corner = 'br'; V.focus = 'them'; V.sbs = false; V.since = 0; V.lastWith = 0; V.withName = '';
+    clockRun(false);
+    delete document.body.dataset.toast;
+    const lg = $('lag');
+    if (lg) lg.hidden = true;
+    LAG.bad = LAG.ok = 0;
+  }
+  // Someone shares: a glass bar across the top says what, with Stop for your own.
+  function shareBar(screen) {
+    const b = $('shareBar');
+    if (!b) return;
+    b.hidden = !screen;
+    if (!screen) return;
+    const me = amSharing();
+    const track = isGuest ? G.screenTrack : H.video;
+    const who = sharerName();
+    text('shareBarText', me ? shareWhat(track) : who ? who + ' is sharing' : 'Someone is sharing');
+    text('shareLabel', me ? shareWhat(track) : who);
+    const st = $('shareBarStop');
+    if (st) st.hidden = !me;
+    const kind = me && CV.kind === 'photo' ? 'photo' : me && CV.kind === 'video' ? 'play' : me && CV.kind === 'browse' ? 'link' : 'screen';
+    const ic = $('shareBarIcon');
+    if (ic && ic.dataset.k !== kind) { ic.dataset.k = kind; ic.innerHTML = ico(kind, 22); }
+  }
+  // The host alone: ringing them, or waiting for someone to open the link. Their head, and the time where they are.
+  function ringingNow() { return !isGuest && Date.now() - (RG.ringAt || 0) < 45000; }
+  function clock12(h, mi) {
+    const part = h < 5 ? 'at night' : h < 12 ? 'in the morning' : h < 17 ? 'in the afternoon' : h < 21 ? 'in the evening' : 'at night';
+    return (h % 12 || 12) + ':' + pad2(mi) + ' ' + part;
+  }
+  function aloneDraw() {
+    const ring = ringingNow();
+    const box = document.querySelector('#inviteTile .alone');
+    if (box) box.classList.toggle('ringing', ring);
+    const room = theirRoom();
+    const nm = RG.name || (room && room.name) || '';
+    const joining = [...H.guests.values()].filter((g) => !g.live);
+    text('aloneTitle', joining.length === 1 ? (joining[0].name || 'Someone') + ' is joining…'
+      : joining.length ? joining.length + ' people are joining…'
+        : ring ? 'Ringing ' + (nm || 'them') : nm ? 'Waiting for ' + nm : 'Waiting for someone');
+    text('aloneTime', room ? 'It is ' + clock12(room.h, room.mi) + ' for them.' : '');
+    putHead($('aloneFig'), whoThem());
+    const v = $('aloneCam'), cam = H.cam ? H.camSlot : null;
+    if (!v) return;
+    if (cam) { if (!v.srcObject || v.srcObject.getVideoTracks()[0] !== cam) v.srcObject = new MediaStream([cam]); v.play().catch(() => {}); }
+    else if (v.srcObject) v.srcObject = null;
+    v.classList.toggle('on', !!cam);
+  }
+  // Their camera is off: the sky where they are (day or night, and the weather, the same as their window on Home),
+  // and the two of you on one sofa, seen from behind, looking at it together.
+  const SKY_CLOUD = (c) => '<svg class="sky-cloud ' + c + '" viewBox="0 0 120 42"><g fill="currentColor"><rect y="16" width="120" height="26" rx="13"/><rect x="30" width="60" height="32" rx="16"/></g></svg>';
+  const SKY_STARS = [[18, 22, 1.4], [52, 60, 1], [80, 14, 1.2], [118, 40, 1], [150, 18, 1.5], [176, 70, 1], [210, 30, 1.2], [240, 58, 1], [268, 16, 1.3], [290, 48, 1], [32, 96, 1], [132, 92, 1.1], [228, 100, 1]];
+  const SKY_FALL = { rain: 'ndRain', thunder: 'ndRain', drizzle: 'ndDrizzle', snow: 'ndSnow' };
+  function skyDraw() {
+    const el = $('avatarSky');
+    if (!el || (el.firstChild && Date.now() - V.skyAt < 60000)) return;
+    V.skyAt = Date.now();
+    const r = theirRoom() || { kind: 'none', night: false };
+    const kind = r.kind || 'none';
+    el.dataset.sky = r.night ? 'night' : ['cloud', 'fog', 'drizzle', 'rain', 'thunder', 'snow'].includes(kind) ? 'grey' : '';
+    el.dataset.wx = kind;
+    if (!el.firstChild) {
+      el.innerHTML = '<svg class="sky-stars" viewBox="0 0 300 120" preserveAspectRatio="xMidYMid slice"><g fill="currentColor">' +
+        SKY_STARS.map((s) => '<circle cx="' + s[0] + '" cy="' + s[1] + '" r="' + s[2] + '"/>').join('') + '</g></svg>' +
+        '<span class="sky-sun"></span>' + SKY_CLOUD('c1') + SKY_CLOUD('c2') + SKY_CLOUD('c3') +
+        '<svg class="sky-wx"><rect width="100%" height="100%"/></svg><span class="sky-fog"></span>' +
+        '<svg class="sky-hills" viewBox="0 0 374 200" preserveAspectRatio="none"><path class="h1" d="M0 64q90 -40 190 -10t184 -16V200H0z"/><path class="h2" d="M0 114q120 -30 220 0t154 -10V200H0z"/></svg>' +
+        '<div class="sky-sofa">' + (window.BesideFigures ? window.BesideFigures.sofaBack({ label: '' }) : '') + '</div>';
     }
-    V.room = on;
-    root.classList.toggle('nd-call', on);
+    const fall = el.querySelector('.sky-wx rect');
+    if (fall) fall.setAttribute('fill', 'url(#' + (SKY_FALL[kind] || 'ndRain') + ')');
   }
-  // Back on Home (a reconnect keeps the room, its zoom, and does not fold the wall again).
-  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-call'); }
-  function foldWall() {
-    const f = $('ndFold');
-    if (!f || !f.animate) return;
-    app.folds = (app.folds || 0) + 1;
-    f.classList.add('go');
-    const done = () => f.classList.remove('go');
-    if (still()) { f.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards' }).onfinish = done; return; }
-    f.querySelector('b').animate([{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-90deg)', opacity: 1, offset: 0.8 }, { transform: 'rotateX(-90deg)', opacity: 0 }],
-      { duration: 1000, easing: 'cubic-bezier(.55,0,.35,1)', fill: 'forwards' });
-    f.querySelectorAll('i').forEach((el) => el.animate([{ opacity: 0.94 }, { opacity: 0.94, offset: 0.4 }, { opacity: 0 }], { duration: 1000, easing: 'ease-in-out', fill: 'forwards' }).onfinish = done);
+  // The waiting stage (a guest): your own camera, or your figure; their head in the empty dot.
+  function preCam() {
+    const v = $('waitCam'), s = G.cam;
+    putHead($('waitFig'), whoMe());
+    putHead($('waitDot'), whoThem());
+    if (!v) return;
+    if (s) { if (v.srcObject !== s) v.srcObject = s; v.play().catch(() => {}); }
+    else if (v.srcObject) v.srcObject = null;
+    v.classList.toggle('on', !!s);
   }
-  function setPlain(on) {
-    V.plain = !!on;
-    store.set('beside.plaincall', V.plain ? '1' : '0');
+
+  // The dot: drag it to any corner (it settles in the nearest one), tap it to swap who is big. A tap is a touch
+  // that hardly moved; the swap happens on the dot itself, so the stage's own tap (wake the bars) is not a swap.
+  function dotWire() {
+    const d = $('dotSlot');
+    if (!d) return;
+    let s = null;
+    d.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || s) return;
+      s = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+      try { d.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+    d.addEventListener('pointermove', (e) => {
+      if (!s || e.pointerId !== s.id) return;
+      const dx = e.clientX - s.x, dy = e.clientY - s.y;
+      if (!s.moved && Math.hypot(dx, dy) < 8) return;
+      s.moved = true;
+      d.classList.add('drag');
+      d.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) + 'px)';
+    });
+    const end = (e) => {
+      if (!s || e.pointerId !== s.id) return;
+      const moved = s.moved;
+      s = null;
+      if (!moved) { if (e.type === 'pointerup') dotTap(); return; }
+      const box = $('watchRoot').getBoundingClientRect(), r = d.getBoundingClientRect();
+      const cx = r.left + r.width / 2 - box.left, cy = r.top + r.height / 2 - box.top;
+      V.corner = (cy < box.height / 2 ? 't' : 'b') + (cx < box.width / 2 ? 'l' : 'r');
+      app.dotMoves = (app.dotMoves || 0) + 1;
+      d.classList.remove('drag');
+      void d.offsetWidth; // from where the finger left it, into the corner
+      d.style.transform = '';
+      layout();
+    };
+    d.addEventListener('pointerup', end);
+    d.addEventListener('pointercancel', end);
+    d.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dotTap(); } });
+  }
+  function dotTap() {
+    if (!V.pair || (V.view !== 'beside' && V.view !== 'film')) return; // your own dot among three or more never swaps
+    V.focus = V.focus === 'self' ? 'them' : 'self';
+    app.swaps = (app.swaps || 0) + 1;
     layout();
   }
-  // Our own double tap (touch, pen or mouse): Safari on iPhone and iPad sends no dblclick for a quick double tap.
-  let dtap = null;
-  function zoomTap(e) {
-    const r = $('watchRoot');
-    if (!V.roomOk || !r || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    if (e.target && e.target.closest && e.target.closest('button, input, a, .dock, .hud .top, .soundpop, .peek, .hear, .ytbox')) { dtap = null; return; }
-    const now = Date.now();
-    if (dtap && now - dtap.t < 400 && Math.hypot(e.clientX - dtap.x, e.clientY - dtap.y) < 40) {
-      dtap = null; clearTimeout(V.swapT); V.noClick = now + 450; // this tap's click is not a swap
-      setPlain(!V.plain);
-      return;
-    }
-    dtap = { t: now, x: e.clientX, y: e.clientY };
-  }
-
-  // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
+  // A tap on a small picture makes it big; tap the one that was big (now small) to go back. You never go big here.
   function swapTap(e) {
-    if (CV.kind === 'video' && amSharing() && e.target && e.target.closest && e.target.closest('#screenTile')) { videoToggle(); return; }
-    if (V.room || Date.now() < V.noClick) return; // in the room a tap is half of a double tap
-    // In the plain call a tap still swaps, a moment later, unless it turns out to be half of a double tap.
-    if (V.roomOk) { clearTimeout(V.swapT); V.swapT = setTimeout(() => swapAct(e), 320); return; }
-    swapAct(e);
-  }
-  function swapAct(e) {
-    // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
-    if (V.pair) {
-      const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
-      if (!p) return;
-      if (p.classList.contains('half')) setLayout('focus', p.dataset.key === 'self' ? 'self' : 'them');
-      else setLayout('split');
-      return;
-    }
-    const t = e.target && e.target.closest && e.target.closest('.tile.small');
+    const t = e.target && e.target.closest ? e.target : null;
     if (!t) return;
-    const k = t.dataset.key;
-    if (!k || k === 'self' || k === 'avatar' || k === 'invite') return;
+    if (CV.kind === 'video' && amSharing() && t.closest('#screenTile')) { videoToggle(); return; }
+    const s = t.closest('#bubbles .tile.small');
+    if (!s) return;
+    const k = s.dataset.key;
+    if (!k || k === 'self' || k === 'invite') return;
     V.pin = k === V.auto ? '' : k;
     layout();
   }
-  // More: a bottom sheet on phones, a small card on computers.
-  function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
-  function openMore() {
+  // More: the tray above the bar. Setup is today's More sheet, a bottom sheet on phones and a card on computers.
+  function trayIsOpen() { const t = $('tray'); return !!t && !t.hidden; }
+  function trayOpen(on) {
+    const t = $('tray'), b = $('moreBtn');
+    if (!t) return;
+    t.hidden = !on;
+    if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) {
+      soundOpen(false);
+      wakeControls();
+      const f = t.querySelector('.tb:not([hidden])');
+      if (f && !matchMedia('(pointer: coarse)').matches) f.focus();
+    }
+  }
+  function setupIsOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
+  function moreOpen() { return trayIsOpen() || setupIsOpen(); }
+  function setupOpen() {
     const m = $('moreSheet');
     if (!m) return;
+    trayOpen(false);
     const ch = $('changeBtn');
     if (ch) ch.hidden = !amSharing() || isGuest || !!CV.kind;
+    setupVals();
     m.hidden = false;
     wakeControls();
     const x = $('moreClose');
     if (x) x.focus();
   }
-  function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+  // Setup's rows show their current value: the picture priority, your name, the last Check my setup, and which
+  // device the ring row is about. Rings, the mode and the name keep their own code; this only reads them.
+  function setupVals() {
+    text('modeVal', H.mode === 'motion' ? 'Smooth motion' : 'Sharp text');
+    text('nameVal', myName());
+    const cv = $('checkVal');
+    if (cv) {
+      const bad = app.checkDone ? Object.values(app.checks || {}).filter((c) => c.state === 'bad').length : -1;
+      cv.textContent = bad < 0 ? '' : bad ? bad + (bad === 1 ? ' problem' : ' problems') : 'All good';
+      cv.classList.toggle('good', bad === 0);
+      cv.classList.toggle('bad', bad > 0);
+    }
+    const pad = /iPad/.test(navigator.userAgent) || (IS_IOS && Math.min(screen.width, screen.height) >= 600);
+    text('ringRowName', pad ? 'Ring this iPad' : matchMedia('(pointer: coarse)').matches ? 'Ring this phone' : 'Ring this computer');
+  }
+  function closeMore() { trayOpen(false); const m = $('moreSheet'); if (m) m.hidden = true; }
+  // Watch a film: the Share sheet, at its link field (a YouTube link plays for everyone).
+  function filmAsk() {
+    shareOpen(true);
+    shareFilm();
+  }
   function soundOpen(on) {
     const p = $('soundPop'), b = $('soundBtn');
     if (!p) return;
@@ -1986,19 +2453,25 @@
     if (!tile || !tile.classList.contains('big') || amSharing() || !screenSource()) return false;
     return isGuest ? G.hostVer >= 2 : !!H.sharer && H.sharer !== H.me;
   }
+  // Each person is one colour everywhere: Mo blue, Semal gold, anyone else neutral.
   function dotColor(id) {
-    if (id === (isGuest ? hostId : H.me)) return 'var(--clay)';
-    let h = 0;
-    for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return ['var(--moss)', 'var(--amber)', 'var(--sky)'][h % 3];
+    const me = isGuest ? (G.peer && G.peer.id) : H.me;
+    if (id && id === me) return ['var(--me)', 'var(--on-me)'];
+    const pair = isGuest ? id === hostId : (watchers()[0] || {}).id === id;
+    return pair ? ['var(--them)', 'var(--on-them)'] : ['var(--ink-2)', 'var(--bg)'];
   }
   function dotEl(doc, x, y, from, name) {
     const el = doc.createElement('div');
     el.className = 'dot';
     el.style.left = Math.round(x * 1000) / 10 + '%';
     el.style.top = Math.round(y * 1000) / 10 + '%';
-    el.style.setProperty('--dc', dotColor(from));
-    el.textContent = (name || '').charAt(0).toUpperCase();
+    const dc = dotColor(from);
+    el.style.setProperty('--dc', dc[0]);
+    el.style.setProperty('--dct', dc[1]);
+    const nm = doc.createElement('span');
+    nm.className = 'dot-name';
+    nm.textContent = name || '';
+    el.appendChild(nm);
     setTimeout(() => el.remove(), 2600);
     return el;
   }
@@ -2083,7 +2556,8 @@
 
   // ---------- FACES WINDOW ----------
   // Chrome and Edge, in a call: the faces pop out into their own always-on-top window (Document Picture-in-
-  // Picture), like Teams. You on one side, them on the other; three people split three ways, four make a grid.
+  // Picture), like Teams. Two people: their face fills it and you are a round dot bottom right, as in the call;
+  // three people split three ways, four make a grid. One glass pill bottom left: Mic, Camera and a red End.
   // Drag it over the tab you share or onto another screen and size it as you like. It is its own window, so it
   // never shows in the shared picture. While you share, a dot someone puts on your screen flashes up in it.
   const HAS_MINI = 'documentPictureInPicture' in window;
@@ -2118,7 +2592,7 @@
       win = await window.documentPictureInPicture.requestWindow(miniSize(people().length));
     } catch (e) {
       mini.opening = false;
-      note('The faces window didn’t open. Press Pop out to try again.', 'info');
+      note('The faces window didn’t open. Press Small window to try again.', 'info');
       return;
     }
     mini.opening = false;
@@ -2127,11 +2601,14 @@
     const css = document.querySelector('style');
     const st = d.createElement('style');
     st.textContent = css ? css.textContent : '';
+    // the tokens come with the page's styles; the fonts are their own links
+    document.querySelectorAll('link[rel=stylesheet]').forEach((l) => d.head.appendChild(d.importNode(l, false)));
     const meta = d.createElement('meta');
     meta.name = 'color-scheme';
     meta.content = 'light dark';
     d.head.append(meta, st);
     d.title = 'Beside';
+    d.documentElement.className = 'dark ' + (isGuest ? 'as-semal' : 'as-mo');
     d.body.className = 'mini-body';
     const div = (cls) => { const e = d.createElement('div'); e.className = cls; return e; };
     const root = div('fw');
@@ -2150,7 +2627,10 @@
     const snd = soundPanel(d, { noTest: true });
     snd.classList.add('fw-sound');
     snd.hidden = true;
+    const acts = div('fw-acts');
     const bar = div('fw-bar');
+    const stopBar = div('fw-bar fw-stopbar');
+    stopBar.hidden = true;
     const btn = (actName, label, from, cls) => {
       const b = d.createElement('button');
       b.className = 'mini-btn ' + (cls || '');
@@ -2165,12 +2645,20 @@
     stop.className = 'mini-btn stop';
     stop.dataset.act = 'unshare';
     stop.textContent = 'Stop sharing';
-    bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'));
-    if (CAN_VOL) bar.append(btn('sound', 'Sound', '#soundBtn'));
-    bar.append(stop);
-    root.append(grid, stage, peek, wait, snd, bar);
+    // End does what the call's own end button does (the host ends the call, a guest leaves it)
+    const endFrom = isGuest ? '#leaveBtn' : '#stopBtn';
+    const endB = $(isGuest ? 'leaveBtn' : 'stopBtn');
+    bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'),
+      btn('end', (endB && endB.getAttribute('aria-label')) || 'End the call', endFrom, 'end'));
+    stopBar.append(stop);
+    acts.append(bar, stopBar);
+    // Sound: a small round button top right that shows when the pointer moves; its panel opens below it
+    const sndBtn = CAN_VOL ? btn('sound', 'Sound', '#soundBtn', 'fw-sndbtn') : null;
+    if (sndBtn) sndBtn.setAttribute('aria-expanded', 'false');
+    root.append(grid, stage, peek, wait, snd, acts);
+    if (sndBtn) root.append(sndBtn);
     d.body.appendChild(root);
-    bar.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
+    root.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
     const awake = () => {
       root.classList.add('awake');
       clearTimeout(mini.awakeTimer);
@@ -2183,7 +2671,7 @@
     ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, () => fitLayer(v, dots)));
     win.addEventListener('pagehide', () => { if (mini.win === win) { mini.win = null; mini.els = null; layout(); } });
     mini.win = win;
-    mini.els = { grid, stage, v, dots, peek, wait, bar, snd, root };
+    mini.els = { grid, stage, v, dots, peek, wait, bar, stopBar, sndBtn, snd, root };
     mini.sig = '';
     layout();
     soundUi();
@@ -2194,7 +2682,11 @@
     if (name === 'mute') { if (isGuest) guestMute(); else hostMute(); }
     else if (name === 'cam') { if (isGuest) guestCam(); else hostCam(); }
     else if (name === 'unshare') { if (isGuest) guestUnshare(); else hostUnshare(); }
-    else if (name === 'sound' && mini.els) { mini.els.snd.hidden = !mini.els.snd.hidden; mini.els.root.classList.toggle('awake', !mini.els.snd.hidden); }
+    else if (name === 'sound' && mini.els) {
+      mini.els.snd.hidden = !mini.els.snd.hidden;
+      mini.els.root.classList.toggle('awake', !mini.els.snd.hidden);
+      if (mini.els.sndBtn) mini.els.sndBtn.setAttribute('aria-expanded', mini.els.snd.hidden ? 'false' : 'true');
+    } else if (name === 'end') { const e = $(isGuest ? 'leaveBtn' : 'stopBtn'); if (e) e.click(); return; }
     miniRender();
   }
   function miniClose() {
@@ -2211,6 +2703,9 @@
     const g = mini.els.grid;
     const tiles = [...g.children];
     const n = tiles.length, W = g.clientWidth, Ht = g.clientHeight;
+    mini.els.root.dataset.n = String(n);
+    // two people: their face fills the window and you are the dot (sized by the styles, not here)
+    if (n === 2) { tiles.forEach((t) => { t.style.width = ''; t.style.height = ''; }); g.dataset.cols = ''; return; }
     if (!n || !W || !Ht) return;
     let best = null;
     for (let c = 1; c <= n; c++) {
@@ -2274,8 +2769,7 @@
     if (m) m.setAttribute('aria-pressed', muted ? 'true' : 'false');
     const c = bar.querySelector('[data-act=cam]');
     if (c) c.setAttribute('aria-pressed', camOn ? 'true' : 'false');
-    const s = bar.querySelector('[data-act=unshare]');
-    if (s) s.hidden = !amSharing();
+    mini.els.stopBar.hidden = !amSharing();
   }
   function miniDot(x, y, from, name) {
     if (!mini.win || !mini.els || !amSharing()) return;
@@ -2308,14 +2802,18 @@
     try { navigator.mediaSession.setActionHandler('enterpictureinpicture', on && HAS_MINI ? () => { miniOpen(); } : null); } catch (e) { /* not offered here */ }
   }
   // The Sound panel: what you hear, and how your mic is sent. One in the call, one in the faces window and one in
-  // the Sound and mic sheet outside a call; all show the same.
+  // the Sound sheet outside a call; all show the same: a grouped card (Their voice, Film sound, the switch), the
+  // five mic chips with one line on the chosen one, then Hear myself and Fix sound side by side.
+  function rangeFill(r) { r.style.setProperty('--pct', (r.value - r.min) / ((r.max - r.min) || 1) * 100 + '%'); }
   function soundPanel(doc, opts) {
     opts = opts || {};
     const box = doc.createElement('div');
     box.className = 'sound';
     const head = (txt) => { const h = doc.createElement('h3'); h.className = 'sound-h'; h.textContent = txt; return h; };
-    box.appendChild(head('What you hear'));
-    [['voice', 'Their voice', 150], ['media', 'Video sound', 100]].forEach(([k, label, max]) => {
+    const card = doc.createElement('div');
+    card.className = 'sound-card';
+    box.appendChild(card);
+    [['voice', 'Their voice', 150], ['media', 'Film sound', 100]].forEach(([k, label, max]) => {
       const row = doc.createElement('label');
       row.className = 'sound-row';
       row.dataset.k = k;
@@ -2326,22 +2824,25 @@
       r.type = 'range'; r.min = '0'; r.max = String(max); r.step = '1';
       r.value = String(Math.round(SND[k] * 100));
       r.setAttribute('aria-label', label);
-      r.addEventListener('input', () => setVol(k, r.value / 100));
+      rangeFill(r);
+      r.addEventListener('input', () => { rangeFill(r); r.setAttribute('aria-valuetext', r.value + '%'); setVol(k, r.value / 100); });
       const pct = doc.createElement('span');
       pct.className = 'sound-pct';
       row.append(name, r, pct);
-      box.appendChild(row);
+      card.appendChild(row);
     });
     const dk = doc.createElement('label');
     dk.className = 'sound-tog';
     const dcb = doc.createElement('input');
     dcb.type = 'checkbox';
+    dcb.className = 'sw';
+    dcb.setAttribute('role', 'switch');
     dcb.checked = SND.duck;
     dcb.addEventListener('change', () => setDuck(dcb.checked));
     const dt = doc.createElement('span');
-    dt.textContent = 'Lower the video when someone talks';
-    dk.append(dcb, dt);
-    box.appendChild(dk);
+    dt.textContent = 'Quieter film when someone talks';
+    dk.append(dt, dcb);
+    card.appendChild(dk);
     const hint = doc.createElement('p');
     hint.className = 'sound-hint';
     box.appendChild(hint);
@@ -2366,11 +2867,14 @@
     const say = doc.createElement('p');
     say.className = 'sound-say';
     box.appendChild(say);
+    const acts = doc.createElement('div');
+    acts.className = 'sound-acts';
+    box.appendChild(acts);
     if (!opts.noTest) {
       const tb = doc.createElement('button');
       tb.type = 'button';
       tb.className = 'btn quiet sound-test';
-      tb.textContent = 'Hear myself';
+      tb.innerHTML = ico('ear') + '<span>Hear myself</span>';
       const ts = doc.createElement('span');
       ts.className = 'sound-test-say';
       ts.setAttribute('aria-live', 'polite');
@@ -2378,7 +2882,7 @@
       const tr = doc.createElement('div');
       tr.className = 'sound-testrow';
       tr.append(tb, ts);
-      box.appendChild(tr);
+      acts.appendChild(tr);
     }
     // In a call: one button that restarts the sound on both sides (see SOUND WATCH).
     const fr = doc.createElement('div');
@@ -2387,13 +2891,13 @@
     const fb = doc.createElement('button');
     fb.type = 'button';
     fb.className = 'btn quiet sound-fix';
-    fb.textContent = 'Fix sound';
+    fb.innerHTML = ico('tools') + '<span>Fix sound</span>';
     fb.addEventListener('click', () => soundFix());
     const fs = doc.createElement('span');
     fs.className = 'sound-test-say sound-fix-say';
     fs.setAttribute('aria-live', 'polite');
     fr.append(fb, fs);
-    box.appendChild(fr);
+    acts.appendChild(fr);
     return box;
   }
   function soundUi() {
@@ -2405,7 +2909,9 @@
         const r = row.querySelector('input');
         const n = Math.round(SND[k] * 100);
         if (+r.value !== n) r.value = String(n);
+        rangeFill(r);
         row.querySelector('.sound-pct').textContent = n + '%';
+        r.setAttribute('aria-valuetext', n + '%');
         // An iPhone or iPad plays voices at full volume while a video is open together (see outRest).
         const off = (k === 'media' && amSharing() && !W.id) || (k === 'voice' && IS_IOS && !!W.id);
         r.disabled = off;
@@ -2431,6 +2937,8 @@
           : !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
           : mine ? 'You’re sharing: use the video’s own volume. Everyone hears that change.'
             : 'You’re sharing without sound. Share a tab with “Also share tab audio” on to send its sound.';
+        // the usual line ("Changes only what you hear") is left off the panel; a line that explains a slider is kept
+        h.hidden = !(IS_IOS && W.id) && !amSharing();
       }
     });
   }
@@ -2534,6 +3042,9 @@
     if (b) { b.hidden = !C.unread; b.textContent = C.unread > 9 ? '9+' : String(C.unread); }
     const cb = $('chatBtn');
     if (cb) cb.setAttribute('aria-label', C.unread ? 'Chat, ' + C.unread + ' new' : 'Chat');
+    const md = $('moreDot'), mb = $('moreBtn');
+    if (md) md.hidden = !C.unread;
+    if (mb) mb.setAttribute('aria-label', C.unread ? 'More, a new message' : 'More');
     docTitle();
   }
   function chatOpen(on) {
@@ -2564,10 +3075,43 @@
       a.href = url;
       a.target = '_blank';
       a.rel = 'noopener';
-      a.textContent = url;
+      a.textContent = linkLabel(url);
+      a.title = url;
       el.appendChild(a);
       if (tail) el.appendChild(document.createTextNode(tail));
     });
+  }
+  // A link as people say it: the site and the page, without https:// or www, cut short when long.
+  function linkLabel(url) {
+    let t = url;
+    try { const u = new URL(url); t = u.hostname.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname) + u.search; } catch (e) {}
+    return t.length > 42 ? t.slice(0, 40) + '…' : t;
+  }
+  // A message that is only a link: a card you can open (its icon, the site, the page, and Open).
+  function linkCard(body, url) {
+    let host = url, page = '';
+    try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); page = (u.pathname === '/' ? '' : u.pathname) + u.search; } catch (e) {}
+    const a = document.createElement('a');
+    a.className = 'linkcard';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = url;
+    const fic = document.createElement('span');
+    fic.className = 'fic';
+    fic.setAttribute('aria-hidden', 'true');
+    fic.innerHTML = ico('link');
+    const w = document.createElement('span');
+    const b = document.createElement('b');
+    b.textContent = host;
+    w.appendChild(b);
+    if (page) { const sm = document.createElement('small'); sm.textContent = page; w.appendChild(sm); }
+    const go = document.createElement('span');
+    go.className = 'go';
+    go.textContent = 'Open';
+    a.append(fic, w, go);
+    body.classList.add('linkmsg');
+    body.appendChild(a);
   }
   function chatRow(mine, name) {
     const list = $('chatList');
@@ -2582,7 +3126,8 @@
     if (list) {
       const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
       list.appendChild(row);
-      if (stick || mine) list.scrollTop = list.scrollHeight;
+      // after the caller has filled the bubble (text, a card), so the whole of it shows
+      if (stick || mine) Promise.resolve().then(() => { list.scrollTop = list.scrollHeight; });
     }
     return body;
   }
@@ -2594,13 +3139,15 @@
   function chatAdd(mine, name, t) {
     trimChat();
     const body = chatRow(mine, name);
-    linkify(body, t);
+    const lone = String(t).trim().match(/^https?:\/\/[^\s<>"']+$/);
+    if (lone && !ytId(t)) linkCard(body, lone[0].replace(/[.,!?;:)\]]+$/, ''));
+    else linkify(body, t);
     if (ytId(t)) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn quiet ytgo';
       b.textContent = 'Watch together';
-      b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 699px)').matches) chatOpen(false); });
+      b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 899px)').matches) chatOpen(false); });
       body.appendChild(b);
     }
     if (!mine) incoming(name, ': ' + t);
@@ -2635,7 +3182,7 @@
     if (!t || !chatAvailable()) return;
     inp.value = '';
     chatPost(t);
-    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 699px)').matches) chatOpen(false);
+    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 899px)').matches) chatOpen(false); // the sheet would cover the film; the docked chat stays
   }
   function chatPost(t) {
     const msg = { t: 'chat', id: rid(), text: t };
@@ -2668,7 +3215,7 @@
   // ("Let Beside ring me": a web push, kept by the board's server for this room). In the Beside iPhone and iPad
   // app the ring is a real incoming call, and the app hands its device code over by itself (window.BesideNative).
   // Tapping the ring opens Beside with ?answer=1, which joins (guest) or starts the call (host) straight away.
-  const RG = { busy: false, until: 0 };
+  const RG = { busy: false, until: 0, ringAt: 0, name: '', t: 0, bannerT: 0 };
   const ringBase = () => (srv ? 'http://' + srv : '') + '/peerjs/board/' + boardRoom();
   const ringRole = () => (isGuest ? 'guest' : 'host');
   function ringOpen() { return isGuest ? location.origin + location.pathname + location.hash : location.origin + location.pathname + '?room=' + hostCode(); }
@@ -2681,14 +3228,15 @@
     return IS_IOS && !navigator.standalone && !(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   }
   const ringKey = () => 'beside.ring.' + boardRoom() + '.' + ringRole();
+  // Calls and setup's row: "Ring this phone" (or device), On or Off. The Beside app rings by itself, so it has none.
   function ringMeUi() {
     const on = !!store.get(ringKey());
     document.querySelectorAll('.ring-me').forEach((b) => {
       b.hidden = NATIVE();
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      const t = b.querySelector('span') || b;
-      t.textContent = on ? 'Beside rings this device' : 'Let Beside ring me';
     });
+    text('ringMeLabel', /iPhone|iPod|Android.+Mobile/.test(navigator.userAgent) ? 'Ring this phone' : 'Ring this device');
+    text('ringMeVal', on ? 'On' : 'Off');
   }
   function b64uBytes(s) {
     const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
@@ -2711,12 +3259,12 @@
       ringMeUi();
       return;
     }
-    if (ringStandaloneNeeded()) { note('On iPhone and iPad, rings need Beside on your Home Screen. Tap Share, then Add to Home Screen, open Beside from there and tap this again.', 'stay'); return; }
+    if (ringStandaloneNeeded()) { if (!steps('homescreen')) note('On iPhone and iPad, rings need Beside on your Home Screen. Tap Share, then Add to Home Screen, open Beside from there and tap this again.', 'stay'); return; }
     if (!('PushManager' in window) || !('Notification' in window) || !('serviceWorker' in navigator)) { note('This browser can’t ring. Use Chrome, Firefox, Safari on a Mac, or Beside from the iPhone Home Screen.', 'stay'); return; }
     RG.busy = true;
     try {
       const perm = await Notification.requestPermission(); // first, while the tap still counts
-      if (perm !== 'granted') throw new Error('Rings need notifications. Turn them on for Beside in Settings, then tap this again.');
+      if (perm !== 'granted') throw Object.assign(new Error('Rings need notifications. Turn them on for Beside in Settings, then tap this again.'), { steps: 'notify' });
       const k = await fetch((srv ? 'http://' + srv : '') + '/peerjs/push/key', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
       if (!k.key) throw new Error('Rings aren’t switched on at Beside’s server yet.');
       const reg = await ringSw();
@@ -2731,7 +3279,7 @@
       await ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), web: { endpoint: j.endpoint, keys: j.keys } });
       store.set(ringKey(), j.endpoint);
       note('Done. When ' + (isGuest ? (theirName || 'they') : 'your person') + ' rings, this device will too.', 'info');
-    } catch (e) { note(e.message || 'That didn’t work. Try again.', 'stay'); }
+    } catch (e) { if (!(e && e.steps && steps(e.steps))) note(e.message || 'That didn’t work. Try again.', 'stay'); }
     RG.busy = false;
     ringMeUi();
   }
@@ -2755,11 +3303,43 @@
     try {
       const j = await ringPost('/ring', { role: ringRole(), name: isGuest ? boardName() : (myName() || 'Your person') });
       const who = isGuest ? (theirName || 'them') : ((j.names && j.names[0]) || 'them');
-      if (j.sent > 0) { note('Ringing ' + who + '…', 'info'); ringHop(); }
-      else if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
-      else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay');
-    } catch (e) { note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
+      if (!isGuest && j.names && j.names[0]) RG.name = cleanName(j.names[0]);
+      // The host's call screen says "Ringing" itself (their head, pulsing); the guest's waiting screen gets a note.
+      if (j.sent > 0) { if (isGuest) note('Ringing ' + who + '…', 'info'); else ringing(true); }
+      else { ringing(false); if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
+      else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay'); }
+    } catch (e) { ringing(false); note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
     setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
+  }
+  // The host's screen while it rings: for 45 s, or until someone comes in.
+  function ringing(on) {
+    RG.ringAt = on ? Date.now() : 0;
+    clearTimeout(RG.t);
+    if (on) RG.t = setTimeout(layout, 45100);
+    if (app.state === 'live') layout();
+  }
+  // A ring while Beside is open in a browser (a computer, an iPad): the same look as the call, with Answer and Not
+  // now. The notification shows as well; either one answers.
+  function ringHere(url) {
+    let u = null;
+    try { u = new URL(url || './', location.href); } catch (x) { return false; }
+    const m = u.hash.slice(1).match(/^([a-z0-9]{8})/);
+    return isGuest ? !m || m[1] === guestCode : !m && (u.searchParams.get('room') || hostCode()) === hostCode();
+  }
+  function ringBanner(url) {
+    const b = $('ringBanner');
+    if (!b) return;
+    clearTimeout(RG.bannerT);
+    if (!url || !ringHere(url) || ['waiting', 'live', 'watching'].includes(app.state)) { b.hidden = true; return; }
+    putHead($('ringBannerHead'), whoThem());
+    const nm = isGuest ? theirName : ((theirRoom() || {}).name || '');
+    text('ringBannerText', nm ? nm + ' is ringing' : 'They are ringing');
+    b.hidden = false;
+    RG.bannerT = setTimeout(() => { b.hidden = true; }, 45000);
+  }
+  function ringNoteClose() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.getRegistration().then((r) => (r ? r.getNotifications({ tag: 'beside-ring' }) : [])).then((ns) => ns.forEach((n) => n.close())).catch(() => {});
   }
   function ringAnswer() {
     let q;
@@ -2813,14 +3393,19 @@
     document.querySelectorAll('.ring-me').forEach((b) => b.addEventListener('click', ringMe));
     on('ringBtn', 'click', (e) => ringThem(e.currentTarget));
     on('gRingBtn', 'click', (e) => ringThem(e.currentTarget));
-    if (theirName) text('gRingBtn', 'Ring ' + theirName);
+    const gr = $('gRingBtn') && $('gRingBtn').querySelector('span');
+    if (gr && theirName) gr.textContent = 'Ring ' + theirName;
+    on('ringBannerAnswer', 'click', () => { ringBanner(''); ringNoteClose(); ringAnswerNow(); });
+    on('ringBannerNot', 'click', () => { ringBanner(''); ringNoteClose(); });
     ringMeUi();
     ringNative();
     window.addEventListener('besidenative', () => { ringMeUi(); ringNative(); });
     on('nameInput', 'change', ringNative);
     if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
       const d = e.data;
+      if (d && d.beside === 'ringing') { ringBanner(d.url || './'); return; }
       if (!d || d.beside !== 'answer') return;
+      ringBanner('');
       if (!d.url) { if (d.fresh) ringAnswerNow(); return; } // no link said: this page
       let u = null;
       try { u = new URL(d.url, location.href); } catch (x) {}
@@ -2963,8 +3548,42 @@
     const n = $('ytNote'), k = $('ytKeep');
     if (!n || !k) return;
     const away = !W.play && W.away && W.away !== meName();
-    n.textContent = msg || (away ? 'Paused: ' + W.away + ' left.' : '');
+    const all = people().length > 2 ? 'everyone' : 'both of you';
+    n.textContent = msg || (away ? 'Paused: ' + W.away + ' left.' : (W.play ? 'Playing for ' : 'Paused for ') + all);
     k.hidden = !away || !!msg;
+    ytCtl();
+  }
+  // One line of controls under the film: play or pause, where in the film, the time, and Stop. They work for
+  // everyone, the same way as a press on the YouTube player itself: the new state goes to all (ytSend).
+  function ytDur() { try { return W.p && W.ready ? W.p.getDuration() || 0 : 0; } catch (e) { return 0; } }
+  function ytCtl() {
+    const box = $('ytBox');
+    clearTimeout(W.ctlT);
+    if (!box || box.hidden || !W.id) return;
+    W.ctlT = setTimeout(ytCtl, 500);
+    box.classList.toggle('paused', !W.play);
+    const dur = ytDur(), cur = W.seeking ? +(($('ytSeek') || {}).value || 0) : Math.min(ytNow(), dur || Infinity);
+    const sk = $('ytSeek');
+    if (sk && !W.seeking) {
+      sk.max = String(Math.max(1, Math.floor(dur)));
+      sk.value = String(Math.floor(cur));
+      sk.style.setProperty('--pct', (dur ? Math.min(100, (cur / dur) * 100) : 0).toFixed(1) + '%');
+    }
+    const m = Math.floor(cur / 60);
+    text('ytTime', (m >= 60 ? Math.floor(m / 60) + ':' + pad2(m % 60) : m) + ':' + pad2(Math.floor(cur % 60)));
+    const pb = $('ytPlay');
+    if (pb && pb.dataset.play !== String(W.play)) {
+      pb.dataset.play = String(W.play);
+      pb.innerHTML = ico(W.play ? 'pause' : 'play', 20);
+      pb.setAttribute('aria-label', W.play ? 'Pause for everyone' : 'Play for everyone');
+    }
+  }
+  function ytWire() {
+    on('ytPlay', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytNow(), play: !W.play }); });
+    const sk = $('ytSeek');
+    if (!sk) return;
+    sk.addEventListener('input', () => { W.seeking = true; const d = ytDur(); sk.style.setProperty('--pct', (d ? (sk.value / d) * 100 : 0).toFixed(1) + '%'); ytCtl(); });
+    sk.addEventListener('change', () => { W.seeking = false; if (W.id) ytSend({ id: W.id, at: +sk.value || 0, play: W.play }); });
   }
   function ytClose(remote) {
     const had = !!W.id;
@@ -3055,6 +3674,10 @@
     const body = chatRow(mine, name);
     const card = document.createElement('div');
     card.className = 'filecard';
+    const fic = document.createElement('span');
+    fic.className = 'fic';
+    fic.setAttribute('aria-hidden', 'true');
+    fic.innerHTML = ico('file');
     const fn = document.createElement('div');
     fn.className = 'fname';
     fn.textContent = f.fname;
@@ -3066,7 +3689,7 @@
     bar.appendChild(fill);
     const acts = document.createElement('div');
     acts.className = 'acts';
-    card.append(fn, meta, bar, acts);
+    card.append(fic, fn, meta, bar, acts);
     body.appendChild(card);
     let last = 0;
     const verb = mine ? 'Sending' : 'Receiving';
@@ -3093,6 +3716,9 @@
       finish(url, type) {
         api.progress(1);
         if (isImage(type)) { api.photo(url); return; }
+        // the card grows by its buttons: a chat that was at the bottom stays at the bottom
+        const l = $('chatList');
+        const stick = !!l && l.scrollHeight - l.scrollTop - l.clientHeight < 80;
         if (type === 'application/pdf') {
           const o = document.createElement('a');
           o.href = url; o.target = '_blank'; o.rel = 'noopener'; o.textContent = 'Open'; o.className = 'open';
@@ -3101,6 +3727,7 @@
         const s = document.createElement('a');
         s.href = url; s.download = f.fname; s.textContent = 'Save'; s.className = 'save';
         acts.appendChild(s);
+        if (stick) l.scrollTop = l.scrollHeight;
       },
       fail(msg) {
         card.dataset.pct = 'failed';
@@ -3276,6 +3903,22 @@
     const sb = $('shareScreen');
     if (sb) { sb.hidden = !CAN_SHARE; sb.disabled = !!why.screen; }
     text('shareScreenWhy', why.screen || 'Shows one tab or one window. Never the whole screen.');
+    // A film: the link field, ready for a YouTube link, so it can do what a link can.
+    set('shareFilmOpt', 'shareFilmBtn', 'shareFilmWhy', why.link, 'YouTube plays for both of you.');
+    const lw = $('shareLinkWhy');
+    if (lw) lw.classList.remove('said');
+  }
+  // A line under the link field that must be seen (the sheet otherwise keeps the link's usual line for a screen reader).
+  function linkSay(t) {
+    text('shareLinkWhy', t);
+    const lw = $('shareLinkWhy');
+    if (lw) lw.classList.add('said');
+  }
+  function shareFilm() {
+    const i = $('shareLinkInput');
+    if (!i || i.disabled) return;
+    linkSay('Paste a YouTube link here. It plays for both of you.');
+    i.focus();
   }
   // A pasted link: the address itself, or the first link inside some pasted words. "example.com" gets https://.
   function shareUrl(raw) {
@@ -3290,9 +3933,9 @@
   function shareLinkGo() {
     const inp = $('shareLinkInput');
     const why = shareWhy();
-    if (why.link) { text('shareLinkWhy', why.link); return; }
+    if (why.link) { linkSay(why.link); return; }
     const u = shareUrl(inp && inp.value);
-    if (!u) { text('shareLinkWhy', 'That isn’t a link. Copy the page’s address, then tap Paste.'); return; }
+    if (!u) { linkSay('That isn’t a link. Copy the page’s address, then tap Paste.'); return; }
     if (inp) inp.value = '';
     shareOpen(false);
     if (ytId(u)) {
@@ -3310,9 +3953,9 @@
     try {
       const t = await navigator.clipboard.readText();
       if (inp) inp.value = (t || '').trim();
-      if (!shareUrl(t)) text('shareLinkWhy', 'There’s no link to paste. Copy the page’s address first.');
+      if (!shareUrl(t)) linkSay('There’s no link to paste. Copy the page’s address first.');
     } catch (e) {
-      text('shareLinkWhy', 'Paste isn’t allowed here. Tap the box, then paste the link into it.');
+      linkSay('Paste isn’t allowed here. Tap the box, then paste the link into it.');
       if (inp) inp.focus();
     }
   }
@@ -3325,7 +3968,7 @@
     c.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
     const x = c.getContext('2d');
     if (!x) return null;
-    x.fillStyle = '#000';
+    x.fillStyle = '#000'; // paint: plain black behind a shared picture, as a video has
     x.fillRect(0, 0, w, h);
     let s = null;
     try { s = c.captureStream(fps); } catch (e) { s = null; }
@@ -3358,16 +4001,18 @@
     if (!c || !x || !sw || !sh) return;
     const k = Math.min(c.width / sw, c.height / sh);
     const w = sw * k, h = sh * k;
-    x.fillStyle = '#000';
+    x.fillStyle = '#000'; // paint: plain black behind a shared picture, as a video has
     x.fillRect(0, 0, c.width, c.height);
     try { x.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h); CV.frames++; } catch (e) {}
   }
   function canvasWords(words) {
     const c = CV.canvas, x = CV.x;
     if (!c || !x) return;
-    x.fillStyle = '#201A13';
+    const st = document.querySelector('.stage.watch') || document.documentElement;
+    const cs = getComputedStyle(st);
+    x.fillStyle = cs.getPropertyValue('--bg').trim() || 'black';
     x.fillRect(0, 0, c.width, c.height);
-    x.fillStyle = '#F0E7D8';
+    x.fillStyle = cs.getPropertyValue('--ink').trim() || 'white';
     x.font = '600 ' + Math.round(c.width / 22) + 'px -apple-system, system-ui, sans-serif';
     x.textAlign = 'center';
     x.textBaseline = 'middle';
@@ -3521,10 +4166,10 @@
   }
   function shareWhat(track) {
     if (CV.kind && CV.stream && track && CV.stream.getVideoTracks()[0] === track) {
-      if (CV.kind === 'video') return CV.media && (CV.media.paused || CV.media.ended) ? 'Your video is paused. Tap it to play.' : 'You’re sharing a video. Tap it to pause.';
-      return CV.kind === 'photo' ? 'You’re sharing a photo' : 'You’re sharing a web page';
+      if (CV.kind === 'video') return CV.media && (CV.media.paused || CV.media.ended) ? 'Your video is paused. Tap it to play.' : 'You are sharing a video. Tap it to pause.';
+      return CV.kind === 'photo' ? 'You are sharing a photo' : 'You are sharing a web page';
     }
-    return 'You’re sharing ' + surfaceName(track);
+    return 'You are sharing ' + surfaceName(track);
   }
   // Someone sent a link in the chat: a banner with an Open button (a browser only opens a new tab after a tap).
   function linkBanner(name, url) {
@@ -3554,6 +4199,7 @@
     on('shareMediaInput', 'change', (e) => { const f = e.target; const file = f.files && f.files[0]; f.value = ''; shareOpen(false); sharePick(file); });
     on('shareFileBtn', 'click', () => { shareOpen(false); chatOpen(true); const f = $('fileInput'); if (f) f.click(); });
     on('shareScreen', 'click', () => { shareOpen(false); if (isGuest) guestShare(); else hostShare(); });
+    on('shareFilmBtn', 'click', shareFilm);
     on('linkBannerOpen', 'click', linkBannerOpen);
     on('linkBannerClose', 'click', () => linkBanner(''));
   }
@@ -3634,6 +4280,8 @@
     try { return !!t && t.getSettings().displaySurface === 'monitor'; } catch (e) { return false; }
   }
   const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Share, then My screen.';
+  // A Mac that blocks sharing gets its own small sheet of steps; anything else stays a short message.
+  function shareFail(e, kind) { if (e && /system/i.test(e.message || '') && steps('screenMac')) return; note(displayError(e), kind); }
   function displayError(e) {
     const browser = IS_CHROMIUM ? 'Chrome' : 'your browser';
     if (e && /system/i.test(e.message || '')) {
@@ -3671,7 +4319,7 @@
     });
     H.video = track;
   }
-  function setStartBusy(b) { ['startBtn', 'videoBtn', 'shareStartBtn', 'endedAction', 'homeRingBtn', 'callVideoBtn', 'callVoiceBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
+  function setStartBusy(b) { ['startBtn', 'endedAction', 'homeRingBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
 
   // The host's audio engine: a silent sink that keeps meters measuring, a silent track for empty lanes, and the
   // mic's level control with its meter.
@@ -3759,7 +4407,7 @@
           display = await getDisplay(true);
         } catch (e) {
           hostCleanup();
-          note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+          shareFail(e, e && /system/i.test(e.message || '') ? 'stay' : 'info');
           return;
         }
         if (isWholeScreen(display)) { display.getTracks().forEach((t) => t.stop()); hostCleanup(); note(WHOLE_SCREEN, 'stay'); return; }
@@ -3785,7 +4433,7 @@
           }
           hostMicIn();
         } catch (e) {
-          note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
+          if (!(e && e.name === 'NotAllowedError' && steps('mic'))) note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
         }
       }
       H.muted = !H.mic;
@@ -4172,7 +4820,7 @@
     H.camBusy = true;
     try {
       let s;
-      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { camFail(e, 'stay'); return; }
       if (app.state !== 'live' || H.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       H.cam = s;
       const t = s.getVideoTracks()[0];
@@ -4320,7 +4968,7 @@
       s = await getDisplay(true);
     } catch (e) {
       // Cancelling the picker is fine; a Mac that blocks sharing needs the steps.
-      if (e && /system/i.test(e.message || '')) note(displayError(e), 'stay');
+      if (e && /system/i.test(e.message || '')) shareFail(e, 'stay');
       else if (!H.video) note(displayError(e), 'info');
       return;
     } finally {
@@ -4434,11 +5082,106 @@
     stayAwake(false);
     if (wasLive && bc) bc.postMessage('off');
   }
+  // The call ended: a sheet over the dimmed stage with both of you, how long you were together, and a kind next
+  // step (a heart, sent the way the Hearts tab sends one). Done closes it; the link and Home are under it.
   function ended(title, body, action) {
-    text('endedTitle', title);
-    text('endedText', body);
+    const together = V.since ? Math.max(1, V.lastWith - V.since) : 0;
+    const who = V.withName || (isGuest ? hostLabel() : '');
+    text('endedTitle', String(title).replace(/\.$/, ''));
+    text('endedText', together && !MV.away ? howLong(together) + (who ? ' with ' + who : '') : body);
     text('endedAction', action);
+    const heart = !!together && !MV.away && boardOn && !!(window.BesideBoard && window.BesideBoard.heart);
+    const hb = $('endHeart'), ab = $('endedAction');
+    if (hb) { hb.hidden = !heart; hb.disabled = false; const t = hb.querySelector('span'); if (t) t.textContent = 'Send a heart'; }
+    if (ab) ab.hidden = heart;
+    const heads = $('endHeads');
+    if (heads) heads.innerHTML = window.BesideFigures ? '<span>' + headSvg(whoMe()) + '</span><span>' + headSvg(whoThem()) + '</span>' : '';
+    const c = document.querySelector('#endBg canvas');
+    if (c) c.hidden = !together;
     show('ended');
+  }
+  function howLong(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 1) return 'Less than a minute';
+    if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
+    const h = Math.floor(m / 60), r = m % 60;
+    return h + (h === 1 ? ' hour' : ' hours') + (r ? ' ' + r + (r === 1 ? ' minute' : ' minutes') : '');
+  }
+  function endHeart() {
+    const hb = $('endHeart');
+    if (!hb || hb.disabled || !window.BesideBoard || !window.BesideBoard.heart) return;
+    if (!window.BesideBoard.heart()) return;
+    hb.disabled = true;
+    const t = hb.querySelector('span');
+    if (t) t.textContent = 'Heart sent';
+  }
+  function endClose() { const sh = document.querySelector('.endsheet'); if (sh) sh.hidden = true; }
+
+  // ---------- JOIN (a guest who opened the link in a browser) ----------
+  // You see yourself first (or your figure, camera off), the host's head in the corner dot, and one Join button.
+  // The installed app, a ring being answered and a first visit (no name yet) open on Home as before.
+  const J = { on: false, cam: null, mic: true };
+  function joinFirst() {
+    if (!isGuest || !cleanName(store.get('beside.name') || '')) return false;
+    if (NATIVE() || navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) return false;
+    try { if (new URLSearchParams(location.search).get('answer') === '1') return false; } catch (e) {}
+    return true;
+  }
+  function joinStage(on) {
+    const st = $('joinStage');
+    if (!st || (!on && !J.on)) return;
+    J.on = !!on;
+    st.hidden = !on;
+    if (!on) { joinPreview(false); return; }
+    const n = theirName;
+    putHead($('joinFig'), whoMe());
+    putHead($('joinDot'), whoThem());
+    text('joinStageTitle', n ? 'Sit beside ' + n : 'Sit beside them');
+    text('joinStageText', 'You sit together as soon as ' + (n ? n + ' is' : 'they are') + ' in.');
+    J.mic = true;
+    joinUi();
+    // Camera on as last time, if the browser already lets Beside use it (no question before a tap).
+    const want = store.get('beside.joincam') === '1';
+    if (want && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'camera' }).then((p) => { if (p.state === 'granted' && J.on) joinPreview(true); }).catch(() => {});
+    }
+    // Is the host in the room now? The same quick look as "Move the call here" says so.
+    moveProbe((r) => {
+      if (!J.on || !r) return;
+      if (r.here) { joinStage(false); moveFound(r); return; } // already in the call on another device: Home offers to move it
+      if (r.live) text('joinStageText', (n ? n + ' is' : 'They are') + ' in the room now.');
+    });
+  }
+  function joinUi() {
+    const cam = !!J.cam;
+    const mb = $('joinMicBtn'), cb = $('joinCamBtn');
+    if (mb) { mb.setAttribute('aria-pressed', J.mic ? 'false' : 'true'); mb.setAttribute('aria-label', J.mic ? 'Join with my mic off' : 'Join with my mic on'); }
+    if (cb) { cb.setAttribute('aria-pressed', cam ? 'true' : 'false'); cb.setAttribute('aria-label', cam ? 'Turn my camera off' : 'Turn my camera on'); }
+    text('joinChipText', cam ? 'This is how you look' : 'Your camera is off');
+  }
+  async function joinPreview(on) {
+    const v = $('joinCam');
+    if (!on) {
+      if (J.cam) { J.cam.getTracks().forEach((t) => t.stop()); J.cam = null; }
+      if (v) { v.srcObject = null; v.classList.remove('on'); }
+      joinUi();
+      return;
+    }
+    if (J.cam || J.busy) return;
+    J.busy = true;
+    try {
+      const s = await getCam();
+      if (!J.on || J.cam) { s.getTracks().forEach((t) => t.stop()); return; }
+      J.cam = s;
+      if (v) { v.srcObject = s; v.classList.add('on'); v.play().catch(() => {}); }
+    } catch (e) { camFail(e, 'info'); } finally { J.busy = false; }
+    joinUi();
+  }
+  function joinGo() {
+    const cam = !!J.cam;
+    store.set('beside.joincam', cam ? '1' : '0');
+    joinStage(false);
+    guestJoin(J.mic).then(() => { if (cam && !G.left && !G.cam) guestCam(); });
   }
   // ---------- MOVE THE CALL HERE ----------
   // One person, two devices: the call is live on one (phone, iPad, Mac, browser or the Beside app) and they open
@@ -4675,7 +5418,7 @@
   const hostId = PREFIX + guestCode;
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
 
-  function setJoinBusy(b) { ['joinBtn', 'joinNoMicBtn', 'callJoinBtn', 'callJoinNoMicBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
+  function setJoinBusy(b) { ['joinBtn', 'homeRingBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
   async function guestJoin(withMic) {
     if (!peerLibOk() || G.joining || (G.peer && !G.peer.destroyed)) return; // double tap
     G.joining = true;
@@ -4707,7 +5450,7 @@
           G.mic = await getOwn('audio', micWant(CLEAR.mode));
           G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {} });
         } catch (e) {
-          note(MIC_BLOCKED, 'stay');
+          if (!(e && e.name === 'NotAllowedError' && steps('mic'))) note(MIC_BLOCKED, 'stay');
         }
       }
       G.muted = !G.mic;
@@ -4967,9 +5710,10 @@
     if (app.state === 'watching') return;
     if (G.serverDown || (G.peer && !G.peer.open)) return; // "Can't reach the call server" stays until we're back
     if (G.lost) { lostText(); return; }
-    wait(theirName ? 'You’re in. ' + theirName + ' hasn’t started the call yet.' : 'You’re in. They haven’t started the call yet.',
-      'Waiting for ' + (theirName || 'them') + '…',
-      'Keep this open. You’ll join the moment ' + (theirName ? theirName + ' starts' : 'they start') + '.');
+    wait('Waiting for ' + (theirName || 'them'), '',
+      'Stay here. You join the moment ' + (theirName ? theirName + ' arrives' : 'they arrive') + '.');
+    // Home's Ring button: they aren't in, so their devices ring (once, and only just after the tap).
+    if (G.ringOnMiss && Date.now() - G.ringOnMiss < 30000) { G.ringOnMiss = 0; ringThem($('gRingBtn')); }
   }
   // After a call: a dropped connection keeps saying so until it's back; an end says they ended it.
   function lostText() {
@@ -4981,6 +5725,7 @@
     if (app.state !== 'waiting') G.waitSince = Date.now();
     show('waiting');
     miniRender();
+    preCam();
     text('waitTitle', title);
     text('waitingText', status);
     text('waitHint', hint);
@@ -5160,7 +5905,7 @@
       try {
         s = await getDisplay(true);
       } catch (e) {
-        note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+        shareFail(e, e && /system/i.test(e.message || '') ? 'stay' : 'info');
         return;
       }
       if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
@@ -5219,7 +5964,7 @@
     G.camBusy = true;
     try {
       let s;
-      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { camFail(e, 'stay'); return; }
       if (G.left || G.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       G.cam = s;
       const t = s.getVideoTracks()[0];
@@ -5318,13 +6063,7 @@
   }
 
   // ---------- SELF-CHECK ----------
-  const ICON = {
-    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-    problem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
-    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
-    checking: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>',
-    skip: '',
-  };
+  const ICON = { ok: ico('check'), problem: ico('alert'), warn: ico('alert'), checking: ico('spin'), skip: '' };
   const META = { ok: 'Fine', problem: 'Problem', warn: 'Note', checking: 'checking…', skip: 'Not yet' };
   function checkRow(key, label) {
     const list = $('checkList');
@@ -5345,7 +6084,7 @@
         li.querySelector('.meta').textContent = meta || META[st] || '';
         li.querySelector('.why').textContent = why || '';
         app.checks = app.checks || {};
-        app.checks[key] = { state, why: why || '' };
+        app.checks[key] = { state, why: why || '', meta: meta || '' };
       },
     };
   }
@@ -5369,7 +6108,7 @@
     const panel = document.querySelector('[data-state="check"]');
     closeMore();
     if (panel) panel.hidden = false;
-    text('checkSummary', 'Checking…');
+    checkAnswer();
     sndLogShow();
     const closeBtn = $('checkClose');
     if (closeBtn) closeBtn.focus();
@@ -5504,15 +6243,117 @@
     const bad = vals.filter((c) => c.state === 'bad').length;
     const warn = vals.filter((c) => c.state === 'warn').length;
     const fine = vals.filter((c) => c.state === 'ok').length;
-    const el = $('checkSummary');
-    if (el) {
-      el.textContent = '';
-      const b = document.createElement('b');
-      b.textContent = fine + ' of 6 fine';
-      el.append(b, bad ? ' · ' + bad + (bad === 1 ? ' problem' : ' problems') : warn ? ' · 1 note' : ' · nothing to fix');
-    }
+    checkAnswer({ bad, warn, fine, ran: vals.filter((c) => c.state !== 'skip').length });
     app.checkDone = true;
   }
+  // One answer first: a big tick and "Everything works", or the one thing that is wrong in plain words. The six
+  // checks and the sound log stay folded under it.
+  function deviceWord() {
+    const u = navigator.userAgent;
+    if (/iPhone|iPod/.test(u)) return 'iPhone';
+    if (/iPad/.test(u) || (IS_IOS && /Macintosh/.test(u))) return 'iPad';
+    if (/Android/.test(u)) return /Mobile/.test(u) ? 'phone' : 'tablet';
+    if (/Macintosh/.test(u)) return 'Mac';
+    return 'computer';
+  }
+  const CHECK_WORDS = {
+    basics: () => 'Calls do not work in this browser',
+    mic: (c) => (c.meta === 'Blocked' ? 'Your microphone is blocked' : c.meta === 'None' ? 'No microphone found' : 'The microphone is not working'),
+    server: () => 'Beside cannot reach its call server',
+    net: () => 'This network blocks calls',
+    relay: (c) => (c.meta === 'Blocked' ? 'This network blocks the relay' : 'The relay is not ready'),
+    link: () => (isGuest ? 'The call with ' + (theirName || 'them') + ' is not right yet' : 'The call with your friend is not right yet'),
+  };
+  function checkAnswer(r) {
+    const box = $('checkAnswer'), mark = $('checkMark'), how = $('checkHow');
+    if (!box) return;
+    const icon = (n) => { if (mark) mark.innerHTML = ico(n, 40); };
+    let st = 'checking', title = 'Checking', sum = 'This takes a few seconds.';
+    if (how) how.hidden = true;
+    if (r) {
+      const order = ['basics', 'mic', 'server', 'net', 'relay', 'link'];
+      const badKey = order.find((k) => app.checks[k] && app.checks[k].state === 'bad');
+      const warnKey = order.find((k) => app.checks[k] && app.checks[k].state === 'warn');
+      if (badKey) {
+        st = 'problem';
+        title = CHECK_WORDS[badKey](app.checks[badKey]);
+        sum = app.checks[badKey].why;
+        // a blocked microphone: one plain line here, and the steps a tap away
+        if (how && badKey === 'mic' && app.checks.mic.meta === 'Blocked') { how.hidden = false; sum = stepsFor('mic').why; }
+      } else if (warnKey) {
+        st = 'warn'; title = 'Calls should work'; sum = app.checks[warnKey].why;
+      } else {
+        st = 'ok'; title = 'Everything works'; sum = 'Checked just now on this ' + deviceWord() + '.';
+      }
+      text('checkCount', r.fine === r.ran ? r.fine + (r.fine === 1 ? ' check passed' : ' checks passed') : r.fine + ' of ' + r.ran + ' checks passed');
+    } else text('checkCount', 'The checks');
+    box.dataset.st = st;
+    icon(st === 'ok' ? 'check' : st === 'checking' ? 'spin' : 'alert');
+    text('checkTitle', title);
+    text('checkSummary', sum);
+  }
+
+  // ---------- A REAL PROBLEM: its own small sheet ----------
+  // What is wrong in one heading, one line why, three steps and one button. For the blocked microphone, camera and
+  // screen, and rings that need notifications or the Home Screen: the same instructions the app gave in a banner.
+  function stepsFor(kind) {
+    const them = (isGuest ? theirName : app.people && app.people.them) || 'They';
+    const live = inCallNow();
+    const ios = IS_IOS, nat = NATIVE(), mac = /Macintosh/.test(navigator.userAgent) && !IS_IOS;
+    const br = browserName();
+    const site = (what) => (nat
+      ? [['Open Settings', 'On this ' + deviceWord() + ', open the Settings app.'], ['Turn on ' + what, 'Find Beside in the list, then turn ' + what + ' on.'], ['Come back', live ? 'Then press End and start the call again.' : 'Then try again.']]
+      : ios
+        ? [['Tap aA', 'It is at the left of the address bar.'], ['Allow the ' + what.toLowerCase(), 'Tap Website Settings, then ' + what + ', then Allow.'], ['Reload', live ? 'Then press End and start the call again.' : 'Reload the page, then try again.']]
+        : [['Click the icon at the left of the address bar', 'It shows what this site may use.'], ['Allow the ' + what.toLowerCase(), 'Turn ' + what + ' on for this site.'], ['Reload', live ? 'Then press End and start the call again.' : 'Reload the page, then try again.']]);
+    const reload = !live && !nat ? { label: 'Reload', fn: () => location.reload() } : null;
+    const P = {
+      mic: { icon: 'mic', slash: true, title: live ? them + ' cannot hear you' : 'Your microphone is blocked', why: 'The microphone is turned off for Beside' + (nat ? '.' : ' in ' + (br === 'Browser' ? 'this browser' : br) + '.'), steps: site('Microphone'), go: reload,
+        more: nat ? '' : mac ? 'Still blocked? On a Mac also check System Settings, Privacy and Security, Microphone.' : 'Opened inside WhatsApp or Instagram? Open the link in Safari or Chrome instead.' },
+      cam: { icon: 'video', slash: true, title: 'Your camera is blocked', why: 'The camera is turned off for Beside' + (nat ? '.' : ' in ' + (br === 'Browser' ? 'this browser' : br) + '.'), steps: site('Camera').map((x, i) => (i === 2 && live ? ['Come back', 'Then press the camera button again.'] : x)), go: reload },
+      camMac: { icon: 'video', slash: true, title: 'Your Mac is blocking the camera', why: 'The Mac itself is not letting ' + br + ' use the camera.',
+        steps: [['Open System Settings', 'From the Apple menu.'], ['Privacy and Security, then Camera', 'Turn ' + br + ' on.'], ['Reopen ' + br, 'Quit it and open it again.']] },
+      screenMac: { icon: 'screen', title: 'Your Mac is blocking screen sharing', why: 'The Mac itself is not letting ' + br + ' share windows.',
+        steps: [['Open System Settings', 'From the Apple menu.'], ['Privacy and Security, then Screen and System Audio Recording', 'Turn ' + br + ' on.'], ['Reopen ' + br, 'Quit it and open it again.']], more: 'Sharing a tab works without this.' },
+      homescreen: { icon: 'bell', title: 'Add Beside to your Home Screen', why: 'On iPhone and iPad, rings need Beside on your Home Screen.',
+        steps: [['Tap Share', 'The Share button in Safari.'], ['Tap Add to Home Screen', 'Scroll down the list to find it.'], ['Open Beside from there', 'Then tap Let Beside ring me again.']] },
+      notify: { icon: 'bell', title: 'Turn on notifications', why: 'Rings need notifications, and they are off for Beside.',
+        steps: ios
+          ? [['Open Settings', 'On this ' + deviceWord() + ', open the Settings app.'], ['Notifications, then Beside', 'Turn on Allow Notifications.'], ['Come back', 'Then tap Let Beside ring me again.']]
+          : [['Click the icon at the left of the address bar', 'It shows what this site may use.'], ['Allow notifications', 'Turn Notifications on for this site.'], ['Come back', 'Then tap Let Beside ring me again.']] },
+    };
+    return P[kind] || null;
+  }
+  function steps(kind) {
+    const p = stepsFor(kind), sh = $('stepsSheet');
+    if (!p || !sh) return false;
+    closeMore();
+    sh.classList.toggle('dark', inCallNow());
+    const m = $('stepsMark');
+    if (m) m.innerHTML = ico(p.icon, 38, { slash: !!p.slash });
+    text('stepsTitle', p.title);
+    text('stepsWhy', p.why);
+    const list = $('stepsList');
+    list.textContent = '';
+    p.steps.forEach(([a, b]) => {
+      const li = document.createElement('li');
+      const d = document.createElement('div');
+      const x = document.createElement('b'), y = document.createElement('span');
+      x.textContent = a; y.textContent = b;
+      d.append(x, y); li.append(d); list.append(li);
+    });
+    const more = $('stepsMore');
+    more.textContent = p.more || '';
+    more.hidden = !p.more;
+    const go = $('stepsGo');
+    go.textContent = p.go ? p.go.label : 'Got it';
+    go.onclick = () => { stepsClose(); if (p.go) p.go.fn(); };
+    app.log.push(p.title + '. ' + p.why);
+    sh.hidden = false;
+    go.focus();
+    return true;
+  }
+  function stepsClose() { const sh = $('stepsSheet'); if (sh) sh.hidden = true; }
 
   // ---------- WIRE UP ----------
   // Nobody looking: animations wait (the page's own class; board.js sets the same). Calls, sound, the ring and
@@ -5531,35 +6372,27 @@
     modeLabel();
     const saved = store.get('beside.name');
     if (saved && $('nameInput')) $('nameInput').value = saved;
+    // The guest's name field shows on Home until there is a name (Calls and setup's Your name brings it back).
+    if ($('nameRow')) $('nameRow').hidden = !!cleanName(saved || '');
+    // Calls and setup's quiet way in: the room opens and nobody is rung (the camera starts off).
     on('startBtn', 'click', () => hostStart('voice'));
-    on('videoBtn', 'click', () => hostStart('video'));
-    on('callVoiceBtn', 'click', () => hostStart('voice'));
-    on('callVideoBtn', 'click', () => hostStart('video'));
-    on('homeRingBtn', 'click', () => { H.ringOnReady = Date.now(); hostStart('voice'); });
-    on('callJoinBtn', 'click', () => guestJoin(true));
-    on('callJoinNoMicBtn', 'click', () => guestJoin(false));
-    on('endedClose', 'click', () => { const c = $('endedClose').closest('.endcard'); if (c) c.hidden = true; });
-    if ($('tvBox') && window.BesideFigures) $('tvBox').innerHTML = window.BesideFigures.tvRoom();
+    on('endedClose', 'click', endClose);
+    on('endHeart', 'click', endHeart);
+    on('joinX', 'click', () => joinStage(false));
+    on('joinGoBtn', 'click', joinGo);
+    on('joinMicBtn', 'click', () => { J.mic = !J.mic; joinUi(); });
+    on('joinCamBtn', 'click', () => joinPreview(!J.cam));
     tabsBoot();
-    on('shareStartBtn', 'click', () => hostStart('share'));
-    if ($('shareStartBtn')) $('shareStartBtn').hidden = !CAN_SHARE;
-    on('micStartToggle', 'click', () => {
-      const el = $('micStartToggle');
-      const onNow = el.getAttribute('aria-pressed') === 'false';
-      el.setAttribute('aria-pressed', onNow ? 'true' : 'false');
-      text('micStartLabel', onNow ? 'Mic on' : 'Mic off');
-      const sw = el.querySelector('.switch');
-      if (sw) sw.classList.toggle('off', !onNow);
-    });
+    homeBoot();
     ['copyBtn', 'moreCopyBtn', 'idleCopyBtn'].forEach((id) => on(id, 'click', () => copyLink($(id))));
     ['shareBtn', 'moreShareBtn', 'idleShareBtn'].forEach((id) => on(id, 'click', () => shareLink($(id))));
     ['mineBtn', 'mineIdleBtn'].forEach((id) => on(id, 'click', () => copyMine($(id))));
-    // Calls: "Invite someone else" opens a small sheet with the link, Copy and Send link.
+    // Calls and setup: "Invite someone else" opens a small sheet with the link, Copy and Send link.
     const inv = $('inviteSheet');
     const invite = (open) => {
       if (!inv) return;
       inv.hidden = !open;
-      if (open) { renderLink(); const x = $('inviteClose'); if (x) x.focus(); } else { const r = $('inviteRowBtn'); if (r) r.focus(); }
+      if (open) { renderLink(); const x = $('inviteClose'); if (x) x.focus(); } else { const r = setupBtn(); if (r) r.focus(); }
     };
     on('inviteRowBtn', 'click', () => invite(true));
     on('inviteClose', 'click', () => invite(false));
@@ -5567,7 +6400,7 @@
       inv.addEventListener('click', (e) => { if (e.target === inv) invite(false); });
       inv.addEventListener('keydown', (e) => { if (e.key === 'Escape') invite(false); });
     }
-    // Calls: "Sound and mic" opens the Sound panel outside a call, to set it up and try Hear myself.
+    // Calls and setup: "Sound and mic" opens the Sound panel outside a call, to set it up and try Hear myself.
     const ss = $('soundSheet');
     let ssFrom = null;
     const soundSheet = (open, from) => {
@@ -5581,7 +6414,7 @@
         const x = $('soundClose'); if (x) x.focus();
       } else if (ssFrom && ssFrom.focus) ssFrom.focus();
     };
-    document.querySelectorAll('[data-sound-open]').forEach((b) => b.addEventListener('click', () => soundSheet(true, b)));
+    document.querySelectorAll('[data-sound-open]').forEach((b) => b.addEventListener('click', () => soundSheet(true, b.closest('#setupSheet') ? setupBtn() : b)));
     on('soundClose', 'click', () => soundSheet(false));
     if (ss) {
       ss.addEventListener('click', (e) => { if (e.target === ss) soundSheet(false); });
@@ -5593,26 +6426,32 @@
     on('boardSheet', 'click', (e) => { if (e.target === $('boardSheet')) boardSheet(false); });
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
-    on('layoutBtn', 'click', () => setLayout(V.mode === 'split' ? 'focus' : 'split'));
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else shareOpen(true); });
     on('gCamBtn', 'click', guestCam);
     on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else shareOpen(true); });
     shareWire();
     on('changeBtn', 'click', () => { closeMore(); hostChange(); });
     on('stopBtn', 'click', () => hostStop());
-    document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => hostMode(b.dataset.mode)));
-    on('hostName', 'change', (e) => setHostName(e.target.value));
+    document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => { hostMode(b.dataset.mode); setupVals(); }));
+    on('hostName', 'change', (e) => { setHostName(e.target.value); setupVals(); });
     on('newLinkBtn', 'click', newLink);
-    on('joinBtn', 'click', () => guestJoin(true));
-    on('joinNoMicBtn', 'click', () => guestJoin(false));
+    on('joinBtn', 'click', () => { G.ringOnMiss = 0; guestJoin(true); });
     on('gMuteBtn', 'click', guestMute);
     on('fsBtn', 'click', () => { closeMore(); fullscreen(); });
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
     on('watchRoot', 'click', swapTap);
-    on('watchRoot', 'pointerup', zoomTap);
+    dotWire();
     wirePointing();
-    on('chatBtn', 'click', () => chatOpen(!C.open));
+    ytWire();
+    // More: the tray. Each choice closes it and opens its sheet, or turns Side by side on or off.
+    const fromTray = (fn) => () => { trayOpen(false); fn(); };
+    on('chatBtn', 'click', fromTray(() => chatOpen(!C.open)));
+    on('layoutBtn', 'click', fromTray(() => { V.sbs = V.view !== 'split'; layout(); }));
+    on('trayFilm', 'click', fromTray(filmAsk));
+    on('trayPlans', 'click', fromTray(() => boardSheet(true)));
+    on('traySetup', 'click', fromTray(setupOpen));
+    on('shareBarStop', 'click', shareStop);
     on('peek', 'click', () => { const p = $('peek'); if (!p) return; p.hidden = true; if (p.dataset.chat) chatOpen(true); });
     on('chatClose', 'click', () => chatOpen(false));
     on('chatForm', 'submit', (e) => { e.preventDefault(); sendText(); });
@@ -5644,16 +6483,18 @@
       visualViewport.addEventListener('resize', kb);
       visualViewport.addEventListener('scroll', kb);
     }
-    on('miniBtn', 'click', () => { if (mini.win) miniClose(); else miniOpen(); });
+    on('miniBtn', 'click', fromTray(() => { if (mini.win) miniClose(); else miniOpen(); }));
     const sp = $('soundPop');
     if (sp) sp.appendChild(soundPanel(document));
-    on('soundBtn', 'click', () => soundOpen(!!sp && sp.hidden));
+    on('soundBtn', 'click', fromTray(() => soundOpen(!!sp && sp.hidden)));
+    on('soundPopClose', 'click', () => { soundOpen(false); const mb = $('moreBtn'); if (mb) mb.focus(); });
     on('ytKeep', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytWant(), play: true }); });
     on('ytStop', 'click', () => ytClose(false));
     document.addEventListener('pointerdown', (e) => {
       if (sp && !sp.hidden && !sp.contains(e.target) && !(e.target.closest && e.target.closest('#soundBtn'))) soundOpen(false);
+      if (trayIsOpen() && !(e.target.closest && e.target.closest('#tray, #moreBtn'))) trayOpen(false);
     }, true);
-    on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
+    on('moreBtn', 'click', () => trayOpen(!trayIsOpen()));
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => {
       const vo = $('voice'), me = $('media');
@@ -5667,20 +6508,29 @@
     const sheet = document.querySelector('[data-state="check"]');
     const closeSheet = () => { if (sheet) sheet.hidden = true; wakeControls(); };
     on('checkClose', 'click', closeSheet);
+    on('checkX', 'click', closeSheet);
+    on('checkHow', 'click', () => { closeSheet(); steps('mic'); });
+    on('stepsX', 'click', stepsClose);
+    on('stepsSheet', 'click', (e) => { if (e.target === $('stepsSheet')) stepsClose(); });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      const vw = $('viewer');
-      if (vw && !vw.hidden) vw.hidden = true;
+      const vw = $('viewer'), st = $('stepsSheet');
+      if (st && !st.hidden) stepsClose();
+      else if (vw && !vw.hidden) vw.hidden = true;
       else if (sheet && !sheet.hidden) closeSheet();
+      else if (HS.setup || HS.cal || HS.todo) homeSheetsClose();
       else if (sp && !sp.hidden) soundOpen(false);
       else if (shareIsOpen()) shareOpen(false);
-      else if (moreOpen()) closeMore();
+      else if (setupIsOpen()) closeMore();
+      else if (trayIsOpen()) { trayOpen(false); const mb = $('moreBtn'); if (mb) mb.focus(); }
       else if (C.open) chatOpen(false);
+      else if (J.on) joinStage(false);
+      else if (app.state === 'ended') endClose();
     });
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
     const more = $('moreSheet');
     if (more) more.addEventListener('click', (e) => { if (e.target === more) closeMore(); });
-    on('endedAction', 'click', () => { if (MV.away) moveHere(); else if (isGuest) show('join'); else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
+    on('endedAction', 'click', () => { if (MV.away) moveHere(); else if (isGuest) { show('join'); joinStage(true); } else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
     on('moveBtn', 'click', moveHere);
     on('moveNot', 'click', () => { MV.dismissed = true; moveCardHide(); });
     on('nameInput', 'change', () => { if (app.state === 'join') moveProbe(moveFound); });
@@ -5698,7 +6548,7 @@
     ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (inCall()) wakeControls(e); }, { passive: true, capture: true }));
     // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
-      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #bigSlot .tile.half');
+      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #dotSlot');
       // Every click in that 700 ms is swallowed, so the second tap of a double tap never presses a bar button.
       if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); return; }
       wokeAt = 0;
@@ -5737,18 +6587,12 @@
     if (isGuest) {
       const n = theirName;
       if (n) {
-        text('hostInitial', n.charAt(0).toUpperCase());
-        text('joinTitle', n + ' invites you to a call.');
-        text('joinText', 'You can talk, see each other if you like, and see what ' + n + ' shows you. Nothing is recorded.');
-        text('joinBtn', 'Sit beside ' + n);
         text('tapToHearText', 'Tap to hear ' + n);
         text('camName', n);
         document.title = n + ' · Beside';
-      } else {
-        const hi = $('hostInitial');
-        if (hi) hi.classList.add('hollow');
       }
       show('join');
+      if (joinFirst()) joinStage(true);
     } else {
       H.code = hostCode();
       renderLink();
@@ -5764,7 +6608,7 @@
     ringBoot();
     // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
     app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, RG, J, mini, ringBanner, ringing, layout, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
