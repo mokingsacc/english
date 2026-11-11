@@ -678,6 +678,8 @@
       return s;
     }
   }
+  // A blocked camera gets its own small sheet of steps; anything else stays a short message.
+  function camFail(e, kind) { if (e && e.name === 'NotAllowedError' && steps(/system/i.test(e.message || '') ? 'camMac' : 'cam')) return; note(camError(e), kind); }
   function camError(e) {
     const n = e && e.name;
     if (n === 'NotAllowedError' && /system/i.test((e && e.message) || '')) return 'Your Mac is blocking the camera for this browser. Open System Settings, Privacy & Security, Camera, turn your browser on, then reopen it.';
@@ -1369,7 +1371,7 @@
   function sndLogShow() {
     const box = $('sndLog'), list = $('sndLogList');
     if (!box || !list) return;
-    const sum = box.querySelector('summary');
+    const sum = box.querySelector('summary .sl-t') || box.querySelector('summary');
     if (sum) sum.textContent = 'Sound log, ' + (SW.log.length ? SW.log.length + (SW.log.length === 1 ? ' line' : ' lines') : 'nothing yet');
     const cur = $('sndNow');
     if (cur) cur.textContent = !inCallNow() ? '' : !outCtx() ? 'Right now the sound engine is closed: voices play straight through the page.' : 'Right now the sound engine is on.';
@@ -2913,12 +2915,12 @@
       ringMeUi();
       return;
     }
-    if (ringStandaloneNeeded()) { note('On iPhone and iPad, rings need Beside on your Home Screen. Tap Share, then Add to Home Screen, open Beside from there and tap this again.', 'stay'); return; }
+    if (ringStandaloneNeeded()) { if (!steps('homescreen')) note('On iPhone and iPad, rings need Beside on your Home Screen. Tap Share, then Add to Home Screen, open Beside from there and tap this again.', 'stay'); return; }
     if (!('PushManager' in window) || !('Notification' in window) || !('serviceWorker' in navigator)) { note('This browser can’t ring. Use Chrome, Firefox, Safari on a Mac, or Beside from the iPhone Home Screen.', 'stay'); return; }
     RG.busy = true;
     try {
       const perm = await Notification.requestPermission(); // first, while the tap still counts
-      if (perm !== 'granted') throw new Error('Rings need notifications. Turn them on for Beside in Settings, then tap this again.');
+      if (perm !== 'granted') throw Object.assign(new Error('Rings need notifications. Turn them on for Beside in Settings, then tap this again.'), { steps: 'notify' });
       const k = await fetch((srv ? 'http://' + srv : '') + '/peerjs/push/key', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
       if (!k.key) throw new Error('Rings aren’t switched on at Beside’s server yet.');
       const reg = await ringSw();
@@ -2933,7 +2935,7 @@
       await ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), web: { endpoint: j.endpoint, keys: j.keys } });
       store.set(ringKey(), j.endpoint);
       note('Done. When ' + (isGuest ? (theirName || 'they') : 'your person') + ' rings, this device will too.', 'info');
-    } catch (e) { note(e.message || 'That didn’t work. Try again.', 'stay'); }
+    } catch (e) { if (!(e && e.steps && steps(e.steps))) note(e.message || 'That didn’t work. Try again.', 'stay'); }
     RG.busy = false;
     ringMeUi();
   }
@@ -3934,6 +3936,8 @@
     try { return !!t && t.getSettings().displaySurface === 'monitor'; } catch (e) { return false; }
   }
   const WHOLE_SCREEN = 'Pick one tab or one app window, not the whole screen, so nothing else on your screen (like notifications) can be seen. Press Share, then My screen.';
+  // A Mac that blocks sharing gets its own small sheet of steps; anything else stays a short message.
+  function shareFail(e, kind) { if (e && /system/i.test(e.message || '') && steps('screenMac')) return; note(displayError(e), kind); }
   function displayError(e) {
     const browser = IS_CHROMIUM ? 'Chrome' : 'your browser';
     if (e && /system/i.test(e.message || '')) {
@@ -4059,7 +4063,7 @@
           display = await getDisplay(true);
         } catch (e) {
           hostCleanup();
-          note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+          shareFail(e, e && /system/i.test(e.message || '') ? 'stay' : 'info');
           return;
         }
         if (isWholeScreen(display)) { display.getTracks().forEach((t) => t.stop()); hostCleanup(); note(WHOLE_SCREEN, 'stay'); return; }
@@ -4085,7 +4089,7 @@
           }
           hostMicIn();
         } catch (e) {
-          note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
+          if (!(e && e.name === 'NotAllowedError' && steps('mic'))) note('Your microphone is blocked, so they can’t hear you. Click the icon at the left of the address bar, allow the microphone, then press End and start the call again.', 'stay');
         }
       }
       H.muted = !H.mic;
@@ -4472,7 +4476,7 @@
     H.camBusy = true;
     try {
       let s;
-      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { camFail(e, 'stay'); return; }
       if (app.state !== 'live' || H.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       H.cam = s;
       const t = s.getVideoTracks()[0];
@@ -4620,7 +4624,7 @@
       s = await getDisplay(true);
     } catch (e) {
       // Cancelling the picker is fine; a Mac that blocks sharing needs the steps.
-      if (e && /system/i.test(e.message || '')) note(displayError(e), 'stay');
+      if (e && /system/i.test(e.message || '')) shareFail(e, 'stay');
       else if (!H.video) note(displayError(e), 'info');
       return;
     } finally {
@@ -4826,7 +4830,7 @@
       if (!J.on || J.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       J.cam = s;
       if (v) { v.srcObject = s; v.classList.add('on'); v.play().catch(() => {}); }
-    } catch (e) { note(camError(e), 'info'); } finally { J.busy = false; }
+    } catch (e) { camFail(e, 'info'); } finally { J.busy = false; }
     joinUi();
   }
   function joinGo() {
@@ -5102,7 +5106,7 @@
           G.mic = await getOwn('audio', micWant(CLEAR.mode));
           G.mic.getAudioTracks().forEach((t) => { try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {} });
         } catch (e) {
-          note(MIC_BLOCKED, 'stay');
+          if (!(e && e.name === 'NotAllowedError' && steps('mic'))) note(MIC_BLOCKED, 'stay');
         }
       }
       G.muted = !G.mic;
@@ -5555,7 +5559,7 @@
       try {
         s = await getDisplay(true);
       } catch (e) {
-        note(displayError(e), e && /system/i.test(e.message || '') ? 'stay' : 'info');
+        shareFail(e, e && /system/i.test(e.message || '') ? 'stay' : 'info');
         return;
       }
       if (isWholeScreen(s)) { s.getTracks().forEach((t) => t.stop()); note(WHOLE_SCREEN, 'stay'); return; }
@@ -5614,7 +5618,7 @@
     G.camBusy = true;
     try {
       let s;
-      try { s = await getCam(); } catch (e) { note(camError(e), 'stay'); return; }
+      try { s = await getCam(); } catch (e) { camFail(e, 'stay'); return; }
       if (G.left || G.cam) { s.getTracks().forEach((t) => t.stop()); return; }
       G.cam = s;
       const t = s.getVideoTracks()[0];
@@ -5734,7 +5738,7 @@
         li.querySelector('.meta').textContent = meta || META[st] || '';
         li.querySelector('.why').textContent = why || '';
         app.checks = app.checks || {};
-        app.checks[key] = { state, why: why || '' };
+        app.checks[key] = { state, why: why || '', meta: meta || '' };
       },
     };
   }
@@ -5758,7 +5762,7 @@
     const panel = document.querySelector('[data-state="check"]');
     closeMore();
     if (panel) panel.hidden = false;
-    text('checkSummary', 'Checking…');
+    checkAnswer();
     sndLogShow();
     const closeBtn = $('checkClose');
     if (closeBtn) closeBtn.focus();
@@ -5893,15 +5897,117 @@
     const bad = vals.filter((c) => c.state === 'bad').length;
     const warn = vals.filter((c) => c.state === 'warn').length;
     const fine = vals.filter((c) => c.state === 'ok').length;
-    const el = $('checkSummary');
-    if (el) {
-      el.textContent = '';
-      const b = document.createElement('b');
-      b.textContent = fine + ' of 6 fine';
-      el.append(b, bad ? ' · ' + bad + (bad === 1 ? ' problem' : ' problems') : warn ? ' · 1 note' : ' · nothing to fix');
-    }
+    checkAnswer({ bad, warn, fine, ran: vals.filter((c) => c.state !== 'skip').length });
     app.checkDone = true;
   }
+  // One answer first: a big tick and "Everything works", or the one thing that is wrong in plain words. The six
+  // checks and the sound log stay folded under it.
+  function deviceWord() {
+    const u = navigator.userAgent;
+    if (/iPhone|iPod/.test(u)) return 'iPhone';
+    if (/iPad/.test(u) || (IS_IOS && /Macintosh/.test(u))) return 'iPad';
+    if (/Android/.test(u)) return /Mobile/.test(u) ? 'phone' : 'tablet';
+    if (/Macintosh/.test(u)) return 'Mac';
+    return 'computer';
+  }
+  const CHECK_WORDS = {
+    basics: () => 'Calls do not work in this browser',
+    mic: (c) => (c.meta === 'Blocked' ? 'Your microphone is blocked' : c.meta === 'None' ? 'No microphone found' : 'The microphone is not working'),
+    server: () => 'Beside cannot reach its call server',
+    net: () => 'This network blocks calls',
+    relay: (c) => (c.meta === 'Blocked' ? 'This network blocks the relay' : 'The relay is not ready'),
+    link: () => (isGuest ? 'The call with ' + (theirName || 'them') + ' is not right yet' : 'The call with your friend is not right yet'),
+  };
+  function checkAnswer(r) {
+    const box = $('checkAnswer'), mark = $('checkMark'), how = $('checkHow');
+    if (!box) return;
+    const icon = (n) => { if (mark) mark.innerHTML = ico(n, 40); };
+    let st = 'checking', title = 'Checking', sum = 'This takes a few seconds.';
+    if (how) how.hidden = true;
+    if (r) {
+      const order = ['basics', 'mic', 'server', 'net', 'relay', 'link'];
+      const badKey = order.find((k) => app.checks[k] && app.checks[k].state === 'bad');
+      const warnKey = order.find((k) => app.checks[k] && app.checks[k].state === 'warn');
+      if (badKey) {
+        st = 'problem';
+        title = CHECK_WORDS[badKey](app.checks[badKey]);
+        sum = app.checks[badKey].why;
+        // a blocked microphone: one plain line here, and the steps a tap away
+        if (how && badKey === 'mic' && app.checks.mic.meta === 'Blocked') { how.hidden = false; sum = stepsFor('mic').why; }
+      } else if (warnKey) {
+        st = 'warn'; title = 'Calls should work'; sum = app.checks[warnKey].why;
+      } else {
+        st = 'ok'; title = 'Everything works'; sum = 'Checked just now on this ' + deviceWord() + '.';
+      }
+      text('checkCount', r.fine === r.ran ? r.fine + (r.fine === 1 ? ' check passed' : ' checks passed') : r.fine + ' of ' + r.ran + ' checks passed');
+    } else text('checkCount', 'The checks');
+    box.dataset.st = st;
+    icon(st === 'ok' ? 'check' : st === 'checking' ? 'spin' : 'alert');
+    text('checkTitle', title);
+    text('checkSummary', sum);
+  }
+
+  // ---------- A REAL PROBLEM: its own small sheet ----------
+  // What is wrong in one heading, one line why, three steps and one button. For the blocked microphone, camera and
+  // screen, and rings that need notifications or the Home Screen: the same instructions the app gave in a banner.
+  function stepsFor(kind) {
+    const them = (isGuest ? theirName : app.people && app.people.them) || 'They';
+    const live = inCallNow();
+    const ios = IS_IOS, nat = NATIVE(), mac = /Macintosh/.test(navigator.userAgent) && !IS_IOS;
+    const br = browserName();
+    const site = (what) => (nat
+      ? [['Open Settings', 'On this ' + deviceWord() + ', open the Settings app.'], ['Turn on ' + what, 'Find Beside in the list, then turn ' + what + ' on.'], ['Come back', live ? 'Then press End and start the call again.' : 'Then try again.']]
+      : ios
+        ? [['Tap aA', 'It is at the left of the address bar.'], ['Allow the ' + what.toLowerCase(), 'Tap Website Settings, then ' + what + ', then Allow.'], ['Reload', live ? 'Then press End and start the call again.' : 'Reload the page, then try again.']]
+        : [['Click the icon at the left of the address bar', 'It shows what this site may use.'], ['Allow the ' + what.toLowerCase(), 'Turn ' + what + ' on for this site.'], ['Reload', live ? 'Then press End and start the call again.' : 'Reload the page, then try again.']]);
+    const reload = !live && !nat ? { label: 'Reload', fn: () => location.reload() } : null;
+    const P = {
+      mic: { icon: 'mic', slash: true, title: live ? them + ' cannot hear you' : 'Your microphone is blocked', why: 'The microphone is turned off for Beside' + (nat ? '.' : ' in ' + (br === 'Browser' ? 'this browser' : br) + '.'), steps: site('Microphone'), go: reload,
+        more: nat ? '' : mac ? 'Still blocked? On a Mac also check System Settings, Privacy and Security, Microphone.' : 'Opened inside WhatsApp or Instagram? Open the link in Safari or Chrome instead.' },
+      cam: { icon: 'video', slash: true, title: 'Your camera is blocked', why: 'The camera is turned off for Beside' + (nat ? '.' : ' in ' + (br === 'Browser' ? 'this browser' : br) + '.'), steps: site('Camera').map((x, i) => (i === 2 && live ? ['Come back', 'Then press the camera button again.'] : x)), go: reload },
+      camMac: { icon: 'video', slash: true, title: 'Your Mac is blocking the camera', why: 'The Mac itself is not letting ' + br + ' use the camera.',
+        steps: [['Open System Settings', 'From the Apple menu.'], ['Privacy and Security, then Camera', 'Turn ' + br + ' on.'], ['Reopen ' + br, 'Quit it and open it again.']] },
+      screenMac: { icon: 'screen', title: 'Your Mac is blocking screen sharing', why: 'The Mac itself is not letting ' + br + ' share windows.',
+        steps: [['Open System Settings', 'From the Apple menu.'], ['Privacy and Security, then Screen and System Audio Recording', 'Turn ' + br + ' on.'], ['Reopen ' + br, 'Quit it and open it again.']], more: 'Sharing a tab works without this.' },
+      homescreen: { icon: 'bell', title: 'Add Beside to your Home Screen', why: 'On iPhone and iPad, rings need Beside on your Home Screen.',
+        steps: [['Tap Share', 'The Share button in Safari.'], ['Tap Add to Home Screen', 'Scroll down the list to find it.'], ['Open Beside from there', 'Then tap Let Beside ring me again.']] },
+      notify: { icon: 'bell', title: 'Turn on notifications', why: 'Rings need notifications, and they are off for Beside.',
+        steps: ios
+          ? [['Open Settings', 'On this ' + deviceWord() + ', open the Settings app.'], ['Notifications, then Beside', 'Turn on Allow Notifications.'], ['Come back', 'Then tap Let Beside ring me again.']]
+          : [['Click the icon at the left of the address bar', 'It shows what this site may use.'], ['Allow notifications', 'Turn Notifications on for this site.'], ['Come back', 'Then tap Let Beside ring me again.']] },
+    };
+    return P[kind] || null;
+  }
+  function steps(kind) {
+    const p = stepsFor(kind), sh = $('stepsSheet');
+    if (!p || !sh) return false;
+    closeMore();
+    sh.classList.toggle('dark', inCallNow());
+    const m = $('stepsMark');
+    if (m) m.innerHTML = ico(p.icon, 38, { slash: !!p.slash });
+    text('stepsTitle', p.title);
+    text('stepsWhy', p.why);
+    const list = $('stepsList');
+    list.textContent = '';
+    p.steps.forEach(([a, b]) => {
+      const li = document.createElement('li');
+      const d = document.createElement('div');
+      const x = document.createElement('b'), y = document.createElement('span');
+      x.textContent = a; y.textContent = b;
+      d.append(x, y); li.append(d); list.append(li);
+    });
+    const more = $('stepsMore');
+    more.textContent = p.more || '';
+    more.hidden = !p.more;
+    const go = $('stepsGo');
+    go.textContent = p.go ? p.go.label : 'Got it';
+    go.onclick = () => { stepsClose(); if (p.go) p.go.fn(); };
+    app.log.push(p.title + '. ' + p.why);
+    sh.hidden = false;
+    go.focus();
+    return true;
+  }
+  function stepsClose() { const sh = $('stepsSheet'); if (sh) sh.hidden = true; }
 
   // ---------- WIRE UP ----------
   // Nobody looking: animations wait (the page's own class; board.js sets the same). Calls, sound, the ring and
@@ -6071,10 +6177,14 @@
     const closeSheet = () => { if (sheet) sheet.hidden = true; wakeControls(); };
     on('checkClose', 'click', closeSheet);
     on('checkX', 'click', closeSheet);
+    on('checkHow', 'click', () => { closeSheet(); steps('mic'); });
+    on('stepsX', 'click', stepsClose);
+    on('stepsSheet', 'click', (e) => { if (e.target === $('stepsSheet')) stepsClose(); });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      const vw = $('viewer');
-      if (vw && !vw.hidden) vw.hidden = true;
+      const vw = $('viewer'), st = $('stepsSheet');
+      if (st && !st.hidden) stepsClose();
+      else if (vw && !vw.hidden) vw.hidden = true;
       else if (sheet && !sheet.hidden) closeSheet();
       else if (sp && !sp.hidden) soundOpen(false);
       else if (shareIsOpen()) shareOpen(false);

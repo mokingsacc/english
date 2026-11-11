@@ -754,6 +754,43 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sndlog time{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sndlog-say:empty{display:none}
 .sndlog-say{margin:8px 0 0;color:var(--ink-3);font:var(--caption)}
+/* Check my setup: one answer first (a big tick, or the one thing that is wrong), the checks and the sound log folded */
+.check{position:relative}
+.ck-x{position:absolute;top:12px;right:12px;z-index:1}
+.ck-answer{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:28px 60px 16px}
+.ck-mark{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;margin-bottom:10px;background:var(--fill);color:var(--ink-3)}
+.ck-mark svg{width:40px;height:40px}
+.ck-answer[data-st="ok"] .ck-mark{background:var(--go);color:var(--on-go)}
+.ck-answer[data-st="ok"] .ck-mark svg{stroke-width:2.4}
+.ck-answer[data-st="problem"] .ck-mark{background:color-mix(in srgb,var(--end) 14%,transparent);color:var(--end)}
+.ck-answer[data-st="warn"] .ck-mark{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.ck-answer[data-st="checking"] .ck-mark svg{animation:spin var(--arrive) linear infinite}
+.ck-answer h2{font:var(--title);text-wrap:balance}
+.ck-answer .sum{font:var(--body);color:var(--ink-2);max-width:36ch;text-wrap:pretty}
+.ck-answer .sum:empty{display:none}
+.ck-folds{margin:6px 20px 16px;border-radius:var(--r3);background:var(--surface-2);overflow:hidden}
+.sndlog.ck-fold{margin:0;font:var(--caption)}
+.ck-fold + .ck-fold{position:relative}
+.ck-fold + .ck-fold::before{content:"";position:absolute;left:51px;right:0;top:0;height:1px;background:var(--line)}
+.ck-fold summary,.sndlog.ck-fold summary{list-style:none;display:flex;align-items:center;gap:13px;min-height:56px;padding:8px 16px;cursor:pointer;font:var(--body);font-weight:500;color:var(--ink)}
+.ck-fold summary::-webkit-details-marker{display:none}
+.ck-fold summary svg{width:22px;height:22px;flex:none;color:var(--ink-2)}
+.ck-fold summary span{flex:1;min-width:0}
+.ck-fold summary .ck-chev{width:18px;height:18px;color:var(--ink-3);transition:transform var(--press) var(--ease)}
+.ck-fold[open] summary .ck-chev{transform:rotate(180deg)}
+.ck-fold summary:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;border-radius:var(--r3)}
+.ck-fold .checks{padding:0 4px 8px}
+.sndlog-in{padding:0 16px 12px}
+.check footer{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 20px 20px}
+.check footer .btn{min-width:0;padding:0 14px}
+/* a real problem: what is wrong, why, three numbered steps, one button */
+.steps{list-style:none;margin:0;padding:4px 24px 6px;display:flex;flex-direction:column;gap:14px;counter-reset:st}
+.steps li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;align-items:start;counter-increment:st}
+.steps li::before{content:counter(st);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--fill);font:var(--caption);font-weight:700;color:var(--ink)}
+.steps b{display:block;font:var(--headline)}
+.steps span{display:block;font:var(--callout);color:var(--ink-2)}
+.steps-more{margin:10px 24px 0;font:var(--caption);color:var(--ink-3)}
+.stepsheet footer{grid-template-columns:1fr;padding-top:18px}
 .sound-test-say{padding:0 4px;font:var(--caption);color:var(--ink-2)}
 .sound-row.off{opacity:.45}
 /* the percent stays in the page for a screen reader (with the slider's own value), but is not drawn */
@@ -805,6 +842,11 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 @keyframes tabin{from{opacity:0;transform:translateX(calc(var(--dir,1) * 14px))}to{opacity:1;transform:none}}
 .tabhead{display:flex;flex-direction:column;gap:2px;min-height:56px;justify-content:center}
 .tabhead .hint{font:var(--caption)}
+/* Plans and Hearts: the title with its round add button, or today's count, on the right */
+.tabhead-row{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
+.tabhead-row .hint{font:var(--callout);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.tabhead-add{width:44px;height:44px}
+.tabhead-add svg{width:22px;height:22px}
 .tophead{min-height:56px}
 button:disabled{opacity:.55;cursor:default}
 .tabbar{position:fixed;z-index:30;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--surface) 76%,transparent);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-top:1px solid var(--line);padding:6px max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
@@ -1205,7 +1247,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </div>
 
   <div class="tabpanel" id="tabPlans" data-tab="plans" role="tabpanel" aria-labelledby="tb-plans" hidden>
-    <header class="tabhead"><h1 class="display">Plans</h1><span class="hint" id="bShared">Shared with them</span></header>
+    <header class="tabhead tabhead-row"><h1 class="display">Plans</h1><span class="hint" id="bShared" hidden>Shared with them</span><button type="button" class="rb tabhead-add" id="bPlanAdd" aria-label="Add a plan" aria-haspopup="dialog"><i data-icon="plus"></i></button></header>
     <div class="boardin" id="boardMount"></div>
   </div>
 
@@ -1250,7 +1292,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </div>
 
   <div class="tabpanel" id="tabHearts" data-tab="hearts" role="tabpanel" aria-labelledby="tb-hearts" hidden>
-    <header class="tabhead"><h1 class="display">Hearts</h1><span class="hint">Thinking of you</span></header>
+    <header class="tabhead tabhead-row"><h1 class="display">Hearts</h1><span class="hint" id="bHeartsToday"></span></header>
     <div id="bHearts"></div>
   </div>
 
@@ -1446,17 +1488,36 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </div>
 </div>
 
-<!-- CHECK MY SETUP (sheet over any state) -->
+<!-- CHECK MY SETUP (sheet over any state): one answer first, the checks and the sound log folded under it -->
 <div class="sheet" data-state="check" hidden>
   <div class="check" role="dialog" aria-modal="true" aria-labelledby="checkTitle">
-    <header>
-      <div><h2 class="display" id="checkTitle">Check my setup</h2>
-      <span class="sum" id="checkSummary"></span></div>
-      <button class="close" id="checkX" aria-label="Close"><i data-icon="x"></i></button>
-    </header>
-    <ul class="checks" id="checkList"></ul>
-    <details class="sndlog" id="sndLog"><summary>Sound log</summary><ol id="sndLogList"></ol><p class="sndlog-say" id="sndNow"></p><p class="sndlog-say">What Beside noticed and put right in your calls. If the sound drops again, send a picture of this.</p></details>
-    <footer><button class="btn ghost" id="checkBtn">Run again</button><button class="btn quiet" id="checkClose">Done</button></footer>
+    <button class="close ck-x" id="checkX" aria-label="Close"><i data-icon="x"></i></button>
+    <div class="ck-answer" id="checkAnswer" data-st="checking" aria-live="polite">
+      <span class="ck-mark" id="checkMark" aria-hidden="true"><i data-icon="spin" data-size="40"></i></span>
+      <h2 id="checkTitle">Checking</h2>
+      <p class="sum" id="checkSummary"></p>
+      <button class="btn ghost sm" id="checkHow" hidden>Show me how</button>
+    </div>
+    <div class="ck-folds">
+      <details class="ck-fold" id="checkFold"><summary><i data-icon="list"></i><span id="checkCount">The checks</span><i data-icon="chevd" class="ck-chev"></i></summary><ul class="checks" id="checkList"></ul></details>
+      <details class="sndlog ck-fold" id="sndLog"><summary><i data-icon="note"></i><span class="sl-t">Sound log</span><i data-icon="chevd" class="ck-chev"></i></summary><div class="sndlog-in"><ol id="sndLogList"></ol><p class="sndlog-say" id="sndNow"></p><p class="sndlog-say">What Beside noticed and put right in your calls. If the sound drops again, send a picture of this.</p></div></details>
+    </div>
+    <footer><button class="btn" id="checkBtn">Check again</button><button class="btn ink" id="checkClose">Done</button></footer>
+  </div>
+</div>
+
+<!-- A REAL PROBLEM (its own small sheet): what is wrong, why, three steps, one button -->
+<div class="sheet" id="stepsSheet" hidden>
+  <div class="check stepsheet" role="dialog" aria-modal="true" aria-labelledby="stepsTitle">
+    <button class="close ck-x" id="stepsX" aria-label="Close"><i data-icon="x"></i></button>
+    <div class="ck-answer" data-st="problem">
+      <span class="ck-mark" id="stepsMark" aria-hidden="true"></span>
+      <h2 id="stepsTitle"></h2>
+      <p class="sum" id="stepsWhy"></p>
+    </div>
+    <ol class="steps" id="stepsList"></ol>
+    <p class="steps-more" id="stepsMore" hidden></p>
+    <footer><button class="btn ink" id="stepsGo">Got it</button></footer>
   </div>
 </div>
 
@@ -1562,8 +1623,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=17"></script>
+<script src="board.js?v=18"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>
