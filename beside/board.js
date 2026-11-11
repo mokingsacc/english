@@ -1474,6 +1474,8 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
     // Which figure is this person's (Mo's home is London, Semal's is LA), and the other one's name if known.
     people() { return { me: whoMe(), them: S ? theirName(S.lastView) : '' }; },
     celebrate() { if (S) celebrate(); },
+    // A heart, the same as the Hearts tab sends (the call's end sheet offers one).
+    heart() { if (!S) return false; sendThink('', null); return true; },
     house,
   };
 })();

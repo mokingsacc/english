@@ -141,8 +141,9 @@
     boardPlace(state);
     if (into) tvOpen(snap);
     else if (back) tvClose();
-    if (state === 'live' || state === 'watching') { layout(); wakeControls(); }
-    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); if (SHELL.includes(state)) roomOff(); }
+    if (state !== 'join') joinStage(false);
+    if (state === 'live' || state === 'watching') { ringBanner(''); layout(); wakeControls(); clockRun(true); }
+    else { closeMore(); shareOpen(false); soundOpen(false); document.body.classList.remove('idle'); if (SHELL.includes(state)) callReset(); }
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
@@ -533,20 +534,6 @@
     ], { duration: 760, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).onfinish = () => { if (tvFx === fx) tvDone(); };
   }
 
-  // While it rings, their figure peeks in from the edge and hops.
-  let ringFigT = 0;
-  function ringHop() {
-    const el = $('ringFig');
-    if (!el || !window.BesideFigures) return;
-    const me = window.BesideBoard ? window.BesideBoard.people().me : 'mo';
-    el.innerHTML = window.BesideFigures.figure(me === 'mo' ? 'semal' : 'mo', { label: '' });
-    el.hidden = false;
-    el.classList.remove('go');
-    void el.offsetWidth;
-    el.classList.add('go');
-    clearTimeout(ringFigT);
-    ringFigT = setTimeout(() => { el.classList.remove('go'); el.hidden = true; }, 8000);
-  }
   function on(id, ev, fn) { const el = $(id); if (el) el.addEventListener(ev, fn); }
   let noteTimer = 0;
   function note(msg, kind) {
@@ -565,15 +552,22 @@
     el.hidden = false;
     if (kind !== 'stay') noteTimer = setTimeout(() => { el.hidden = true; }, 7000);
   }
+  // The call shows no speed number (Check my setup keeps the numbers). "Weak connection" shows only once the round
+  // trip has been bad (200 ms or more) for a few seconds, and goes a few seconds after it is fine again.
+  const LAG = { bad: 0, ok: 0, q: '' };
   function setLag(id, ms) {
     const el = $(id);
     if (!el) return;
-    const tgt = el.querySelector('b') || el;
     const q = ms == null ? 'none' : ms < 80 ? 'calm' : ms < 200 ? 'ok' : 'bad';
-    el.classList.remove('none', 'calm', 'ok', 'bad');
-    el.classList.add(q);
-    tgt.textContent = ms == null ? '–' : Math.round(ms) + ' ms';
-    el.title = ms == null ? '' : 'Round trip between you: ' + Math.round(ms) + ' ms. Under 80 is great, under 200 is fine.';
+    const now = Date.now();
+    LAG.q = q;
+    el.dataset.q = q;
+    if (q === 'bad') { LAG.ok = 0; if (!LAG.bad) LAG.bad = now; if (now - LAG.bad >= 3500) el.hidden = false; }
+    else {
+      LAG.bad = 0;
+      if (!LAG.ok) LAG.ok = now;
+      if (q === 'none' || now - LAG.ok >= 3500) el.hidden = true;
+    }
   }
   function setPressed(id, pressed, onLabel, offLabel) {
     const el = $(id);
@@ -1625,11 +1619,15 @@
     if (why === 'reset') setTimeout(() => micAgain('Your mic was started again.', true), 800);
   }
 
-  // Who is talking: the host listens to every voice and tells everyone; a green ring marks them.
+  // Who is talking: the host listens to every voice and tells everyone. The chip's dot pulses softly while someone
+  // else talks (no outlines on any picture).
   const T = { ids: new Set(), sig: '', timer: 0, last: new Map(), buf: null };
   function renderTalk() {
     const has = (el) => !!el.dataset.pid && T.ids.has(el.dataset.pid);
     document.querySelectorAll('#watchRoot .tile').forEach((el) => el.classList.toggle('talking', has(el)));
+    const me = isGuest ? G.peer && G.peer.id : H.me;
+    const chip = $('callChip');
+    if (chip) chip.classList.toggle('talking', [...T.ids].some((id) => id && id !== me));
     if (mini.els) mini.els.grid.querySelectorAll('.fw-tile').forEach((el) => el.classList.toggle('talking', has(el)));
   }
   function setTalk(ids) {
@@ -1701,33 +1699,21 @@
   }
 
   // ---------- VIEW (one call stage for both roles) ----------
-  // One tile is big, the others float as bubbles. Big = the tile you tapped (while it's there), else the shared
-  // screen, else the other person's face, else their initial. A host alone sees the invite card instead.
-  const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false, plain: store.get('beside.plaincall') === '1', roomOk: false, swapT: 0, noClick: 0 };
-  // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
-  // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
+  // The Beside look: their picture fills the pane and you are a round dot at its corner. Drag the dot to any corner,
+  // tap it to swap; both are kept for this call only. The same stage has other views (#watchRoot[data-view]):
+  // alone (ringing, or waiting for someone), split (Side by side, from More), share (the shared thing on top, the
+  // faces below) and film (the film on top, their face below). With three or more, the others are small round
+  // pictures down the right: tap one to make it big.
+  const V = { pin: '', auto: '', focus: 'them', sbs: false, corner: 'br', pair: false, view: '', since: 0, lastWith: 0, withName: '', faceName: '', skyAt: 0, clock: 0, snapAt: 0 };
   const ico = (n, s, o) => (window.BesideIcons ? window.BesideIcons.svg(n, s, o) : '');
-  const LAYOUT_ICON = { split: ico('split'), focus: ico('pip') };
-  function setLayout(mode, focus) {
-    V.mode = mode === 'focus' ? 'focus' : 'split';
-    if (focus) V.focus = focus;
-    store.set('beside.layout', V.mode);
-    layout();
-  }
-  function layoutButton() {
-    const b = $('layoutBtn');
-    if (!b) return;
-    b.hidden = !V.pair || V.room; // in the room both of you are always there: you in the photo, them in the window
-    const toFocus = V.mode === 'split';
-    const lab = toFocus ? 'Focus: show one of you big' : 'Split: show you both, half and half';
-    if (b.dataset.to !== (toFocus ? 'focus' : 'split')) {
-      b.dataset.to = toFocus ? 'focus' : 'split';
-      b.innerHTML = LAYOUT_ICON[toFocus ? 'focus' : 'split'];
-      b.setAttribute('aria-label', lab);
-      b.title = toFocus ? 'Focus' : 'Split';
-    }
-  }
   const PERSON = ico('person');
+  // Which figure is whose: yours, and the other one's.
+  function whoMe() { const b = window.BesideBoard; return b ? b.people().me : isGuest ? 'semal' : 'mo'; }
+  function whoThem() { return whoMe() === 'mo' ? 'semal' : 'mo'; }
+  function headSvg(who) { return window.BesideFigures && who ? window.BesideFigures.figure(who, { pose: 'head', label: '' }) : ''; }
+  function putHead(el, who) { if (!el || el.dataset.who === who) return; el.dataset.who = who; el.innerHTML = headSvg(who); }
+  // The other one's room on Home: their name there, their time and their weather.
+  function theirRoom() { try { const h = window.BesideBoard && window.BesideBoard.house(); return (h && h.rooms.find((r) => !r.mine)) || null; } catch (e) { return null; } }
   function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
   function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
   function screenSource() {
@@ -1745,35 +1731,26 @@
     if (v.paused) v.play().catch(() => {});
   }
   function hostLabel() { return theirName || (G.hostName || ''); }
-  function titleText() {
+  function sharerName() {
     const sid = sharerId();
-    if (isGuest) {
-      if (amSharing()) return 'You’re sharing';
-      const n = hostLabel();
-      if (sid && screenSource()) {
-        const who = sid === hostId ? n : (G.room && G.room.name) || '';
-        return who ? who + '’s screen' : 'Their screen';
-      }
-      return n ? 'With ' + n : 'In the call';
-    }
-    const live = watchers();
-    const joining = H.guests.size - live.length;
-    const who = live.length === 1 ? live[0].name || 'your guest' : live.length + ' people';
-    if (amSharing()) return live.length ? 'You’re sharing with ' + who : 'You’re sharing';
-    if (sid && roomTrack()) { const g = guestById(sid); return g && g.name ? g.name + '’s screen' : 'Their screen'; }
-    if (live.length === 1) return 'With ' + who;
-    if (live.length > 1) return live.length + ' people are here';
-    if (joining === 1) { const j = [...H.guests.values()].find((g) => !g.live); return ((j && j.name) || 'Someone') + ' is joining…'; }
-    if (joining) return joining + ' people are joining…';
-    return 'Waiting for someone to open your link';
+    if (isGuest) return sid === hostId ? hostLabel() : (G.room && G.room.name) || '';
+    const g = guestById(sid);
+    return (g && g.name) || '';
+  }
+  const pad2 = (n) => (n < 10 ? '0' : '') + n;
+  function lasted(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return (h ? h + ':' + pad2(m) : m) + ':' + pad2(s % 60);
   }
   function layout() {
-    const root = $('watchRoot'), bigSlot = $('bigSlot'), bub = $('bubbles'), park = $('parking');
-    if (!root || !bigSlot || !bub || !park) return;
+    const root = $('watchRoot'), bigSlot = $('bigSlot'), bub = $('bubbles'), park = $('parking'), dot = $('dotSlot');
+    if (!root || !bigSlot || !bub || !park || !dot) return;
+    preCam();
     const scr = screenSource();
     setTrack($('screenTile'), scr);
     const others = [];
-    let alone = false, name = '', self = null, avatarId = '';
+    let alone = false, name = '', avatarId = '', many = false, mine = null;
+    const selfT = $(isGuest ? 'gSelf' : 'selfFace');
     if (isGuest) {
       const pc = G.call && G.call.peerConnection;
       const face = G.camOn && app.state === 'watching' && pc ? lane(pc, 1) : null;
@@ -1794,79 +1771,105 @@
       for (const [id, tile] of G.tiles) if (!keep.has(id)) { setTrack(tile, null); tile.remove(); G.tiles.delete(id); }
       name = hostLabel();
       avatarId = hostId;
-      const mine = G.cam && G.cam.getVideoTracks()[0];
-      setTrack($('gSelf'), mine || null);
-      if ($('gSelf')) $('gSelf').dataset.pid = (G.peer && G.peer.id) || '';
-      if (mine) self = $('gSelf');
+      mine = G.cam && G.cam.getVideoTracks()[0];
+      many = G.people.length > 0;
+      if (selfT) selfT.dataset.pid = (G.peer && G.peer.id) || '';
     } else {
       const live = watchers();
       alone = !live.length;
       live.forEach((g) => { if (g.tile) others.push(g.tile); });
       name = live.length ? live[0].name || '' : '';
       avatarId = live.length ? live[0].id : '';
-      setTrack($('selfFace'), H.cam ? H.camSlot : null);
-      if ($('selfFace')) $('selfFace').dataset.pid = H.me || '';
-      if (H.cam) self = $('selfFace');
+      mine = H.cam ? H.camSlot : null;
+      many = live.length > 1;
+      if (selfT) selfT.dataset.pid = H.me || '';
     }
-    if ($('avatarTile')) $('avatarTile').dataset.pid = avatarId;
+    // you: your camera, or your figure's head while it is off
+    setTrack(selfT, mine || null);
+    if (selfT) { selfT.classList.toggle('nocam', !mine); putHead(selfT.querySelector('.self-fig'), whoMe()); }
+    const avatar = $('avatarTile');
+    if (avatar) avatar.dataset.pid = avatarId;
     const screen = scr ? $('screenTile') : null;
-    const visible = [screen].concat(others, [self]).filter(Boolean);
-    const auto = alone ? $('inviteTile') : screen || others[0] || $('avatarTile');
-    V.auto = auto ? auto.dataset.key : '';
-    let big = auto;
-    // Just the two of you, your camera on, nothing shared: Split or Focus. More people, a shared screen, a video
-    // together or a voice call keep the usual view.
-    const them = others[0] || $('avatarTile');
-    V.pair = !alone && !screen && !!self && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1) && !(!!W.id && !!$('ytBox') && !$('ytBox').hidden);
-    let halves = null;
-    if (V.pair) {
-      if (V.mode === 'split') { halves = [them, self]; big = null; }
-      else big = V.focus === 'self' ? self : them;
-    } else if (!alone && V.pin) {
-      const p = visible.find((el) => el !== self && el.dataset.key === V.pin);
-      if (p) big = p; else V.pin = '';
-    }
-    // Watching YouTube together: the video takes the middle, everyone's faces float beside it.
     const ytOn = !!W.id && !!$('ytBox') && !$('ytBox').hidden;
-    if (ytOn) big = null;
-    // The faces window is open: the faces are there, so the shared screen here stays clear.
-    const smalls = halves ? [] : V.pair ? [big === self ? them : self] : mini.win && big === screen ? [] : visible.filter((el) => el !== big);
-    root.dataset.faces = ytOn && smalls.length ? '1' : '';
-    root.dataset.layout = halves ? 'split' : V.pair ? 'focus' : '';
-    // Next Door: just one other person and nothing shared, so the call is one room (see roomLook).
-    V.roomOk = !alone && !screen && !ytOn && others.length <= 1 && (isGuest ? !G.people.length : watchers().length === 1);
-    roomLook(root, V.roomOk && !V.plain);
-    app.zoomed = V.roomOk && V.plain; // the plain call is showing (for the automated tests)
+    const them = others[0] || avatar; // their camera, or the sky where they are
+    V.pair = !alone && !many;
+    const sbsOk = V.pair && !screen && !ytOn;
+    const view = alone ? 'alone' : ytOn ? 'film' : screen ? 'share' : sbsOk && V.sbs ? 'split' : 'beside';
+    let big = null, halves = null, dotT = null, smalls = [];
+    if (view === 'alone') big = $('inviteTile');
+    else if (view === 'split') halves = [them, selfT];
+    else if (view === 'share') {
+      V.auto = 'screen';
+      big = screen;
+      if (V.pin) { const p = others.concat([avatar]).find((el) => el && el.dataset.key === V.pin); if (p) big = p; else V.pin = ''; }
+      // The faces window is open: the faces are there, so the shared screen here stays clear.
+      smalls = mini.win && big === screen ? [] : [screen].concat(others.length ? others : [avatar], [selfT]).filter((el) => el && el !== big);
+    } else if (V.pair) {
+      big = V.focus === 'self' ? selfT : them;
+      dotT = big === selfT ? them : selfT;
+    } else {
+      // three or more: one big (the first, or the one you tapped), the others small, you in the dot
+      const first = others[0] || avatar;
+      V.auto = first ? first.dataset.key : '';
+      big = first;
+      if (V.pin) { const p = others.find((el) => el.dataset.key === V.pin); if (p) big = p; else V.pin = ''; }
+      smalls = others.filter((el) => el !== big);
+      dotT = selfT;
+    }
+    V.view = view;
+    root.dataset.view = view;
+    root.dataset.faces = smalls.length ? '1' : '';
+    root.dataset.ring = view === 'alone' && ringingNow() ? '1' : '';
+    // the dot stays clear of the small pictures down the right and of the film's controls
+    const corner = view === 'film' || (smalls.length && view !== 'share') ? 'b' + V.corner.charAt(1) : V.corner;
+    dot.dataset.corner = corner;
+    const keep = new Set([big, dotT].concat(smalls, halves || []).filter(Boolean));
     root.querySelectorAll('.tile').forEach((el) => {
-      if (el === big || smalls.includes(el) || (halves && halves.includes(el))) return;
+      if (keep.has(el)) return;
       el.hidden = true;
-      el.classList.remove('big', 'small', 'half');
+      el.classList.remove('big', 'small', 'half', 'dot');
       if (el.parentNode !== park) park.appendChild(el);
     });
-    const put = (el, box, i, half) => {
+    const put = (el, box, i, kind) => {
       el.hidden = false;
-      el.classList.toggle('half', !!half);
-      el.classList.toggle('big', !half && box === bigSlot);
-      el.classList.toggle('small', box !== bigSlot);
+      ['big', 'small', 'half', 'dot'].forEach((k) => el.classList.toggle(k, k === kind));
       if (box.children[i] !== el) {
         box.insertBefore(el, box.children[i] || null);
         const v = el.querySelector('video');
         if (v && v.srcObject) v.play().catch(() => {}); // iPhone can pause a moved video
       }
     };
-    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, true));
-    else if (big) put(big, bigSlot, 0);
-    smalls.forEach((el, i) => put(el, bub, i));
-    layoutButton();
-    // their initial (or a plain figure) while their camera is off
+    if (halves) halves.forEach((el, i) => put(el, bigSlot, i, 'half'));
+    else if (big) put(big, bigSlot, 0, 'big');
+    smalls.forEach((el, i) => put(el, bub, i, 'small'));
+    if (dotT) put(dotT, dot, 0, 'dot');
+    document.body.dataset.toast = view === 'share' && smalls.length ? 'faces' : dotT && corner.charAt(0) === 'b' ? 'dot' : '';
+    const lb = $('layoutBtn');
+    if (lb) { lb.hidden = !sbsOk; lb.setAttribute('aria-pressed', view === 'split' ? 'true' : 'false'); }
+    // their initial (or a plain figure) while their camera is off; the board draws their figure instead when it
+    // knows who they are (an event, nothing else), and then the tile is the sky where they are
     const ini = $('avatarInitial');
     if (ini) { if (name) ini.textContent = name.charAt(0).toUpperCase(); else ini.innerHTML = PERSON; }
-    // the board draws their character there instead, when it knows who they are (an event, nothing else)
     if (name !== V.faceName) { V.faceName = name; document.dispatchEvent(new CustomEvent('beside:face', { detail: { name: name || '' } })); }
     text('avatarName', name || (isGuest ? 'Your host' : 'Your guest'));
-    text('callTitle', titleText());
-    const mine = isGuest ? G.screenTrack : H.video;
-    text('shareLabel', amSharing() ? shareWhat(mine) : titleText());
+    text('avatarLabel', name);
+    const fig = $('avatarFig');
+    if (avatar) { avatar.classList.toggle('sky', !!(fig && fig.dataset.who)); if (avatar.classList.contains('sky')) skyDraw(); }
+    // the chip: who, and how long; their camera off says so
+    const camOff = V.pair && them === avatar;
+    const n = isGuest ? 2 + G.people.length : watchers().length + 1;
+    text('callTitle', !V.pair ? n + ' people' : camOff ? (name ? name + '’s camera is off' : 'Their camera is off') : name || 'In the call');
+    const chip = $('callChip');
+    if (chip) chip.classList.toggle('camoff', camOff);
+    if (inCallWithSomeone() && !(isGuest ? G.left : H.stopping)) { // not while the call is being taken down
+      const now = Date.now();
+      if (!V.since || now - V.lastWith > 60000) { V.since = now; snapClear(); }
+      V.lastWith = now;
+      if (name && V.pair) V.withName = name;
+    }
+    callClock();
+    shareBar(screen);
+    if (view === 'alone') aloneDraw();
     document.body.dataset.alone = alone ? '1' : '';
     const gs = $('gScreenBtn');
     if (gs) gs.hidden = !(isGuest && G.hostVer >= 2 && app.state === 'watching');
@@ -1879,85 +1882,187 @@
     miniRender();
     renderTalk();
   }
-
-  // ---------- NEXT DOOR: the call as one room ----------
-  // When the call connects, the wall between your rooms folds down (a plain fade with reduced motion). Their camera
-  // fills the big window, yours is the framed photo on the sill, and the two of you sit on one sofa, seen from
-  // behind. Double tap anywhere but the controls for the plain call screen from before the house (Mo, 6 Nov 2026:
-  // "when i double click on the screen i want exactly the same video call setting that was present before this
-  // whole re-design"); double tap again for the room. Each device remembers which one it last showed.
-  // More people, a shared screen or a video together keep the usual view.
-  function roomLook(root, on) {
-    if (on && !V.room) {
-      const so = $('ndSofa');
-      if (so && !so.firstChild && window.BesideFigures) so.innerHTML = window.BesideFigures.sofaBack({ label: '' });
-      if (!V.folded) { V.folded = true; foldWall(); }
+  // The clock in the chip, once a second; a still of their picture now and then for the sheet when the call ends.
+  function callClock() {
+    const on = (app.state === 'live' || app.state === 'watching') && inCallWithSomeone();
+    text('callTime', on && V.since ? lasted(Date.now() - V.since) : '');
+    if (on) { V.lastWith = Date.now(); if (Date.now() - V.snapAt > 5000) snapTake(); }
+  }
+  function clockRun(on) {
+    clearInterval(V.clock);
+    V.clock = on ? setInterval(callClock, 1000) : 0;
+  }
+  function snapTake() {
+    V.snapAt = Date.now();
+    const v = document.querySelector('#bigSlot .tile.big:not(.self):not(.screen) video');
+    const bg = $('endBg');
+    if (!v || !bg || v.readyState < 2 || !v.videoWidth) return;
+    let c = bg.querySelector('canvas');
+    if (!c) { c = document.createElement('canvas'); bg.appendChild(c); }
+    c.width = 96; c.height = Math.max(1, Math.round((96 * v.videoHeight) / v.videoWidth));
+    try { c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); } catch (e) {}
+  }
+  function snapClear() { const c = document.querySelector('#endBg canvas'); if (c) c.remove(); }
+  // Out of the call: the dot, the swap and Side by side start fresh next time.
+  function callReset() {
+    V.corner = 'br'; V.focus = 'them'; V.sbs = false; V.since = 0; V.lastWith = 0; V.withName = '';
+    clockRun(false);
+    delete document.body.dataset.toast;
+    const lg = $('lag');
+    if (lg) lg.hidden = true;
+    LAG.bad = LAG.ok = 0;
+  }
+  // Someone shares: a glass bar across the top says what, with Stop for your own.
+  function shareBar(screen) {
+    const b = $('shareBar');
+    if (!b) return;
+    b.hidden = !screen;
+    if (!screen) return;
+    const me = amSharing();
+    const track = isGuest ? G.screenTrack : H.video;
+    const who = sharerName();
+    text('shareBarText', me ? shareWhat(track) : who ? who + ' is sharing' : 'Someone is sharing');
+    text('shareLabel', me ? shareWhat(track) : who);
+    const st = $('shareBarStop');
+    if (st) st.hidden = !me;
+    const kind = me && CV.kind === 'photo' ? 'photo' : me && CV.kind === 'video' ? 'play' : me && CV.kind === 'browse' ? 'link' : 'screen';
+    const ic = $('shareBarIcon');
+    if (ic && ic.dataset.k !== kind) { ic.dataset.k = kind; ic.innerHTML = ico(kind, 22); }
+  }
+  // The host alone: ringing them, or waiting for someone to open the link. Their head, and the time where they are.
+  function ringingNow() { return !isGuest && Date.now() - (RG.ringAt || 0) < 45000; }
+  function clock12(h, mi) {
+    const part = h < 5 ? 'at night' : h < 12 ? 'in the morning' : h < 17 ? 'in the afternoon' : h < 21 ? 'in the evening' : 'at night';
+    return (h % 12 || 12) + ':' + pad2(mi) + ' ' + part;
+  }
+  function aloneDraw() {
+    const ring = ringingNow();
+    const box = document.querySelector('#inviteTile .alone');
+    if (box) box.classList.toggle('ringing', ring);
+    const room = theirRoom();
+    const nm = RG.name || (room && room.name) || '';
+    const joining = [...H.guests.values()].filter((g) => !g.live);
+    text('aloneTitle', joining.length === 1 ? (joining[0].name || 'Someone') + ' is joining…'
+      : joining.length ? joining.length + ' people are joining…'
+        : ring ? 'Ringing ' + (nm || 'them') : nm ? 'Waiting for ' + nm : 'Waiting for someone');
+    text('aloneTime', room ? 'It is ' + clock12(room.h, room.mi) + ' for them.' : '');
+    putHead($('aloneFig'), whoThem());
+    const v = $('aloneCam'), cam = H.cam ? H.camSlot : null;
+    if (!v) return;
+    if (cam) { if (!v.srcObject || v.srcObject.getVideoTracks()[0] !== cam) v.srcObject = new MediaStream([cam]); v.play().catch(() => {}); }
+    else if (v.srcObject) v.srcObject = null;
+    v.classList.toggle('on', !!cam);
+  }
+  // Their camera is off: the sky where they are (day or night, and the weather, the same as their window on Home),
+  // and the two of you on one sofa, seen from behind, looking at it together.
+  const SKY_CLOUD = (c) => '<svg class="sky-cloud ' + c + '" viewBox="0 0 120 42"><g fill="currentColor"><rect y="16" width="120" height="26" rx="13"/><rect x="30" width="60" height="32" rx="16"/></g></svg>';
+  const SKY_STARS = [[18, 22, 1.4], [52, 60, 1], [80, 14, 1.2], [118, 40, 1], [150, 18, 1.5], [176, 70, 1], [210, 30, 1.2], [240, 58, 1], [268, 16, 1.3], [290, 48, 1], [32, 96, 1], [132, 92, 1.1], [228, 100, 1]];
+  const SKY_FALL = { rain: 'ndRain', thunder: 'ndRain', drizzle: 'ndDrizzle', snow: 'ndSnow' };
+  function skyDraw() {
+    const el = $('avatarSky');
+    if (!el || (el.firstChild && Date.now() - V.skyAt < 60000)) return;
+    V.skyAt = Date.now();
+    const r = theirRoom() || { kind: 'none', night: false };
+    const kind = r.kind || 'none';
+    el.dataset.sky = r.night ? 'night' : ['cloud', 'fog', 'drizzle', 'rain', 'thunder', 'snow'].includes(kind) ? 'grey' : '';
+    el.dataset.wx = kind;
+    if (!el.firstChild) {
+      el.innerHTML = '<svg class="sky-stars" viewBox="0 0 300 120" preserveAspectRatio="xMidYMid slice"><g fill="currentColor">' +
+        SKY_STARS.map((s) => '<circle cx="' + s[0] + '" cy="' + s[1] + '" r="' + s[2] + '"/>').join('') + '</g></svg>' +
+        '<span class="sky-sun"></span>' + SKY_CLOUD('c1') + SKY_CLOUD('c2') + SKY_CLOUD('c3') +
+        '<svg class="sky-wx"><rect width="100%" height="100%"/></svg><span class="sky-fog"></span>' +
+        '<svg class="sky-hills" viewBox="0 0 374 200" preserveAspectRatio="none"><path class="h1" d="M0 64q90 -40 190 -10t184 -16V200H0z"/><path class="h2" d="M0 114q120 -30 220 0t154 -10V200H0z"/></svg>' +
+        '<div class="sky-sofa">' + (window.BesideFigures ? window.BesideFigures.sofaBack({ label: '' }) : '') + '</div>';
     }
-    V.room = on;
-    root.classList.toggle('nd-call', on);
+    const fall = el.querySelector('.sky-wx rect');
+    if (fall) fall.setAttribute('fill', 'url(#' + (SKY_FALL[kind] || 'ndRain') + ')');
   }
-  // Back on Home (a reconnect keeps the room, its zoom, and does not fold the wall again).
-  function roomOff() { V.room = false; V.folded = false; const r = $('watchRoot'); if (r) r.classList.remove('nd-call'); }
-  function foldWall() {
-    const f = $('ndFold');
-    if (!f || !f.animate) return;
-    app.folds = (app.folds || 0) + 1;
-    f.classList.add('go');
-    const done = () => f.classList.remove('go');
-    if (still()) { f.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards' }).onfinish = done; return; }
-    f.querySelector('b').animate([{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-90deg)', opacity: 1, offset: 0.8 }, { transform: 'rotateX(-90deg)', opacity: 0 }],
-      { duration: 1000, easing: 'cubic-bezier(.55,0,.35,1)', fill: 'forwards' });
-    f.querySelectorAll('i').forEach((el) => el.animate([{ opacity: 0.94 }, { opacity: 0.94, offset: 0.4 }, { opacity: 0 }], { duration: 1000, easing: 'ease-in-out', fill: 'forwards' }).onfinish = done);
+  // The waiting stage (a guest): your own camera, or your figure; their head in the empty dot.
+  function preCam() {
+    const v = $('waitCam'), s = G.cam;
+    putHead($('waitFig'), whoMe());
+    putHead($('waitDot'), whoThem());
+    if (!v) return;
+    if (s) { if (v.srcObject !== s) v.srcObject = s; v.play().catch(() => {}); }
+    else if (v.srcObject) v.srcObject = null;
+    v.classList.toggle('on', !!s);
   }
-  function setPlain(on) {
-    V.plain = !!on;
-    store.set('beside.plaincall', V.plain ? '1' : '0');
+
+  // The dot: drag it to any corner (it settles in the nearest one), tap it to swap who is big. A tap is a touch
+  // that hardly moved; the swap happens on the dot itself, so the stage's own tap (wake the bars) is not a swap.
+  function dotWire() {
+    const d = $('dotSlot');
+    if (!d) return;
+    let s = null;
+    d.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || s) return;
+      s = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+      try { d.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+    d.addEventListener('pointermove', (e) => {
+      if (!s || e.pointerId !== s.id) return;
+      const dx = e.clientX - s.x, dy = e.clientY - s.y;
+      if (!s.moved && Math.hypot(dx, dy) < 8) return;
+      s.moved = true;
+      d.classList.add('drag');
+      d.style.transform = 'translate(' + Math.round(dx) + 'px,' + Math.round(dy) + 'px)';
+    });
+    const end = (e) => {
+      if (!s || e.pointerId !== s.id) return;
+      const moved = s.moved;
+      s = null;
+      if (!moved) { if (e.type === 'pointerup') dotTap(); return; }
+      const box = $('watchRoot').getBoundingClientRect(), r = d.getBoundingClientRect();
+      const cx = r.left + r.width / 2 - box.left, cy = r.top + r.height / 2 - box.top;
+      V.corner = (cy < box.height / 2 ? 't' : 'b') + (cx < box.width / 2 ? 'l' : 'r');
+      app.dotMoves = (app.dotMoves || 0) + 1;
+      d.classList.remove('drag');
+      void d.offsetWidth; // from where the finger left it, into the corner
+      d.style.transform = '';
+      layout();
+    };
+    d.addEventListener('pointerup', end);
+    d.addEventListener('pointercancel', end);
+    d.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dotTap(); } });
+  }
+  function dotTap() {
+    if (!V.pair || (V.view !== 'beside' && V.view !== 'film')) return; // your own dot among three or more never swaps
+    V.focus = V.focus === 'self' ? 'them' : 'self';
+    app.swaps = (app.swaps || 0) + 1;
     layout();
   }
-  // Our own double tap (touch, pen or mouse): Safari on iPhone and iPad sends no dblclick for a quick double tap.
-  let dtap = null;
-  function zoomTap(e) {
-    const r = $('watchRoot');
-    if (!V.roomOk || !r || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    if (e.target && e.target.closest && e.target.closest('button, input, a, .dock, .hud .top, .soundpop, .peek, .hear, .ytbox')) { dtap = null; return; }
-    const now = Date.now();
-    if (dtap && now - dtap.t < 400 && Math.hypot(e.clientX - dtap.x, e.clientY - dtap.y) < 40) {
-      dtap = null; clearTimeout(V.swapT); V.noClick = now + 450; // this tap's click is not a swap
-      setPlain(!V.plain);
-      return;
-    }
-    dtap = { t: now, x: e.clientX, y: e.clientY };
-  }
-
-  // Swap: tap a bubble and it becomes big; tap the small screen to swap back. Your own bubble never swaps.
+  // A tap on a small picture makes it big; tap the one that was big (now small) to go back. You never go big here.
   function swapTap(e) {
-    if (CV.kind === 'video' && amSharing() && e.target && e.target.closest && e.target.closest('#screenTile')) { videoToggle(); return; }
-    if (V.room || Date.now() < V.noClick) return; // in the room a tap is half of a double tap
-    // In the plain call a tap still swaps, a moment later, unless it turns out to be half of a double tap.
-    if (V.roomOk) { clearTimeout(V.swapT); V.swapT = setTimeout(() => swapAct(e), 320); return; }
-    swapAct(e);
-  }
-  function swapAct(e) {
-    // Two of you: tap a half to make that person big; tap the big one, or the small tile, to go back to Split.
-    if (V.pair) {
-      const p = e.target && e.target.closest && e.target.closest('#bigSlot .tile, #bubbles .tile');
-      if (!p) return;
-      if (p.classList.contains('half')) setLayout('focus', p.dataset.key === 'self' ? 'self' : 'them');
-      else setLayout('split');
-      return;
-    }
-    const t = e.target && e.target.closest && e.target.closest('.tile.small');
+    const t = e.target && e.target.closest ? e.target : null;
     if (!t) return;
-    const k = t.dataset.key;
-    if (!k || k === 'self' || k === 'avatar' || k === 'invite') return;
+    if (CV.kind === 'video' && amSharing() && t.closest('#screenTile')) { videoToggle(); return; }
+    const s = t.closest('#bubbles .tile.small');
+    if (!s) return;
+    const k = s.dataset.key;
+    if (!k || k === 'self' || k === 'invite') return;
     V.pin = k === V.auto ? '' : k;
     layout();
   }
-  // More: a bottom sheet on phones, a small card on computers.
-  function moreOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
-  function openMore() {
+  // More: the tray above the bar. Setup is today's More sheet, a bottom sheet on phones and a card on computers.
+  function trayIsOpen() { const t = $('tray'); return !!t && !t.hidden; }
+  function trayOpen(on) {
+    const t = $('tray'), b = $('moreBtn');
+    if (!t) return;
+    t.hidden = !on;
+    if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) {
+      soundOpen(false);
+      wakeControls();
+      const f = t.querySelector('.tb:not([hidden])');
+      if (f && !matchMedia('(pointer: coarse)').matches) f.focus();
+    }
+  }
+  function setupIsOpen() { const m = $('moreSheet'); return !!m && !m.hidden; }
+  function moreOpen() { return trayIsOpen() || setupIsOpen(); }
+  function setupOpen() {
     const m = $('moreSheet');
     if (!m) return;
+    trayOpen(false);
     const ch = $('changeBtn');
     if (ch) ch.hidden = !amSharing() || isGuest || !!CV.kind;
     m.hidden = false;
@@ -1965,7 +2070,13 @@
     const x = $('moreClose');
     if (x) x.focus();
   }
-  function closeMore() { const m = $('moreSheet'); if (m) m.hidden = true; }
+  function closeMore() { trayOpen(false); const m = $('moreSheet'); if (m) m.hidden = true; }
+  // Watch a film: the Share sheet, at its link field (a YouTube link plays for everyone).
+  function filmAsk() {
+    shareOpen(true);
+    const i = $('shareLinkInput');
+    if (i && !i.disabled) i.focus();
+  }
   function soundOpen(on) {
     const p = $('soundPop'), b = $('soundBtn');
     if (!p) return;
@@ -2015,7 +2126,10 @@
     const dc = dotColor(from);
     el.style.setProperty('--dc', dc[0]);
     el.style.setProperty('--dct', dc[1]);
-    el.textContent = (name || '').charAt(0).toUpperCase();
+    const nm = doc.createElement('span');
+    nm.className = 'dot-name';
+    nm.textContent = name || '';
+    el.appendChild(nm);
     setTimeout(() => el.remove(), 2600);
     return el;
   }
@@ -2557,6 +2671,9 @@
     if (b) { b.hidden = !C.unread; b.textContent = C.unread > 9 ? '9+' : String(C.unread); }
     const cb = $('chatBtn');
     if (cb) cb.setAttribute('aria-label', C.unread ? 'Chat, ' + C.unread + ' new' : 'Chat');
+    const md = $('moreDot'), mb = $('moreBtn');
+    if (md) md.hidden = !C.unread;
+    if (mb) mb.setAttribute('aria-label', C.unread ? 'More, a new message' : 'More');
     docTitle();
   }
   function chatOpen(on) {
@@ -2691,7 +2808,7 @@
   // ("Let Beside ring me": a web push, kept by the board's server for this room). In the Beside iPhone and iPad
   // app the ring is a real incoming call, and the app hands its device code over by itself (window.BesideNative).
   // Tapping the ring opens Beside with ?answer=1, which joins (guest) or starts the call (host) straight away.
-  const RG = { busy: false, until: 0 };
+  const RG = { busy: false, until: 0, ringAt: 0, name: '', t: 0, bannerT: 0 };
   const ringBase = () => (srv ? 'http://' + srv : '') + '/peerjs/board/' + boardRoom();
   const ringRole = () => (isGuest ? 'guest' : 'host');
   function ringOpen() { return isGuest ? location.origin + location.pathname + location.hash : location.origin + location.pathname + '?room=' + hostCode(); }
@@ -2778,11 +2895,43 @@
     try {
       const j = await ringPost('/ring', { role: ringRole(), name: isGuest ? boardName() : (myName() || 'Your person') });
       const who = isGuest ? (theirName || 'them') : ((j.names && j.names[0]) || 'them');
-      if (j.sent > 0) { note('Ringing ' + who + '…', 'info'); ringHop(); }
-      else if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
-      else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay');
-    } catch (e) { note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
+      if (!isGuest && j.names && j.names[0]) RG.name = cleanName(j.names[0]);
+      // The host's call screen says "Ringing" itself (their head, pulsing); the guest's waiting screen gets a note.
+      if (j.sent > 0) { if (isGuest) note('Ringing ' + who + '…', 'info'); else ringing(true); }
+      else { ringing(false); if (j.devices > 0) note('The ring couldn’t reach ' + who + '’s device. Try again in a minute, or send them a message.', 'stay');
+      else note((isGuest && theirName ? theirName + ' hasn’t' : 'They haven’t') + ' let Beside ring them yet. ' + (isGuest ? 'Send them a message instead.' : 'Send the link instead.'), 'stay'); }
+    } catch (e) { ringing(false); note(e.message || 'The ring didn’t go through. Try again.', 'stay'); }
     setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
+  }
+  // The host's screen while it rings: for 45 s, or until someone comes in.
+  function ringing(on) {
+    RG.ringAt = on ? Date.now() : 0;
+    clearTimeout(RG.t);
+    if (on) RG.t = setTimeout(layout, 45100);
+    if (app.state === 'live') layout();
+  }
+  // A ring while Beside is open in a browser (a computer, an iPad): the same look as the call, with Answer and Not
+  // now. The notification shows as well; either one answers.
+  function ringHere(url) {
+    let u = null;
+    try { u = new URL(url || './', location.href); } catch (x) { return false; }
+    const m = u.hash.slice(1).match(/^([a-z0-9]{8})/);
+    return isGuest ? !m || m[1] === guestCode : !m && (u.searchParams.get('room') || hostCode()) === hostCode();
+  }
+  function ringBanner(url) {
+    const b = $('ringBanner');
+    if (!b) return;
+    clearTimeout(RG.bannerT);
+    if (!url || !ringHere(url) || ['waiting', 'live', 'watching'].includes(app.state)) { b.hidden = true; return; }
+    putHead($('ringBannerHead'), whoThem());
+    const nm = isGuest ? theirName : ((theirRoom() || {}).name || '');
+    text('ringBannerText', nm ? nm + ' is ringing' : 'They are ringing');
+    b.hidden = false;
+    RG.bannerT = setTimeout(() => { b.hidden = true; }, 45000);
+  }
+  function ringNoteClose() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.getRegistration().then((r) => (r ? r.getNotifications({ tag: 'beside-ring' }) : [])).then((ns) => ns.forEach((n) => n.close())).catch(() => {});
   }
   function ringAnswer() {
     let q;
@@ -2836,14 +2985,19 @@
     document.querySelectorAll('.ring-me').forEach((b) => b.addEventListener('click', ringMe));
     on('ringBtn', 'click', (e) => ringThem(e.currentTarget));
     on('gRingBtn', 'click', (e) => ringThem(e.currentTarget));
-    if (theirName) text('gRingBtn', 'Ring ' + theirName);
+    const gr = $('gRingBtn') && $('gRingBtn').querySelector('span');
+    if (gr && theirName) gr.textContent = 'Ring ' + theirName;
+    on('ringBannerAnswer', 'click', () => { ringBanner(''); ringNoteClose(); ringAnswerNow(); });
+    on('ringBannerNot', 'click', () => { ringBanner(''); ringNoteClose(); });
     ringMeUi();
     ringNative();
     window.addEventListener('besidenative', () => { ringMeUi(); ringNative(); });
     on('nameInput', 'change', ringNative);
     if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
       const d = e.data;
+      if (d && d.beside === 'ringing') { ringBanner(d.url || './'); return; }
       if (!d || d.beside !== 'answer') return;
+      ringBanner('');
       if (!d.url) { if (d.fresh) ringAnswerNow(); return; } // no link said: this page
       let u = null;
       try { u = new URL(d.url, location.href); } catch (x) {}
@@ -2986,8 +3140,42 @@
     const n = $('ytNote'), k = $('ytKeep');
     if (!n || !k) return;
     const away = !W.play && W.away && W.away !== meName();
-    n.textContent = msg || (away ? 'Paused: ' + W.away + ' left.' : '');
+    const all = people().length > 2 ? 'everyone' : 'both of you';
+    n.textContent = msg || (away ? 'Paused: ' + W.away + ' left.' : (W.play ? 'Playing for ' : 'Paused for ') + all);
     k.hidden = !away || !!msg;
+    ytCtl();
+  }
+  // One line of controls under the film: play or pause, where in the film, the time, and Stop. They work for
+  // everyone, the same way as a press on the YouTube player itself: the new state goes to all (ytSend).
+  function ytDur() { try { return W.p && W.ready ? W.p.getDuration() || 0 : 0; } catch (e) { return 0; } }
+  function ytCtl() {
+    const box = $('ytBox');
+    clearTimeout(W.ctlT);
+    if (!box || box.hidden || !W.id) return;
+    W.ctlT = setTimeout(ytCtl, 500);
+    box.classList.toggle('paused', !W.play);
+    const dur = ytDur(), cur = W.seeking ? +(($('ytSeek') || {}).value || 0) : Math.min(ytNow(), dur || Infinity);
+    const sk = $('ytSeek');
+    if (sk && !W.seeking) {
+      sk.max = String(Math.max(1, Math.floor(dur)));
+      sk.value = String(Math.floor(cur));
+      sk.style.setProperty('--pct', (dur ? Math.min(100, (cur / dur) * 100) : 0).toFixed(1) + '%');
+    }
+    const m = Math.floor(cur / 60);
+    text('ytTime', (m >= 60 ? Math.floor(m / 60) + ':' + pad2(m % 60) : m) + ':' + pad2(Math.floor(cur % 60)));
+    const pb = $('ytPlay');
+    if (pb && pb.dataset.play !== String(W.play)) {
+      pb.dataset.play = String(W.play);
+      pb.innerHTML = ico(W.play ? 'pause' : 'play', 20);
+      pb.setAttribute('aria-label', W.play ? 'Pause for everyone' : 'Play for everyone');
+    }
+  }
+  function ytWire() {
+    on('ytPlay', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytNow(), play: !W.play }); });
+    const sk = $('ytSeek');
+    if (!sk) return;
+    sk.addEventListener('input', () => { W.seeking = true; const d = ytDur(); sk.style.setProperty('--pct', (d ? (sk.value / d) * 100 : 0).toFixed(1) + '%'); ytCtl(); });
+    sk.addEventListener('change', () => { W.seeking = false; if (W.id) ytSend({ id: W.id, at: +sk.value || 0, play: W.play }); });
   }
   function ytClose(remote) {
     const had = !!W.id;
@@ -3546,10 +3734,10 @@
   }
   function shareWhat(track) {
     if (CV.kind && CV.stream && track && CV.stream.getVideoTracks()[0] === track) {
-      if (CV.kind === 'video') return CV.media && (CV.media.paused || CV.media.ended) ? 'Your video is paused. Tap it to play.' : 'You’re sharing a video. Tap it to pause.';
-      return CV.kind === 'photo' ? 'You’re sharing a photo' : 'You’re sharing a web page';
+      if (CV.kind === 'video') return CV.media && (CV.media.paused || CV.media.ended) ? 'Your video is paused. Tap it to play.' : 'You are sharing a video. Tap it to pause.';
+      return CV.kind === 'photo' ? 'You are sharing a photo' : 'You are sharing a web page';
     }
-    return 'You’re sharing ' + surfaceName(track);
+    return 'You are sharing ' + surfaceName(track);
   }
   // Someone sent a link in the chat: a banner with an Open button (a browser only opens a new tab after a tap).
   function linkBanner(name, url) {
@@ -4459,11 +4647,106 @@
     stayAwake(false);
     if (wasLive && bc) bc.postMessage('off');
   }
+  // The call ended: a sheet over the dimmed stage with both of you, how long you were together, and a kind next
+  // step (a heart, sent the way the Hearts tab sends one). Done closes it; the link and Home are under it.
   function ended(title, body, action) {
-    text('endedTitle', title);
-    text('endedText', body);
+    const together = V.since ? Math.max(1, V.lastWith - V.since) : 0;
+    const who = V.withName || (isGuest ? hostLabel() : '');
+    text('endedTitle', String(title).replace(/\.$/, ''));
+    text('endedText', together && !MV.away ? howLong(together) + (who ? ' with ' + who : '') : body);
     text('endedAction', action);
+    const heart = !!together && !MV.away && boardOn && !!(window.BesideBoard && window.BesideBoard.heart);
+    const hb = $('endHeart'), ab = $('endedAction');
+    if (hb) { hb.hidden = !heart; hb.disabled = false; const t = hb.querySelector('span'); if (t) t.textContent = 'Send a heart'; }
+    if (ab) ab.hidden = heart;
+    const heads = $('endHeads');
+    if (heads) heads.innerHTML = window.BesideFigures ? '<span>' + headSvg(whoMe()) + '</span><span>' + headSvg(whoThem()) + '</span>' : '';
+    const c = document.querySelector('#endBg canvas');
+    if (c) c.hidden = !together;
     show('ended');
+  }
+  function howLong(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 1) return 'Less than a minute';
+    if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
+    const h = Math.floor(m / 60), r = m % 60;
+    return h + (h === 1 ? ' hour' : ' hours') + (r ? ' ' + r + (r === 1 ? ' minute' : ' minutes') : '');
+  }
+  function endHeart() {
+    const hb = $('endHeart');
+    if (!hb || hb.disabled || !window.BesideBoard || !window.BesideBoard.heart) return;
+    if (!window.BesideBoard.heart()) return;
+    hb.disabled = true;
+    const t = hb.querySelector('span');
+    if (t) t.textContent = 'Heart sent';
+  }
+  function endClose() { const sh = document.querySelector('.endsheet'); if (sh) sh.hidden = true; }
+
+  // ---------- JOIN (a guest who opened the link in a browser) ----------
+  // You see yourself first (or your figure, camera off), the host's head in the corner dot, and one Join button.
+  // The installed app, a ring being answered and a first visit (no name yet) open on Home as before.
+  const J = { on: false, cam: null, mic: true };
+  function joinFirst() {
+    if (!isGuest || !cleanName(store.get('beside.name') || '')) return false;
+    if (NATIVE() || navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) return false;
+    try { if (new URLSearchParams(location.search).get('answer') === '1') return false; } catch (e) {}
+    return true;
+  }
+  function joinStage(on) {
+    const st = $('joinStage');
+    if (!st || (!on && !J.on)) return;
+    J.on = !!on;
+    st.hidden = !on;
+    if (!on) { joinPreview(false); return; }
+    const n = theirName;
+    putHead($('joinFig'), whoMe());
+    putHead($('joinDot'), whoThem());
+    text('joinStageTitle', n ? 'Sit beside ' + n : 'Sit beside them');
+    text('joinStageText', 'You sit together as soon as ' + (n ? n + ' is' : 'they are') + ' in.');
+    J.mic = true;
+    joinUi();
+    // Camera on as last time, if the browser already lets Beside use it (no question before a tap).
+    const want = store.get('beside.joincam') === '1';
+    if (want && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'camera' }).then((p) => { if (p.state === 'granted' && J.on) joinPreview(true); }).catch(() => {});
+    }
+    // Is the host in the room now? The same quick look as "Move the call here" says so.
+    moveProbe((r) => {
+      if (!J.on || !r) return;
+      if (r.here) { joinStage(false); moveFound(r); return; } // already in the call on another device: Home offers to move it
+      if (r.live) text('joinStageText', (n ? n + ' is' : 'They are') + ' in the room now.');
+    });
+  }
+  function joinUi() {
+    const cam = !!J.cam;
+    const mb = $('joinMicBtn'), cb = $('joinCamBtn');
+    if (mb) { mb.setAttribute('aria-pressed', J.mic ? 'false' : 'true'); mb.setAttribute('aria-label', J.mic ? 'Join with my mic off' : 'Join with my mic on'); }
+    if (cb) { cb.setAttribute('aria-pressed', cam ? 'true' : 'false'); cb.setAttribute('aria-label', cam ? 'Turn my camera off' : 'Turn my camera on'); }
+    text('joinChipText', cam ? 'This is how you look' : 'Your camera is off');
+  }
+  async function joinPreview(on) {
+    const v = $('joinCam');
+    if (!on) {
+      if (J.cam) { J.cam.getTracks().forEach((t) => t.stop()); J.cam = null; }
+      if (v) { v.srcObject = null; v.classList.remove('on'); }
+      joinUi();
+      return;
+    }
+    if (J.cam || J.busy) return;
+    J.busy = true;
+    try {
+      const s = await getCam();
+      if (!J.on || J.cam) { s.getTracks().forEach((t) => t.stop()); return; }
+      J.cam = s;
+      if (v) { v.srcObject = s; v.classList.add('on'); v.play().catch(() => {}); }
+    } catch (e) { note(camError(e), 'info'); } finally { J.busy = false; }
+    joinUi();
+  }
+  function joinGo() {
+    const cam = !!J.cam;
+    store.set('beside.joincam', cam ? '1' : '0');
+    joinStage(false);
+    guestJoin(J.mic).then(() => { if (cam && !G.left && !G.cam) guestCam(); });
   }
   // ---------- MOVE THE CALL HERE ----------
   // One person, two devices: the call is live on one (phone, iPad, Mac, browser or the Beside app) and they open
@@ -4992,9 +5275,8 @@
     if (app.state === 'watching') return;
     if (G.serverDown || (G.peer && !G.peer.open)) return; // "Can't reach the call server" stays until we're back
     if (G.lost) { lostText(); return; }
-    wait(theirName ? 'You’re in. ' + theirName + ' hasn’t started the call yet.' : 'You’re in. They haven’t started the call yet.',
-      'Waiting for ' + (theirName || 'them') + '…',
-      'Keep this open. You’ll join the moment ' + (theirName ? theirName + ' starts' : 'they start') + '.');
+    wait('Waiting for ' + (theirName || 'them'), '',
+      'Stay here. You join the moment ' + (theirName ? theirName + ' arrives' : 'they arrive') + '.');
   }
   // After a call: a dropped connection keeps saying so until it's back; an end says they ended it.
   function lostText() {
@@ -5006,6 +5288,7 @@
     if (app.state !== 'waiting') G.waitSince = Date.now();
     show('waiting');
     miniRender();
+    preCam();
     text('waitTitle', title);
     text('waitingText', status);
     text('waitHint', hint);
@@ -5554,10 +5837,15 @@
     on('videoBtn', 'click', () => hostStart('video'));
     on('callVoiceBtn', 'click', () => hostStart('voice'));
     on('callVideoBtn', 'click', () => hostStart('video'));
-    on('homeRingBtn', 'click', () => { H.ringOnReady = Date.now(); hostStart('voice'); });
+    on('homeRingBtn', 'click', () => { H.ringOnReady = Date.now(); RG.ringAt = Date.now(); hostStart('voice'); });
     on('callJoinBtn', 'click', () => guestJoin(true));
     on('callJoinNoMicBtn', 'click', () => guestJoin(false));
-    on('endedClose', 'click', () => { const c = $('endedClose').closest('.endcard'); if (c) c.hidden = true; });
+    on('endedClose', 'click', endClose);
+    on('endHeart', 'click', endHeart);
+    on('joinX', 'click', () => joinStage(false));
+    on('joinGoBtn', 'click', joinGo);
+    on('joinMicBtn', 'click', () => { J.mic = !J.mic; joinUi(); });
+    on('joinCamBtn', 'click', () => joinPreview(!J.cam));
     if ($('tvBox') && window.BesideFigures) $('tvBox').innerHTML = window.BesideFigures.tvRoom();
     tabsBoot();
     on('shareStartBtn', 'click', () => hostStart('share'));
@@ -5612,7 +5900,6 @@
     on('boardSheet', 'click', (e) => { if (e.target === $('boardSheet')) boardSheet(false); });
     on('muteBtn', 'click', hostMute);
     on('camBtn', 'click', hostCam);
-    on('layoutBtn', 'click', () => setLayout(V.mode === 'split' ? 'focus' : 'split'));
     on('screenBtn', 'click', () => { if (amSharing()) hostUnshare(); else shareOpen(true); });
     on('gCamBtn', 'click', guestCam);
     on('gScreenBtn', 'click', () => { if (G.display) guestUnshare(); else shareOpen(true); });
@@ -5629,9 +5916,17 @@
     on('leaveBtn', 'click', guestLeave);
     on('waitLeaveBtn', 'click', guestLeave);
     on('watchRoot', 'click', swapTap);
-    on('watchRoot', 'pointerup', zoomTap);
+    dotWire();
     wirePointing();
-    on('chatBtn', 'click', () => chatOpen(!C.open));
+    ytWire();
+    // More: the tray. Each choice closes it and opens its sheet, or turns Side by side on or off.
+    const fromTray = (fn) => () => { trayOpen(false); fn(); };
+    on('chatBtn', 'click', fromTray(() => chatOpen(!C.open)));
+    on('layoutBtn', 'click', fromTray(() => { V.sbs = V.view !== 'split'; layout(); }));
+    on('trayFilm', 'click', fromTray(filmAsk));
+    on('trayPlans', 'click', fromTray(() => boardSheet(true)));
+    on('traySetup', 'click', fromTray(setupOpen));
+    on('shareBarStop', 'click', shareStop);
     on('peek', 'click', () => { const p = $('peek'); if (!p) return; p.hidden = true; if (p.dataset.chat) chatOpen(true); });
     on('chatClose', 'click', () => chatOpen(false));
     on('chatForm', 'submit', (e) => { e.preventDefault(); sendText(); });
@@ -5663,16 +5958,17 @@
       visualViewport.addEventListener('resize', kb);
       visualViewport.addEventListener('scroll', kb);
     }
-    on('miniBtn', 'click', () => { if (mini.win) miniClose(); else miniOpen(); });
+    on('miniBtn', 'click', fromTray(() => { if (mini.win) miniClose(); else miniOpen(); }));
     const sp = $('soundPop');
     if (sp) sp.appendChild(soundPanel(document));
-    on('soundBtn', 'click', () => soundOpen(!!sp && sp.hidden));
+    on('soundBtn', 'click', fromTray(() => soundOpen(!!sp && sp.hidden)));
     on('ytKeep', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytWant(), play: true }); });
     on('ytStop', 'click', () => ytClose(false));
     document.addEventListener('pointerdown', (e) => {
       if (sp && !sp.hidden && !sp.contains(e.target) && !(e.target.closest && e.target.closest('#soundBtn'))) soundOpen(false);
+      if (trayIsOpen() && !(e.target.closest && e.target.closest('#tray, #moreBtn'))) trayOpen(false);
     }, true);
-    on('moreBtn', 'click', () => { if (moreOpen()) closeMore(); else openMore(); });
+    on('moreBtn', 'click', () => trayOpen(!trayIsOpen()));
     on('moreClose', 'click', closeMore);
     on('tapToHear', 'click', () => {
       const vo = $('voice'), me = $('media');
@@ -5694,13 +5990,16 @@
       else if (sheet && !sheet.hidden) closeSheet();
       else if (sp && !sp.hidden) soundOpen(false);
       else if (shareIsOpen()) shareOpen(false);
-      else if (moreOpen()) closeMore();
+      else if (setupIsOpen()) closeMore();
+      else if (trayIsOpen()) { trayOpen(false); const mb = $('moreBtn'); if (mb) mb.focus(); }
       else if (C.open) chatOpen(false);
+      else if (J.on) joinStage(false);
+      else if (app.state === 'ended') endClose();
     });
     if (sheet) sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
     const more = $('moreSheet');
     if (more) more.addEventListener('click', (e) => { if (e.target === more) closeMore(); });
-    on('endedAction', 'click', () => { if (MV.away) moveHere(); else if (isGuest) show('join'); else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
+    on('endedAction', 'click', () => { if (MV.away) moveHere(); else if (isGuest) { show('join'); joinStage(true); } else hostStart(store.get('beside.start') === 'video' ? 'video' : 'voice'); });
     on('moveBtn', 'click', moveHere);
     on('moveNot', 'click', () => { MV.dismissed = true; moveCardHide(); });
     on('nameInput', 'change', () => { if (app.state === 'join') moveProbe(moveFound); });
@@ -5718,7 +6017,7 @@
     ['pointermove', 'pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, (e) => { if (inCall()) wakeControls(e); }, { passive: true, capture: true }));
     // A tap on hidden bars only brings them back (bubbles never hide, so a tap on one always counts).
     document.addEventListener('click', (e) => {
-      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #bigSlot .tile.half');
+      const onBubble = e.target && e.target.closest && e.target.closest('#bubbles, #dotSlot');
       // Every click in that 700 ms is swallowed, so the second tap of a double tap never presses a bar button.
       if (wokeAt && Date.now() - wokeAt < 700 && inCall() && !onBubble) { e.stopPropagation(); e.preventDefault(); return; }
       wokeAt = 0;
@@ -5769,6 +6068,7 @@
         if (hi) hi.classList.add('hollow');
       }
       show('join');
+      if (joinFirst()) joinStage(true);
     } else {
       H.code = hostCode();
       renderLink();
@@ -5784,7 +6084,7 @@
     ringBoot();
     // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
     app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, mini, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, RG, J, mini, ringBanner, ringing, layout, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

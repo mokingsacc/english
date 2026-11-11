@@ -18,6 +18,8 @@ self.addEventListener('push', (e) => {
     vibrate: heart ? [60, 80, 60] : [400, 200, 400, 200, 400],
     data: { url: d.url || './', at: Date.now(), kind: heart ? 'heart' : 'ring' },
   }));
+  // Beside open in a browser tab shows the ring itself too: their head, Answer and Not now.
+  if (!heart) e.waitUntil(self.clients.matchAll({ type: 'window' }).then((all) => all.forEach((c) => c.postMessage({ beside: 'ringing', url: d.url || './' }))));
 });
 
 self.addEventListener('notificationclick', (e) => {

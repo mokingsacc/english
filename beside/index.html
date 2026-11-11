@@ -182,11 +182,6 @@ input.sw:disabled{opacity:.45;cursor:default}
 .tear::before,.tear::after{content:"";position:absolute;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--bg)}
 .tear::before{left:-11px}.tear::after{right:-11px}
 
-.lag{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px;font-variant-numeric:tabular-nums}
-.lag b{font:var(--headline);display:flex;align-items:center;gap:6px}
-.lag b::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--lag-c,var(--go))}
-.lag small{font:var(--caption);color:var(--ink-2)}
-.lag.ok{--lag-c:var(--warn)}.lag.bad{--lag-c:var(--end)}
 
 /* the segmented control */
 .seg{display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:var(--r2);background:var(--fill)}
@@ -200,43 +195,254 @@ input.sw:disabled{opacity:.45;cursor:default}
 :is(.field-in,.name-row input,.linkask-row input,#shareSheet .linkrow input,.menu .field input,.composer input[type=text])::placeholder{color:var(--ink-3)}
 :is(.field-in,.name-row input,.linkask-row input,#shareSheet .linkrow input,.menu .field input,.composer input[type=text]):focus{outline:2px solid var(--ink);outline-offset:1px}
 
-/* ───────────────────────── GUEST · join / waiting ───────────────────────── */
-.invite{display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;padding:30px 0}
-.seatmark{position:relative;width:132px;height:100px}
-.seatmark .pane{position:absolute;inset:0 22px 14px 0;border-radius:var(--r2);background:var(--fill)}
-.seatmark .pane::after{content:"";position:absolute;left:14%;top:30%;width:50%;height:7px;border-radius:var(--round);background:var(--line);box-shadow:0 16px 0 0 var(--line)}
-.seatmark .you{position:absolute;right:0;bottom:0;width:52px;height:52px;border-radius:50%;background:var(--them);color:var(--on-them);display:grid;place-items:center;font:var(--title);box-shadow:0 0 0 6px var(--bg)}
-.seatmark .you.hollow{background:transparent;border:2px dashed var(--ink-3)}
-.invite p{max-width:34ch}
-.join-stack{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;margin-top:6px}
-
-.waitline{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:var(--round);background:var(--surface);box-shadow:var(--e1);font:var(--callout);color:var(--ink-2)}
+/* ───────────────────────── GUEST · join and waiting: you first, the other one in the corner dot ───────────────────────── */
+.prestage{position:fixed;inset:0;z-index:30;padding:0;background:var(--bg);color:var(--ink);overflow:hidden;
+  --pre-t:max(8px,env(safe-area-inset-top));--pre-dot:104px}
+.pre-pane{position:absolute;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));top:var(--pre-t);height:min(54dvh,calc(100dvh - 300px));border-radius:var(--r4);overflow:hidden;background:var(--surface)}
+.pre-pane video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.pre-pane video:not(.on){display:none}
+.pre-fig{position:absolute;inset:0;display:grid;place-items:center}
+.pre-fig svg{width:min(46%,220px);height:auto;border-radius:50%;background:color-mix(in srgb,var(--me) 26%,var(--surface))}
+.pre-pane video.on + .pre-fig{display:none}
+.pre-chip{position:absolute;left:14px;top:14px;display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 13px 0 11px;border-radius:var(--round);font:var(--callout);font-weight:600}
+.pre-x{position:absolute;right:10px;top:10px}
+.pre-dot{position:absolute;right:calc(max(8px,env(safe-area-inset-right)) + 16px);top:calc(var(--pre-t) + min(54dvh,calc(100dvh - 300px)) - var(--pre-dot) + 22px);width:var(--pre-dot);height:var(--pre-dot);border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--them) 26%,var(--surface));box-shadow:0 0 0 6px var(--bg)}
+.pre-dot svg{display:block;width:100%;height:100%}
+.pre-dot.empty{background:var(--surface-2)}
+.pre-dot.empty svg{opacity:.55;animation:prepulse 2.4s ease-in-out infinite}
+@keyframes prepulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.pre-words{position:absolute;left:max(24px,env(safe-area-inset-left));right:max(24px,env(safe-area-inset-right));top:calc(var(--pre-t) + min(54dvh,calc(100dvh - 300px)) + 30px);display:flex;flex-direction:column;gap:6px}
+.pre-words h1{font:var(--display);letter-spacing:-.025em;padding-right:calc(var(--pre-dot) - 12px)}
+.pre-words p{font:var(--body);color:var(--ink-2)}
+.pre-words .pre-status:empty,.pre-words p:empty{display:none}
+.pre-words .pre-status{font:var(--callout);color:var(--ink-3)}
+.pre-bar{position:absolute;left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px}
+.pre-bar .btn{flex:1;min-height:56px}
+.pre-bar .btn.primary{flex:1.6}
+.pre-check{position:absolute;right:max(8px,env(safe-area-inset-right));bottom:calc(max(20px,env(safe-area-inset-bottom)) + 66px);font:var(--callout);font-weight:600}
+@media (min-width:700px){
+  .prestage{--pre-dot:132px}
+  .pre-pane{left:50%;right:auto;width:min(720px,calc(100% - 48px));transform:translateX(-50%);top:calc(var(--pre-t) + 16px)}
+  .pre-dot{right:calc(50% - min(360px,calc(50% - 24px)) + 16px);top:calc(var(--pre-t) + 16px + min(54dvh,calc(100dvh - 300px)) - var(--pre-dot) + 22px)}
+  .pre-words{left:calc(50% - min(360px,calc(50% - 24px)) + 8px);right:calc(50% - min(360px,calc(50% - 24px)) + 8px);top:calc(var(--pre-t) + 16px + min(54dvh,calc(100dvh - 300px)) + 30px)}
+  .pre-bar{left:50%;right:auto;width:min(480px,calc(100% - 48px));transform:translateX(-50%)}
+  .pre-check{right:auto;left:50%;transform:translateX(-50%);bottom:calc(max(20px,env(safe-area-inset-bottom)) + 70px)}
+}
+@media (max-height:520px){
+  .pre-pane{right:auto;width:44%;height:auto;bottom:max(8px,env(safe-area-inset-bottom));left:max(8px,env(safe-area-inset-left));transform:none}
+  .pre-dot{--pre-dot:80px;right:auto;left:calc(max(8px,env(safe-area-inset-left)) + 44% - 92px);top:auto;bottom:calc(max(8px,env(safe-area-inset-bottom)) + 12px)}
+  .pre-words{left:calc(44% + 32px);right:max(24px,env(safe-area-inset-right));top:var(--pre-t)}
+  .pre-words h1{padding-right:0}
+  .pre-bar{left:calc(44% + 24px);right:max(16px,env(safe-area-inset-right));width:auto;transform:none}
+  .pre-check{display:none}
+}
 .ripple{position:relative;width:14px;height:14px;flex:none}
 .ripple::before,.ripple::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--them)}
 .ripple::after{animation:ring 2s ease-out infinite;background:transparent;border:2px solid var(--them)}
 @keyframes ring{0%{transform:scale(1);opacity:.8}100%{transform:scale(3.2);opacity:0}}
 
-/* ───────────────────────── CALL STAGE (host live, guest watching): always the dark set ───────────────────────── */
+/* ───────────────────────── THE CALL: the Beside look. Always the dark set. ───────────────────────── */
+/* Their picture fills the pane; you are a round dot at its corner (drag it to any corner, tap it to swap). Below: one
+   bar of five round buttons. Side by side, a film, a shared screen and the alone screen are other views of the same
+   stage (#watchRoot[data-view]). The call's sizes live here, so the pills, the dot and the bar always agree. */
+:root{
+  --cg-t:calc(env(safe-area-inset-top,0px) + 8px);
+  --cg-l:max(8px,env(safe-area-inset-left));--cg-r:max(8px,env(safe-area-inset-right));
+  --bar-b:max(16px,env(safe-area-inset-bottom));
+  --cg-b:calc(var(--bar-b) + 84px);          /* the pane ends 28 px above the 56 px bar */
+  --dot:116px;--faces-h:clamp(120px,22vh,220px);--faces-w:clamp(180px,22vw,320px);
+  --toast-b:calc(var(--bar-b) + 70px);
+}
+@media (min-width:700px){:root{--dot:148px}}
+@media (min-width:1100px) and (min-height:700px){:root{--dot:168px}}
+@media (max-height:520px){:root{--dot:84px}}
+body[data-toast=dot]{--toast-b:calc(var(--cg-b) - 20px + var(--dot) + 12px)}
+body[data-toast=faces]{--toast-b:calc(var(--cg-b) + var(--faces-h) + 12px)}
+@media (min-aspect-ratio:1/1){body[data-toast=faces]{--toast-b:calc(var(--bar-b) + 70px)}}
 .viewport{position:relative;background:var(--bg);border-radius:var(--r3);overflow:hidden;height:min(72vh,620px);max-width:960px;margin:0 auto;box-shadow:var(--e1)}
 .hud{position:absolute;inset:0;pointer-events:none;transition:opacity var(--move) var(--ease)}
 .hud > *{pointer-events:auto}
-.hud .top{position:absolute;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 /* glass: only for things that float over a face, a film or the sky */
-.pillbox,.dock,.peek,.linkbanner,.tile > .label,.fw-tile .label,.mini-peek,.fw-bar{background:var(--glass);color:var(--on-glass);box-shadow:var(--glass-edge);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
-.pillbox{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:0 16px;border-radius:var(--round);font:var(--callout);font-weight:600}
-.pillbox .mark{width:16px;height:16px;position:relative}
-.pillbox .mark .big{position:absolute;inset:0 4px 4px 0;border-radius:var(--r1);background:var(--on-glass)}
-.pillbox .mark .dot{position:absolute;right:0;bottom:0;width:8px;height:8px;border-radius:50%;background:var(--semal)}
-.pillbox.lag{flex-direction:row;font-variant-numeric:tabular-nums}
-.pillbox.lag::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--lag-c,var(--go))}
-.pillbox.lag.ok{--lag-c:var(--warn)}.pillbox.lag.bad{--lag-c:var(--end)}
-.dock{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:6px;padding:6px;border-radius:var(--round)}
-.dock .btn{min-height:52px;min-width:52px;padding:0 18px;color:var(--on-glass);background:none;border-radius:var(--round);font:var(--callout);font-weight:600}
-.dock .btn:hover{background:var(--fill)}
-.dock .btn.leave{background:var(--end);color:var(--on-end)}
-.hear{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:10px;min-height:52px;padding:0 24px;border-radius:var(--round);background:var(--them);color:var(--on-them);font:var(--headline);box-shadow:var(--e2)}
+.pillbox,.cb,.tray,.sharebar,.peek,.linkbanner,.tile > .label,.ytchip,.pre-chip,.fw-tile .label,.mini-peek,.fw-bar{background:var(--glass);color:var(--on-glass);box-shadow:var(--glass-edge);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.pillbox{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 13px 0 11px;border-radius:var(--round);font:var(--callout);font-weight:600;white-space:nowrap}
+.hear{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:10px;min-height:52px;padding:0 24px;border-radius:var(--round);background:var(--them);color:var(--on-them);font:var(--headline);white-space:nowrap;box-shadow:var(--e2)}
 .hear svg{width:22px;height:22px}
+.stage.watch{padding:0}
+.stage.watch .viewport{position:fixed;inset:0;height:auto;max-width:none;border-radius:0;box-shadow:none;container-type:size;transition:right var(--move) var(--ease),bottom var(--move) var(--ease)}
+.stage.watch .hud{z-index:4}
+/* A double tap never zooms the page or selects text; no green outlines on any picture. */
+#watchRoot{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 
+/* the pane: their picture, cover, in a rounded frame between the top and the bar */
+.bigslot{position:absolute;z-index:1;top:var(--cg-t);left:var(--cg-l);right:var(--cg-r);bottom:var(--cg-b);border-radius:var(--r4);overflow:hidden;background:var(--surface)}
+.tile{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;background:var(--surface)}
+.tile video{display:block;width:100%;height:100%;object-fit:cover;background:transparent}
+.tile.big{position:absolute;inset:0}
+.tile.screen video,.tile.big.screen video{object-fit:contain}
+.tile.self video{transform:scaleX(-1)}
+.tile > .label{position:absolute;z-index:2;left:14px;bottom:14px;max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 12px;border-radius:var(--round);font:var(--caption);font-weight:600;display:none}
+.tile > .label:empty{display:none !important}
+/* your own picture with the camera off: your figure's head on your colour */
+.self-fig{position:absolute;inset:0;display:none;place-items:center;background:color-mix(in srgb,var(--me) 26%,var(--surface))}
+.self-fig svg{width:min(62%,240px);height:auto}
+.tile.self.nocam video{display:none}
+.tile.self.nocam .self-fig{display:grid}
+
+/* you, as the dot: a ring in the ground colour; drag it to any corner, tap it to swap */
+.dotslot{position:absolute;z-index:3;width:var(--dot);height:var(--dot);border-radius:50%;touch-action:none;cursor:grab;
+  --dl:calc(var(--cg-l) + 12px);--dr:calc(100% - var(--cg-r) - 12px - var(--dot));
+  --dt:calc(var(--cg-t) + 62px);--db:calc(100% - var(--cg-b) + 20px - var(--dot));
+  left:var(--dr);top:var(--db);transition:left var(--move) var(--ease),top var(--move) var(--ease),transform var(--move) var(--ease)}
+.dotslot[data-corner=bl]{left:var(--dl)}
+.dotslot[data-corner=tl]{left:var(--dl);top:var(--dt)}
+.dotslot[data-corner=tr]{top:var(--dt)}
+.dotslot:empty{display:none}
+.dotslot.drag{transition:none;cursor:grabbing}
+.dotslot > .tile{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 6px var(--bg);cursor:inherit}
+.dotslot > .tile > .label{display:none}
+
+/* everyone else, in a call of three or more: small round pictures down the right; tap one to make it big */
+.bubbles{position:absolute;z-index:3;top:calc(var(--cg-t) + 62px);right:calc(var(--cg-r) + 12px);display:flex;flex-direction:column;align-items:flex-end;gap:14px}
+.bubbles:empty{display:none}
+.tile.small{width:clamp(76px,16vmin,112px);aspect-ratio:1;border-radius:50%;box-shadow:0 0 0 4px var(--bg);cursor:pointer;overflow:visible}
+.tile.small > video,.tile.small > .self-fig,.tile.small > .who-face{border-radius:50%;overflow:hidden}
+.tile.small > video{position:absolute;inset:0}
+.tile.small > .label{display:block;left:50%;bottom:-10px;transform:translateX(-50%);max-width:120%;padding:3px 10px}
+.tile.small.screen{border-radius:var(--r3);aspect-ratio:16/10;width:clamp(112px,22vw,224px)}
+.tile.small.screen > .label{display:none}
+
+/* their camera is off: the sky where they are, with the two of you on one sofa (paint below) */
+.tile.avatar{display:grid;place-items:center;container-type:size}
+.who-sky{display:none;position:absolute;inset:0;overflow:hidden}
+.tile.avatar.sky .who-sky{display:block}
+.tile.avatar.sky .who-face{display:none}
+.who-face{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--ink);text-align:center;padding:16px}
+.who-face b{width:clamp(104px,24vmin,156px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--them);color:var(--on-them);font:var(--display);box-shadow:0 0 0 12px var(--fill)}
+.who-face b svg{width:46%;height:46%}
+.who-face span{font:var(--title);margin-top:6px}
+.who-face small{font:var(--callout);color:var(--ink-2)}
+/* in the dot or a small picture, their camera off: only their head */
+:is(.dotslot,.bubbles) .tile.avatar .who-sky{display:none}
+:is(.dotslot,.bubbles) .tile.avatar .who-face{display:flex;position:absolute;inset:0;padding:0;gap:0;justify-content:center}
+:is(.dotslot,.bubbles) .who-face :is(span,small){display:none}
+:is(.dotslot,.bubbles) .who-face b{width:100%;box-shadow:none;font:var(--title)}
+:is(.dotslot,.bubbles) .who-fig{width:100%;box-shadow:none}
+
+/* the top: who and how long, and a small pill only while the connection is really weak */
+.hud .top{position:absolute;top:calc(var(--cg-t) + 14px);left:calc(var(--cg-l) + 14px);right:calc(var(--cg-r) + 14px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;pointer-events:none}
+.hud .top > *{pointer-events:auto;max-width:100%}
+.whochip{min-width:0}
+.whochip #callTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.whochip .calltime{color:color-mix(in srgb,var(--on-glass) 62%,transparent);font-weight:500;font-variant-numeric:tabular-nums}
+.whochip .calltime:empty{display:none}
+.talkdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--go)}
+.whochip.talking .talkdot{animation:talkdot 1.6s ease-in-out infinite}
+@keyframes talkdot{0%,100%{transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb,var(--go) 50%,transparent)}50%{transform:scale(1.25);box-shadow:0 0 0 5px color-mix(in srgb,var(--go) 0%,transparent)}}
+.whochip .camoff{display:none;width:18px;height:18px;flex:none}
+.whochip .camoff .slash{display:inline}
+.whochip.camoff .camoff{display:block}
+.whochip.camoff .talkdot{display:none}
+.pillbox.weak::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--warn)}
+
+/* the bar: mic, camera, share, more and a red End that is wider. 56 px, glass, one icon family (slashed when off). */
+.dock{position:absolute;left:calc(var(--cg-l) + 8px);right:calc(var(--cg-r) + 8px);bottom:var(--bar-b);max-width:400px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cb{position:relative;flex:none;width:56px;height:56px;min-width:56px;min-height:56px;padding:0;border-radius:50%;display:grid;place-items:center;font:var(--headline);transition:transform var(--press) var(--ease),background-color var(--press) var(--ease)}
+.cb:active{transform:scale(.94)}
+.cb svg{width:24px;height:24px}
+.cb .slash{display:none}
+.cb .label-t{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+/* off is a solid light button with the slash: a muted mic (pressed), a camera that is off (not pressed) */
+.cb[aria-pressed="true"]:not(.cam):not(.share),.cb.cam:not([aria-pressed="true"]){background:var(--on-glass);color:var(--bg);box-shadow:none}
+.cb[aria-pressed="true"]:not(.cam):not(.share) .slash,.cb.cam:not([aria-pressed="true"]) .slash{display:inline}
+.cb.share[aria-pressed="true"]{background:var(--me);color:var(--on-me);box-shadow:none}
+#moreBtn[aria-expanded="true"]{background:var(--on-glass);color:var(--bg);box-shadow:none}
+.cb.leave{width:76px;border-radius:var(--round);background:var(--end);color:var(--on-end);box-shadow:none}
+.cb.leave svg{width:28px;height:28px}
+.mdot{position:absolute;top:4px;right:4px;width:12px;height:12px;border-radius:50%;background:var(--them);box-shadow:0 0 0 2px var(--bg)}
+/* ringing: mic, camera and a red Cancel with its word (waiting for the link to be opened keeps the usual bar) */
+#watchRoot[data-ring="1"] .dock{justify-content:center;gap:22px}
+#watchRoot[data-ring="1"] #moreBtn,#watchRoot[data-ring="1"] .cb.share:not([aria-pressed="true"]){display:none}
+#watchRoot[data-ring="1"] .cb.leave{width:auto;padding:0 24px;display:flex;gap:9px}
+#watchRoot[data-ring="1"] .cb.leave .label-t{position:static;width:auto;height:auto;clip-path:none}
+/* idle: hide the bars AND make them untouchable, so a tap only wakes them; "Tap to hear" always stays */
+.hud .top,.hud .dock{transition:opacity var(--move) var(--ease)}
+body.idle .hud .top,body.idle .hud .dock{opacity:0;pointer-events:none}
+body.idle .hud .top > *{pointer-events:none}
+body.idle .stage.watch{cursor:none}
+
+/* More: the tray. Glass, corners 34, three columns, a 52 px circle with its name under it. */
+.tray{position:absolute;z-index:6;left:calc(var(--cg-l) + 8px);right:calc(var(--cg-r) + 8px);bottom:calc(var(--bar-b) + 70px);max-width:440px;margin:0 auto;border-radius:var(--r4);padding:18px 8px 16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 0;animation:fade var(--move) var(--ease)}
+.tb{display:flex;flex-direction:column;align-items:center;gap:7px;min-height:44px;padding:0 4px;color:var(--on-glass);font:var(--caption);font-weight:600;text-align:center}
+.tb > i{position:relative;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--on-glass) 13%,transparent);transition:background-color var(--press) var(--ease),transform var(--press) var(--ease)}
+.tb:active > i{transform:scale(.94)}
+.tb svg{width:22px;height:22px}
+.tb[aria-pressed="true"] > i,.tb[aria-expanded="true"] > i{background:var(--on-glass);color:var(--bg)}
+.tb .badge{position:absolute;top:-4px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:var(--round);background:var(--them);color:var(--on-them);font:var(--caption);font-weight:700;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
+
+/* Side by side: stacked when tall, side by side when wide, a small name on each */
+#watchRoot[data-view=split] .bigslot{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px;background:none;border-radius:0;overflow:visible}
+@media (min-aspect-ratio:1/1){#watchRoot[data-view=split] .bigslot{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}}
+.tile.half{position:relative;min-width:0;min-height:0;border-radius:var(--r4);cursor:pointer}
+.tile.half video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tile.half > .label{display:block}
+@media (max-aspect-ratio:1/1){#watchRoot[data-view=split] .tile.half:last-child > .label{bottom:auto;top:14px}}
+#watchRoot:is([data-view=split],[data-view=share],[data-view=film]) .whochip{display:none}
+
+/* someone shares: a glass bar across the top says what, with Stop; the shared thing on top, the faces below */
+.sharebar{position:absolute;z-index:5;top:var(--cg-t);left:var(--cg-l);right:var(--cg-r);min-height:56px;border-radius:var(--round);display:flex;align-items:center;gap:10px;padding:6px 6px 6px 18px;font:var(--headline)}
+.sharebar .sb-ic{flex:none;display:grid;place-items:center}
+.sharebar #shareBarText{flex:1;min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.sharebar .btn{flex:none}
+.sharebar .btn:not(.end){background:color-mix(in srgb,var(--on-glass) 14%,transparent);color:var(--on-glass)}
+#watchRoot[data-view=share] .bigslot{top:calc(var(--cg-t) + 64px);bottom:calc(var(--cg-b) + var(--faces-h) + 8px);background:var(--bg)}
+#watchRoot[data-view=share][data-faces=""] .bigslot{bottom:var(--cg-b)}
+#watchRoot[data-view=share] .hud .top{top:calc(var(--cg-t) + 78px)}
+#watchRoot[data-view=share] .bubbles{top:auto;left:var(--cg-l);right:var(--cg-r);bottom:var(--cg-b);height:var(--faces-h);flex-direction:row;align-items:stretch;gap:8px;overflow-x:auto;overscroll-behavior:contain}
+#watchRoot[data-view=share] .bubbles > .tile{flex:1 0 min(46%,320px);width:auto;height:auto;aspect-ratio:auto;border-radius:var(--r4);box-shadow:none;overflow:hidden}
+#watchRoot[data-view=share] .bubbles > .tile > :is(video,.self-fig,.who-face){border-radius:0}
+#watchRoot[data-view=share] .bubbles > .tile > .label{display:block;left:12px;bottom:12px;transform:none;max-width:calc(100% - 24px)}
+#watchRoot[data-view=share] .bubbles .tile.avatar .who-face b,#watchRoot[data-view=share] .bubbles .tile.avatar .who-fig{width:min(70%,120px);border-radius:50%}
+@media (min-aspect-ratio:1/1){
+  #watchRoot[data-view=share] .bigslot{bottom:var(--cg-b);right:calc(var(--cg-r) + var(--faces-w) + 8px)}
+  #watchRoot[data-view=share][data-faces=""] .bigslot{right:var(--cg-r)}
+  #watchRoot[data-view=share] .bubbles{top:calc(var(--cg-t) + 64px);left:auto;width:var(--faces-w);height:auto;flex-direction:column;overflow-x:hidden;overflow-y:auto}
+  #watchRoot[data-view=share] .bubbles > .tile{flex:1 1 0;min-height:0;max-height:calc(var(--faces-w) * 1.1)}
+}
+
+/* the host alone: ringing, or waiting for someone to open the link. Your own camera soft behind. */
+#watchRoot[data-view=alone] .bigslot{inset:0;border-radius:0;background:var(--bg)}
+#watchRoot[data-view=alone] .whochip{display:none}
+.tile.invitecard{position:absolute;inset:0;display:grid;place-items:center;padding:calc(var(--cg-t) + 24px) 16px calc(var(--bar-b) + 80px);overflow:auto;background:var(--bg)}
+.alone-bg{position:absolute;inset:-40px;overflow:hidden;pointer-events:none}
+.alone-bg video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:blur(26px) brightness(.45) saturate(1.2)}
+.alone-bg video:not(.on){display:none}
+.alone{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:min(100%,460px)}
+.alone-head{position:relative;width:148px;height:148px;margin-bottom:28px;display:grid;place-items:center}
+.alone-fig{position:relative;z-index:1;width:148px;height:148px;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--them) 26%,var(--surface));box-shadow:0 0 0 3px var(--them)}
+.alone-fig svg{display:block;width:100%;height:100%}
+.alone-head .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--them);opacity:0}
+.alone.ringing .alone-head .ring{animation:ringp 2.4s ease-out infinite}
+.alone.ringing .alone-head .r2{animation-delay:.8s}.alone.ringing .alone-head .r3{animation-delay:1.6s}
+@keyframes ringp{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.75);opacity:0}}
+.alone h1{font:var(--display);letter-spacing:-.025em;color:var(--ink)}
+.alone > p{font:var(--body);color:var(--ink-2)}
+.alone > p:empty{display:none}
+.alone .ticket{margin-top:26px;width:100%;text-align:left;background:color-mix(in srgb,var(--surface) 86%,transparent)}
+.alone.ringing .ticket{display:none}
+.alone .ticket .actions .btn{padding:0 14px;flex:1 1 auto}
+.waitrow{display:flex;align-items:center;gap:14px;padding:4px 20px 18px;font:var(--callout);color:var(--ink-2)}
+.waitrow .ripple{margin:0 4px}
+
+/* short messages in a call: glass pills just above the bar (above the dot when it sits low), clear of the faces */
+#watchRoot .peek{position:absolute;left:50%;transform:translateX(-50%);bottom:var(--toast-b);width:max-content;max-width:min(calc(100% - 32px),460px);min-height:44px;padding:12px 18px;border-radius:var(--r3);font:var(--callout);font-weight:600;text-align:center;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;animation:fade var(--move) var(--ease)}
+.peek b{font-weight:700;margin-right:6px}
+.note.dark{bottom:var(--toast-b)}
+
+/* a phone with the chat open: the call shrinks above it, the bar steps aside */
+@media (max-width:700px){
+  body.chat-open #watchRoot{--cg-b:8px;--dot:72px}
+  body.chat-open #watchRoot .dotslot{--dt:calc(var(--cg-t) + 8px)}
+}
 /* ───────────────────────── check panel ───────────────────────── */
 .check{background:var(--surface);box-shadow:var(--e2);overflow:hidden}
 .check header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px 12px}
@@ -263,33 +469,35 @@ input.sw:disabled{opacity:.45;cursor:default}
 .checks li[data-st="warn"] .meta{color:var(--warn);font-weight:600}
 .check footer{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
 
-/* ───────────────────────── ended ───────────────────────── */
-.ended{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:20px;padding:40px 0}
-.ended .glyph{width:84px;height:84px;border-radius:50%;background:var(--surface);box-shadow:var(--e1);display:grid;place-items:center;color:var(--ink-2)}
-.ended .glyph svg{width:34px;height:34px}
-.ended h2{font:var(--display)}
-.ended p{max-width:32ch}
+/* ───────────────────────── ended: a sheet over the dimmed stage ───────────────────────── */
+.endsheet{z-index:55;background:none}
+.endbg{position:fixed;inset:0;overflow:hidden;background:var(--bg)}
+.endbg canvas{position:absolute;inset:-40px;width:calc(100% + 80px);height:calc(100% + 80px);object-fit:cover;filter:blur(26px) brightness(.5) saturate(1.1)}
+.endmenu{position:relative;display:flex;flex-direction:column;gap:12px;padding:8px 20px calc(20px + env(safe-area-inset-bottom));text-align:center}
+.grab{width:38px;height:5px;border-radius:var(--round);background:var(--ink-3);opacity:.5;margin:0 auto 4px}
+.endheads{display:flex;justify-content:center;padding-top:8px}
+.endheads:empty{display:none}
+.endheads > span{width:64px;height:64px;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--me) 26%,var(--surface))}
+.endheads > span + span{margin-left:-14px;box-shadow:0 0 0 4px var(--surface);background:color-mix(in srgb,var(--them) 26%,var(--surface))}
+.endheads svg{display:block;width:100%;height:100%}
+.endmenu h2{font:var(--title);margin-top:4px}
+.endmenu p{font:var(--body);color:var(--ink-2);margin-top:-8px;margin-bottom:6px}
+.endmenu .btn{width:100%}
+@media (min-width:700px){.endmenu .grab{display:none}.endmenu{padding:24px 24px 22px;max-width:420px}}
+
+/* ───────────────────────── a ring while Beside is open on a computer or an iPad ───────────────────────── */
+.ringbanner{position:fixed;z-index:70;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);width:min(calc(100% - 24px),520px);display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px;border-radius:var(--r4);background:var(--surface);color:var(--ink);box-shadow:var(--e2);animation:fade var(--move) var(--ease)}
+.rb-head{flex:none;width:56px;height:56px;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--them) 26%,var(--surface));box-shadow:0 0 0 3px var(--them);animation:rbpulse 2.4s ease-in-out infinite}
+.rb-head svg{display:block;width:100%;height:100%}
+@keyframes rbpulse{50%{box-shadow:0 0 0 3px var(--them),0 0 0 10px color-mix(in srgb,var(--them) 22%,transparent)}}
+.rb-words{flex:1 1 150px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rb-words b{font:var(--headline);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb-words small{font:var(--caption);color:var(--ink-2)}
+.ringbanner .btn{flex:1 0 auto}
 
 /* ───────────────────────── app additions ───────────────────────── */
 /* mic chip is a real button */
 button.chip{cursor:pointer}
-/* lag colours: calm < 80 ms, ok < 200 ms, bad above */
-.lag.calm,.pillbox.lag.calm{--lag-c:var(--go)}
-.lag.none b::before,.pillbox.lag.none::before{background:var(--ink-3)}
-/* watching fills the screen */
-.stage.watch{padding:0}
-.stage.watch .viewport{position:fixed;inset:0;height:auto;max-width:none;border-radius:0;box-shadow:none;transition:right var(--move) var(--ease),bottom var(--move) var(--ease)}
-.stage.watch .hud{z-index:4}
-.hud .top{top:max(14px,env(safe-area-inset-top));left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right))}
-.dock{bottom:max(18px,env(safe-area-inset-bottom))}
-/* idle: hide the bars AND make them untouchable, so a tap only wakes them; "Tap to hear" always stays */
-.hud .top,.hud .dock{transition:opacity var(--move) var(--ease)}
-body.idle .hud .top,body.idle .hud .dock{opacity:0;pointer-events:none}
-body.idle .stage.watch{cursor:none}
-/* a switched-off mic or camera is a solid light button with the slash */
-.dock .btn[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
-.dock .btn .slash{display:none}
-.dock .btn[aria-pressed="true"] .slash{display:inline}
 /* waiting / invite */
 .name-row{display:flex;align-items:center;gap:8px;flex:1 1 220px}
 .name-row input{width:min(180px,100%)}
@@ -311,87 +519,6 @@ body.idle .stage.watch{cursor:none}
 .note button{flex:none;width:44px;height:44px;margin:-4px 0;border-radius:50%;display:grid;place-items:center;color:inherit}
 .note button svg{width:18px;height:18px}
 @keyframes pillin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
-/* tiles: one big, the rest float as bubbles (tap one to swap) */
-.bigslot{position:absolute;inset:0;z-index:1}
-.tile{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}
-.tile video{display:block;width:100%;height:100%;object-fit:contain;background:transparent}
-.tile.big{position:absolute;inset:0}
-.tile.face video{object-fit:cover}
-.tile.big.face video{object-fit:contain}
-.tile.self video{transform:scaleX(-1)}
-.tile > .label{position:absolute;z-index:2;left:8px;bottom:8px;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 10px;border-radius:var(--round);font:var(--caption);font-weight:600}
-.tile.big > .label{display:none}
-.bubbles{position:absolute;z-index:3;top:calc(max(14px,env(safe-area-inset-top)) + 54px);right:max(14px,env(safe-area-inset-right));display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.tile.small{width:clamp(112px,22vw,224px);aspect-ratio:4/3;border-radius:var(--r3);background:var(--bg);box-shadow:var(--e2),0 0 0 1px var(--line);cursor:pointer;transition:box-shadow var(--press) var(--ease)}
-.tile.small:hover{box-shadow:var(--e2),0 0 0 2px var(--ink-2)}
-.tile.small.screen{aspect-ratio:16/10;background:var(--bg)}
-.tile.small.self{width:clamp(64px,11vw,112px);border-radius:var(--r2);cursor:default}
-.tile.small.self:hover{box-shadow:var(--e2),0 0 0 1px var(--line)}
-.tile.small.self > .label{display:none}
-/* two of you on camera: Split (half and half, stacked when tall, side by side when wide) or Focus */
-#watchRoot[data-layout=split] .bigslot{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:max(6px,env(safe-area-inset-top)) max(6px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left))}
-@media (min-aspect-ratio:1/1){#watchRoot[data-layout=split] .bigslot{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}}
-.tile.half{position:relative;min-width:0;min-height:0;border-radius:var(--r3);background:var(--surface);cursor:pointer}
-.tile.half video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.tile.half.avatar{padding:12px;display:grid;place-items:center}
-.tile.half > .label{bottom:10px;left:10px}
-/* the second half's label sits at its top corner, clear of the dock */
-#watchRoot[data-layout=split] .tile.half:last-child > .label{bottom:auto;top:10px}
-.tile.half.talking::after{content:"";position:absolute;inset:0;z-index:2;border-radius:inherit;box-shadow:inset 0 0 0 3px var(--go);pointer-events:none}
-#watchRoot[data-layout=focus] .tile{cursor:pointer}
-/* the smallest phones have no room for one more call button: tapping a half does the same */
-@media (max-width:359px){#layoutBtn{display:none !important}}
-/* their initial while their camera is off */
-.tile.avatar{display:grid;place-items:center;padding:80px 16px 100px}
-.who-face{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--ink);text-align:center}
-.who-face b{width:clamp(104px,24vmin,156px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--them);color:var(--on-them);font:var(--display);box-shadow:0 0 0 12px var(--fill)}
-.who-face b svg{width:46%;height:46%}
-.who-face span{font:var(--title);margin-top:6px}
-.who-face small{font:var(--callout);color:var(--ink-2)}
-/* host alone: the invite card in the middle of the stage */
-.tile.invitecard{display:grid;place-items:center;padding:76px 16px 104px;overflow:auto}
-.tile.invitecard .ticket{width:min(100%,480px);margin:0}
-.tile.invitecard .tear::before,.tile.invitecard .tear::after{background:var(--bg)}
-.waitrow{display:flex;align-items:center;gap:14px;padding:16px 20px 18px;font:var(--callout);color:var(--ink-2)}
-.waitrow .ripple{margin:0 4px}
-/* top bar and dock */
-.hud .top{pointer-events:none}
-.hud .top > *{pointer-events:auto}
-body.idle .hud .top > *{pointer-events:none}
-.hud .top .right{display:flex;align-items:center;gap:8px;flex:none}
-.hud .top .pillbox:first-child{min-width:0}
-.hud .top .pillbox:first-child span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-button.pillbox{cursor:pointer}
-button.pillbox:hover{filter:brightness(1.2)}
-.pillbox svg{width:18px;height:18px;flex:none}
-.dock{align-items:center;max-width:calc(100% - 20px)}
-.dock .btn{position:relative;flex:none}
-.dock .btn svg{width:24px;height:24px}
-.dock .btn.icon{padding:0;min-width:52px}
-.dock .btn.share[aria-pressed="true"]{background:var(--me);color:var(--on-me)}
-.dock .btn.share[aria-pressed="true"]:hover{filter:brightness(1.06)}
-.dock .btn.share[aria-pressed="true"] .slash{display:none}
-/* the camera button reads the other way round: pressed means on */
-.dock .btn.cam .slash{display:inline}
-.dock .btn.cam{background:var(--ink);color:var(--bg)}
-.dock .btn.cam[aria-pressed="true"] .slash{display:none}
-.dock .btn.cam[aria-pressed="true"]{color:var(--on-glass);background:none}
-@media (max-width:560px){
-  .dock{gap:2px;padding:5px}
-  .dock .btn{min-height:50px;min-width:50px;padding:0 14px}
-  .dock .btn.share{padding:0 4px;min-width:50px;flex-direction:column;gap:1px}
-  .dock .btn.share svg{width:20px;height:20px}
-  .dock .btn.share .label-t{font:var(--caption);font-weight:600;line-height:1}
-  .dock .btn.share .label-t .w{display:none}
-  #miniBtn span{display:none}
-  #miniBtn{padding:0 12px}
-}
-@media (max-width:420px){
-  .dock{gap:0}
-  .dock .btn.icon,.dock .btn.share{min-width:42px}
-  .dock .btn{padding:0 10px}
-  .dock .btn.share{padding:0 2px}
-}
 /* Share: one sheet for links, photos, videos, files and the screen */
 #shareSheet .opt{display:flex;flex-direction:column;gap:6px}
 #shareSheet .opt.off .btn,#shareSheet .opt.off input{opacity:.5}
@@ -455,25 +582,22 @@ body.chat-open .stage.watch .viewport{right:360px}
   .chat .composer{background:var(--surface)}
   body.chat-open .stage.watch .viewport{right:0;bottom:58dvh}
   body.chat-open .dock,body.chat-open .peek{display:none}
-  body.chat-open .tile.small{width:92px}
-  body.chat-open .tile.small.self{width:56px}
 }
-.dock .badge{position:absolute;top:2px;right:2px;min-width:20px;height:20px;padding:0 5px;border-radius:var(--round);background:var(--them);color:var(--on-them);font:var(--caption);font-weight:700;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
-.peek{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(18px,env(safe-area-inset-bottom)) + 74px);width:max-content;max-width:min(calc(100% - 32px),460px);min-height:44px;padding:12px 18px;border-radius:var(--r3);font:var(--callout);text-align:center;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;animation:fade var(--move) var(--ease)}
 .peek b{font-weight:700}
 .viewer{position:fixed;inset:0;z-index:70;background:color-mix(in srgb,var(--bg) 92%,transparent);display:grid;place-items:center;padding:16px;cursor:zoom-out;animation:fade var(--move) var(--ease)}
 .viewer img{max-width:100%;max-height:calc(100dvh - 32px);border-radius:var(--r1)}
 body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:12px;z-index:6;display:grid;place-items:center;border:2px dashed var(--ink-2);border-radius:var(--r3);background:color-mix(in srgb,var(--bg) 55%,transparent);color:var(--ink);font:var(--title);pointer-events:none}
-/* pointing: a dot with the person's initial, in their colour, on the same spot for everyone */
-/* a double tap switches between the room and the plain call, so it never zooms the page or selects text */
-#watchRoot{touch-action:manipulation}
-#watchRoot .tile,#watchRoot .bigslot,#watchRoot .bubbles{-webkit-user-select:none;user-select:none}
+/* pointing: a ring in the person's colour, carrying their name, on the same spot for everyone */
 #screenTile{touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #screenVideo{pointer-events:none}
 .dots{position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;pointer-events:none}
-.dots > .dot{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--dc,var(--them));color:var(--dct,var(--on-them));display:grid;place-items:center;font:var(--caption);font-weight:700;line-height:1;box-shadow:0 0 0 2px var(--knob),var(--e2);animation:dotlife 2.6s var(--ease) forwards}
-.dots > .dot::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:3px solid var(--dc,var(--them));animation:ring var(--arrive) ease-out 1 forwards}
-.tile.small .dots > .dot{width:16px;height:16px;margin:-8px 0 0 -8px;color:transparent}
+.dots > .dot{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid var(--dc,var(--them));box-shadow:0 0 0 6px color-mix(in srgb,var(--dc,var(--them)) 28%,transparent);animation:dotlife 2.6s var(--ease) forwards}
+.dots > .dot::before{content:"";position:absolute;inset:11px;border-radius:50%;background:var(--dc,var(--them))}
+.dots > .dot::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:3px solid var(--dc,var(--them));animation:ring var(--arrive) ease-out 1 forwards}
+.dots .dot-name{position:absolute;left:26px;top:38px;white-space:nowrap;padding:3px 9px;border-radius:var(--round);background:var(--dc,var(--them));color:var(--dct,var(--on-them));font:var(--caption);font-weight:600}
+.dots .dot-name:empty{display:none}
+.tile.small .dots > .dot{width:16px;height:16px;margin:-8px 0 0 -8px;border-width:2px;box-shadow:none}
+.tile.small .dots .dot-name{display:none}
 @keyframes dotlife{0%{opacity:0;transform:scale(.4)}8%{opacity:1;transform:scale(1)}82%{opacity:1}100%{opacity:0}}
 /* the mini window (Document Picture-in-Picture), styled from this same sheet */
 .mini-body{margin:0;overflow:hidden;background:var(--bg)}
@@ -489,20 +613,18 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .mini-btn.cam[aria-pressed="true"]{color:var(--on-glass);background:none}
 .mini-btn.cam[aria-pressed="true"] .slash{display:none}
 .mini-btn.stop{width:auto;padding:0 12px;border-radius:var(--round);background:var(--end);color:var(--on-end);font:var(--caption);font-weight:600;margin-left:4px}
-#miniBtn[aria-pressed="true"]{background:var(--raised)}
 /* the faces window: everyone side by side, as big as the window allows */
 .fw{position:fixed;inset:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden}
 .fw-grid{position:absolute;inset:6px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-content:center}
 .fw-tile{position:relative;overflow:hidden;border-radius:var(--r2);background:var(--surface);display:grid;place-items:center}
 .fw-tile video{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover}
-.fw-tile::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;box-shadow:inset 0 0 0 3px transparent;transition:box-shadow var(--press) var(--ease);pointer-events:none}
 .fw-tile.self video{transform:scaleX(-1)}
 .fw-tile b{width:min(46%,46vh,120px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--them);color:var(--on-them);font:var(--display)}
 .fw-tile.self b{background:var(--me);color:var(--on-me)}
 .fw-tile b svg{width:46%;height:46%}
 .fw-tile .label{position:absolute;z-index:2;left:8px;bottom:8px;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 10px;border-radius:var(--round);font:var(--caption);font-weight:600}
 .fw-tile.self.muted .label::after{content:" · muted";color:var(--end)}
-.fw-tile.talking::after{box-shadow:inset 0 0 0 3px var(--go)}
+.fw-tile.talking .label::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--go);vertical-align:1px;animation:talkdot 1.6s ease-in-out infinite}
 .fw-stage{position:absolute;inset:0;z-index:3;background:var(--bg);animation:fade var(--move) var(--ease)}
 .fw-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .fw-stage .dots{position:absolute}
@@ -512,22 +634,13 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .fw-bar{position:absolute;z-index:6;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:4px;border-radius:var(--round);opacity:0;transition:opacity var(--move) var(--ease);pointer-events:none}
 .fw.awake .fw-bar,.fw:focus-within .fw-bar{opacity:1;pointer-events:auto}
 .fw-sound{position:absolute;z-index:6;left:50%;bottom:58px;transform:translateX(-50%);width:min(calc(100% - 20px),340px);padding:12px 14px 10px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e2)}
-/* who is talking: a soft green ring */
-.tile.small.talking,.tile.small.talking:hover{box-shadow:var(--e2),0 0 0 3px var(--go)}
-.tile.big.face.talking::after{content:"";position:absolute;inset:0;z-index:2;box-shadow:inset 0 0 0 3px var(--go);pointer-events:none}
-.tile.avatar.talking .who-face b{box-shadow:0 0 0 6px var(--go)}
-/* the talking cue breathes: a soft ring grows out from their circle and fades; camera edges fade in, not snap */
+/* who is talking: the chip's dot pulses (no outlines on any picture in the call) */
 .who-face b,.who-fig{position:relative}
-.who-face b::after,.who-fig::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:3px solid var(--go);opacity:0;pointer-events:none}
-.tile.avatar.talking .who-face b::after,.tile.avatar.talking .who-fig::after{animation:talkring 1.6s ease-out infinite}
-@keyframes talkring{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.22);opacity:0}}
-.tile.talking::after{animation:fade var(--move) var(--ease)}
 /* their character in place of the letter while their camera is off, on a tint of their colour */
 .who-fig{width:clamp(104px,24vmin,156px);aspect-ratio:1;border-radius:50%;background:color-mix(in srgb,var(--semal) 26%,var(--surface));box-shadow:0 0 0 12px var(--fill)}
 .who-fig[data-who=mo]{background:color-mix(in srgb,var(--mo) 22%,var(--surface))}
 .who-fig:empty,.who-fig:not(:empty) + b{display:none}
 .who-fig-in{position:absolute;inset:0;border-radius:50%;overflow:hidden}
-.tile.avatar.talking .who-fig{box-shadow:0 0 0 6px var(--go)}
 /* paint:start (the figures' own motion stays as it is: "keep the figures the same", 11 Nov 2026) */
 .who-fig-in svg{display:block;width:100%;height:100%;animation:hello .7s var(--ease) both}
 .who-fig .fig-move{animation:figbob 4s ease-in-out infinite}
@@ -536,7 +649,7 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 @keyframes figtalk{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
 /* paint:end */
 /* sound: two volumes, voices and the shared video. Real sliders and a switch. */
-.soundpop{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(18px,env(safe-area-inset-bottom)) + 74px);z-index:8;width:min(calc(100% - 32px),360px);padding:14px 16px 12px;border-radius:var(--r3);background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--e2);animation:fade var(--move) var(--ease)}
+.soundpop{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--bar-b) + 70px);z-index:8;width:min(calc(100% - 32px),360px);padding:14px 16px 12px;border-radius:var(--r3);background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--e2);animation:fade var(--move) var(--ease)}
 .sound{display:grid;gap:8px;color:var(--ink)}
 .sound-h{margin:2px 0 0;font:var(--caption);color:var(--ink-2)}
 .sound-h:not(:first-child){margin-top:8px}
@@ -561,29 +674,44 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sound-row.off{opacity:.45}
 .sound-pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
 /* the slider: a 6 px track, the filled part in ink, a 26 px white thumb (--pct is set as it moves) */
-.sound input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;cursor:pointer}
-.sound input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:var(--round);background:linear-gradient(var(--ink),var(--ink)) 0 0/var(--pct,50%) 100% no-repeat,var(--fill)}
-.sound input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;margin-top:-10px;border:0;border-radius:50%;background:var(--knob);box-shadow:var(--knob-shadow)}
-.sound input[type=range]::-moz-range-track{height:6px;border-radius:var(--round);background:var(--fill)}
-.sound input[type=range]::-moz-range-progress{height:6px;border-radius:var(--round);background:var(--ink)}
-.sound input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:var(--knob);box-shadow:var(--knob-shadow)}
-.sound input[type=range]:disabled{cursor:default}
+:is(.sound,.ytbar) input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;cursor:pointer}
+:is(.sound,.ytbar) input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:var(--round);background:linear-gradient(var(--ink),var(--ink)) 0 0/var(--pct,50%) 100% no-repeat,var(--fill)}
+:is(.sound,.ytbar) input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;margin-top:-10px;border:0;border-radius:50%;background:var(--knob);box-shadow:var(--knob-shadow)}
+:is(.sound,.ytbar) input[type=range]::-moz-range-track{height:6px;border-radius:var(--round);background:var(--fill)}
+:is(.sound,.ytbar) input[type=range]::-moz-range-progress{height:6px;border-radius:var(--round);background:var(--ink)}
+:is(.sound,.ytbar) input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:var(--knob);box-shadow:var(--knob-shadow)}
+:is(.sound,.ytbar) input[type=range]:disabled{cursor:default}
 .sound-hint{font:var(--caption);color:var(--ink-2)}
 .soundpop{max-height:calc(100dvh - 140px);overflow-y:auto;overscroll-behavior:contain}
 .fw-sound{max-height:calc(100vh - 70px);overflow-y:auto}
-/* watching YouTube together: the video in the middle, faces float beside it */
-.ytbox{position:absolute;z-index:2;top:calc(max(14px,env(safe-area-inset-top)) + 58px);bottom:calc(max(18px,env(safe-area-inset-bottom)) + 78px);left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));display:flex;flex-direction:column;gap:8px;transition:right var(--move) var(--ease)}
-.ytwrap{flex:1;min-height:0;container-type:size;display:grid;place-items:center}
-.ytframe{width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;border-radius:var(--r3);overflow:hidden;background:var(--bg);box-shadow:var(--e2),0 0 0 1px var(--line)}
+/* a film together: the real YouTube player on top in a rounded frame, one line of controls that works for both of
+   you, their face below it and you in the corner (on a wide screen the film on the left, their face on the right) */
+.ytbox{position:absolute;z-index:2;top:var(--cg-t);left:var(--cg-l);right:var(--cg-r);display:flex;flex-direction:column;gap:8px}
+#watchRoot[data-view=film]{--film-h:min(calc((100cqw - var(--cg-l) - var(--cg-r)) * .5625),calc(56cqh - 68px))}
+.ytwrap{display:grid;place-items:center}
+.ytfit{position:relative;height:var(--film-h);aspect-ratio:16/9;max-width:100%;border-radius:var(--r3);overflow:hidden;background:var(--surface)}
+.ytframe{position:absolute;inset:0}
 .ytframe iframe,.ytframe > div{display:block;width:100%;height:100%;border:0}
-.ytbar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;min-height:40px;color:var(--ink);font:var(--callout);font-weight:600}
-.ytbar #ytNote:empty{display:none}
-.ytbar .btn{min-height:44px;padding:0 16px;font:var(--callout);font-weight:600}
-#watchRoot[data-faces="1"] .ytbox{right:calc(max(14px,env(safe-area-inset-right)) + clamp(112px,22vw,224px) + 14px)}
-@media (max-aspect-ratio:1/1){#watchRoot[data-faces="1"] .ytbox{right:max(14px,env(safe-area-inset-right));top:calc(max(14px,env(safe-area-inset-top)) + 70px + 27vw)}}
+.ytchip{position:absolute;z-index:1;left:12px;top:12px;pointer-events:none;display:inline-flex;align-items:center;gap:8px;max-width:calc(100% - 24px);min-height:30px;padding:0 12px 0 10px;border-radius:var(--round);font:var(--caption);font-weight:600}
+.ytchip #ytNote{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ytchip .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--go)}
+.ytbox.paused .ytchip .dot{background:var(--ink-3)}
+.ytbar{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 8px;color:var(--ink)}
+.ytbar .rb{width:44px;height:44px;background:var(--fill);color:var(--ink)}
+.ytbar input[type=range]{flex:1;min-width:60px}
+.yttime{font:var(--caption);color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ytbar .btn{flex:none}
+#watchRoot[data-view=film] .bigslot{top:calc(var(--cg-t) + var(--film-h) + 68px)}
+#watchRoot[data-view=film] .hud .top{top:calc(var(--cg-t) + var(--film-h) + 82px)}
+@media (min-aspect-ratio:1/1){
+  /* the film and its controls sit together in the middle of the left side, no gap between them */
+  #watchRoot[data-view=film]{--side:clamp(220px,30cqw,420px);--film-h:min(calc((100cqw - var(--cg-l) - var(--cg-r) - var(--side) - 8px) * .5625),calc(100cqh - var(--cg-t) - var(--cg-b) - 60px))}
+  #watchRoot[data-view=film] .ytbox{bottom:var(--cg-b);right:calc(var(--cg-r) + var(--side) + 8px);justify-content:center}
+  #watchRoot[data-view=film] .bigslot{top:var(--cg-t);left:auto;width:var(--side)}
+  #watchRoot[data-view=film] .hud .top{top:calc(var(--cg-t) + 14px);left:auto;width:calc(var(--side) - 28px)}
+}
 .msg .ytgo{display:flex;margin-top:8px;min-height:44px;padding:0 16px;font:var(--callout);font-weight:600}
 .menu.boardsheet{max-width:1100px}
-#soundBtn[aria-expanded="true"]{background:var(--raised)}
 /* ───────────────────────── TABS: Home, Plans, Calls, Hearts (not in a call) ───────────────────────── */
 .shell{min-height:100dvh;padding:calc(max(12px,env(safe-area-inset-top)) + 6px) max(16px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
 .tabpanel{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -696,13 +824,6 @@ button:disabled{opacity:.55;cursor:default}
 .tvfx{position:fixed;inset:0;z-index:90;pointer-events:none}
 .tvfx-pane{position:absolute;inset:0;background:var(--bg);overflow:hidden}
 .tvfx-screen{position:absolute;inset:0;background:var(--bg);will-change:clip-path}
-/* while it rings, their figure peeks in and hops */
-.ringfig{position:fixed;z-index:65;right:calc(env(safe-area-inset-right) - 10px);bottom:calc(132px + env(safe-area-inset-bottom));width:70px;pointer-events:none;transform-origin:100% 100%;transform:rotate(-8deg)}
-.ringfig svg{width:100%;height:auto}
-.ringfig.go{animation:peekin .7s var(--ease) both}
-.ringfig.go .fig-move{animation:hop 1.8s ease-in-out .7s infinite}
-@keyframes peekin{from{transform:translateX(110%) rotate(-8deg)}to{transform:translateX(0) rotate(-8deg)}}
-@keyframes hop{0%,58%,100%{transform:translateY(0)}68%{transform:translateY(-9px)}78%{transform:translateY(0)}86%{transform:translateY(-4px)}94%{transform:translateY(0)}}
 /* paint:end */
 /* paint:start (the house drawing keeps its own paint) */
 /* ───────────────────────── Next Door: Home is one house, two rooms ───────────────────────── */
@@ -851,53 +972,44 @@ button:disabled{opacity:.55;cursor:default}
 .nd-words b{font:var(--headline);color:var(--ink);overflow-wrap:anywhere}
 .nd-words span{font:var(--callout);color:var(--ink-2)}
 .nd-late{padding:6px 4px 0;font:var(--callout);color:var(--ink-2)}
-/* paint:start (the room in a call keeps its own paint) */
-/* ───────────────────────── Next Door: in a call, one room and one sofa ───────────────────────── */
-/* Just the two of you, nothing shared: the wall has folded down, their camera fills the big window, yours is a
-   small framed photo on the sill, and you sit together on one sofa, seen from behind. Double tap: only them. */
-.ndscene,.ndsofa,.ndfold{display:none}
-#watchRoot.nd-call{container-type:size;touch-action:manipulation;-webkit-user-select:none;user-select:none;
-  --sw:min(80cqw,50cqh);--sh:calc(var(--sw) * .51);--sb:calc(max(18px,env(safe-area-inset-bottom)) + 74px);
-  --wt:calc(max(14px,env(safe-area-inset-top)) + 70px);--wbot:calc(var(--sb) + var(--sh) * .66);
-  --wh:calc(100cqh - var(--wt) - var(--wbot));--ww:min(calc(100cqw - 36px),calc(var(--wh) * 1.6));--wl:calc(50cqw - var(--ww) / 2)}
-#watchRoot.nd-call .ndscene,#watchRoot.nd-call .ndsofa{display:block}
-.ndscene{position:absolute;inset:0;z-index:0;background:radial-gradient(circle at 8% 70%,rgba(255,206,140,.45),transparent 45%),linear-gradient(#8E6A52,#6E4F3E);transition:opacity .5s var(--ease)}
-.ndscene::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(var(--sb) + var(--sh) * .42);background:#5E4234;border-top:6px solid #4E372B}
-.nd-cwin{position:absolute;top:calc(var(--wt) - 8px);left:calc(var(--wl) - 8px);width:calc(var(--ww) + 16px);height:calc(var(--wh) + 16px);border-radius:6px;background:#7A5843;box-shadow:0 14px 30px -14px rgba(0,0,0,.6)}
-.nd-csill{position:absolute;top:calc(var(--wt) + var(--wh) + 4px);left:calc(var(--wl) - 18px);width:calc(var(--ww) + 36px);height:11px;border-radius:3px;background:#8C6750}
-.ndscene .nd-chain{top:calc(var(--wt) - 30px);width:100%;max-width:none;height:18px;pointer-events:none}
-#watchRoot.nd-call .bigslot{top:var(--wt);left:var(--wl);width:var(--ww);height:var(--wh);right:auto;bottom:auto;display:block;padding:0;border-radius:3px;overflow:hidden;background:#1E2236;
-  transition:top .55s var(--ease),left .55s var(--ease),width .55s var(--ease),height .55s var(--ease),border-radius .55s}
-#watchRoot.nd-call .bigslot > .tile{position:absolute;inset:0}
-#watchRoot.nd-call .bigslot > .tile.half:not(.self) video{object-fit:contain} /* their whole face, letterboxed on the window's dark glass */
-#watchRoot.nd-call .tile.avatar{padding:12px}
-/* your camera: a little framed photo on the sill (in Split it stays in the window's corner too) */
-#watchRoot.nd-call .bubbles{top:auto;right:auto;left:calc(var(--wl) + var(--ww) - clamp(64px,18cqw,150px) - 10px);bottom:calc(var(--wbot) + 8px);transition:opacity .4s}
-#watchRoot.nd-call .tile.small.self,#watchRoot.nd-call .bigslot > .tile.half.self{width:clamp(64px,18cqw,150px);aspect-ratio:5/6;border-radius:3px;border:5px solid #EDE1CC;box-shadow:0 8px 18px -8px rgba(0,0,0,.7);transform:rotate(-3deg);background:#2A221B}
-#watchRoot.nd-call .bigslot > .tile.half.self{inset:auto 10px 8px auto;z-index:2;height:auto;transition:opacity .4s}
-#watchRoot.nd-call .tile.half > .label,#watchRoot.nd-call .tile.half.talking::after{display:none}
-.ndsofa{position:absolute;z-index:2;left:50%;bottom:var(--sb);width:var(--sw);height:var(--sh);transform:translateX(-50%);pointer-events:none;transition:opacity .45s var(--ease),transform .55s var(--ease)}
-.ndsofa svg{display:block;width:100%;height:100%}
-.ndsofa .tv-arm{display:none}
-.ndsofa .fig-move{animation:figbob 4s ease-in-out infinite}
-.ndsofa .fig-semal{animation-delay:-2s}
-.ndsofa .fig-semal > .fig-pose{transform:rotate(-4deg);transform-box:fill-box;transform-origin:50% 100%}
-/* zoomed in: only the other person, the whole screen */
-#watchRoot.nd-zoom .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
-#watchRoot.nd-zoom .ndscene,#watchRoot.nd-zoom .bubbles,#watchRoot.nd-zoom .bigslot > .tile.half.self{opacity:0;pointer-events:none}
-#watchRoot.nd-zoom .ndsofa{opacity:0;transform:translateX(-50%) translateY(35%)}
-/* an iPhone with the chat open, or on its side: too little room for the scene, so it is zoomed in */
-@media (max-width:700px){body.chat-open #watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
-  body.chat-open #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
-@media (max-height:500px){#watchRoot.nd-call .bigslot{top:0;left:0;width:100cqw;height:100cqh;border-radius:0}
-  #watchRoot.nd-call :is(.ndscene,.bubbles,.ndsofa,.bigslot > .tile.half.self){opacity:0;pointer-events:none}}
-/* the wall between your rooms folds down when the call starts */
-.ndfold{position:absolute;inset:0;z-index:3;pointer-events:none;perspective:900px}
-.ndfold.go{display:block}
-.ndfold i{position:absolute;top:0;bottom:0;width:50%}
-.ndfold .l{left:0;background:#36405E}
-.ndfold .r{right:0;background:#E2C097}
-.ndfold b{position:absolute;left:calc(50% - 6px);top:calc(var(--wt) - 40px);bottom:calc(var(--sb) * .5);width:12px;background:#5A4236;transform-origin:50% 100%}
+/* paint:start (their sky in a call keeps its own paint) */
+/* ───────────────────────── their camera is off, or a voice call: the sky where they are ───────────────────────── */
+/* Day or night and the weather come from the same data as the house windows. The two of you sit on one sofa, seen
+   from behind (figures.js sofaBack), looking at it together. */
+.who-sky{background:linear-gradient(180deg,#3F8BDD 0%,#8FC4F1 52%,#FCE4BE 100%)}
+.who-sky[data-sky=grey]{background:linear-gradient(180deg,#7E97B4 0%,#A9BDD2 55%,#D6DCE3 100%)}
+.who-sky[data-sky=night]{background:linear-gradient(180deg,#0B1030 0%,#1A2152 48%,#383C78 100%)}
+.who-sky > *{position:absolute;pointer-events:none}
+.sky-sun{right:18%;top:14%;width:clamp(52px,15cqmin,110px);aspect-ratio:1;border-radius:50%;background:#FFF6DC;box-shadow:0 0 0 clamp(24px,8cqmin,60px) rgba(255,243,208,.22),0 0 clamp(60px,24cqmin,170px) clamp(30px,10cqmin,80px) rgba(255,243,208,.4)}
+.who-sky[data-sky=grey] .sky-sun{opacity:.55;box-shadow:0 0 clamp(40px,14cqmin,100px) clamp(16px,6cqmin,40px) rgba(255,250,235,.35)}
+.who-sky[data-sky=night] .sky-sun{width:clamp(40px,11cqmin,84px);background:#F1E6C8;box-shadow:0 0 clamp(40px,14cqmin,100px) clamp(10px,4cqmin,30px) rgba(241,230,200,.25)}
+.sky-stars{left:0;top:0;width:100%;height:55%;display:none}
+.who-sky[data-sky=night] .sky-stars{display:block}
+.sky-stars{color:#F4EFDC}
+.sky-cloud{width:clamp(110px,32%,320px);height:auto;color:#FFFFFF;opacity:.82}
+.sky-cloud.c1{left:9%;top:24%}
+.sky-cloud.c2{right:12%;top:42%;width:clamp(80px,22%,220px);opacity:.6}
+.sky-cloud.c3{left:38%;top:11%;width:clamp(90px,26%,260px);opacity:.7}
+.who-sky[data-sky=night] .sky-cloud{color:#5A6290;opacity:.55}
+.who-sky[data-sky=grey] .sky-cloud{color:#EEF1F5}
+.who-sky:not([data-wx=part]):not([data-wx=cloud]):not([data-wx=fog]):not([data-wx=drizzle]):not([data-wx=rain]):not([data-wx=thunder]):not([data-wx=snow]) .sky-cloud,
+.who-sky[data-wx=part] .sky-cloud.c3{display:none}
+.sky-wx{left:0;top:0;width:100%;height:78%;display:none}
+.who-sky:is([data-wx=drizzle],[data-wx=rain],[data-wx=thunder],[data-wx=snow]) .sky-wx{display:block}
+.sky-fog{left:0;right:0;top:30%;height:40%;display:none;background:linear-gradient(180deg,rgba(238,241,245,0),rgba(238,241,245,.55) 50%,rgba(238,241,245,0))}
+.who-sky[data-wx=fog] .sky-fog{display:block}
+.sky-hills{left:0;bottom:0;width:100%;height:36%}
+.sky-hills .h1{fill:#2E7D6B;opacity:.55}.sky-hills .h2{fill:#235E58;opacity:.75}
+.who-sky[data-sky=grey] .sky-hills .h1{fill:#5E7A72}.who-sky[data-sky=grey] .sky-hills .h2{fill:#4A645F}
+.who-sky[data-sky=night] .sky-hills .h1{fill:#232B5E;opacity:.9}.who-sky[data-sky=night] .sky-hills .h2{fill:#151B42;opacity:1}
+.sky-sofa{bottom:-2px;left:4%;width:min(72%,440px)}
+.sky-sofa svg{display:block;width:100%;height:auto}
+.sky-sofa .tv-arm{display:none}
+.sky-sofa .fig-move{animation:figbob 4s ease-in-out infinite}
+.sky-sofa .fig-semal{animation-delay:-2s}
+.sky-sofa .fig-semal > .fig-pose{transform:rotate(-4deg);transform-box:fill-box;transform-origin:50% 100%}
+@media (min-width:700px){.sky-sofa{left:50%;width:min(46%,460px);transform:translateX(-50%)}}
+.tile.half .sky-sofa,#watchRoot[data-view=film] .sky-sofa{left:50%;width:min(80%,420px);transform:translateX(-50%)}
 /* paint:end */
 body[data-role=host] [data-role=guest],body[data-role=guest] [data-role=host]{display:none !important}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
@@ -923,11 +1035,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
     <div class="endcard-words"><h2 class="display" id="moveTitle">You’re in a call on your other device.</h2><p id="moveText">Move it here and carry on. Nobody is dropped.</p></div>
     <div class="movecard-acts"><button class="btn primary" id="moveBtn">Move the call here</button><button class="movecard-not" id="moveNot">Not now</button></div>
   </div>
-  <div class="endcard" data-state="ended" hidden>
-      <div class="endcard-words"><h2 class="display" id="endedTitle">Call ended.</h2><p id="endedText">Your link stays the same for next time.</p></div>
-      <button class="btn primary" id="endedAction">Start a call</button>
-      <button class="close endcard-x" id="endedClose" aria-label="Close"><i data-icon="x"></i></button>
-    </div>
   <div class="tabpanel" id="tabHome" data-tab="home" role="tabpanel" aria-labelledby="tb-home">
     <header class="tophead" id="bHello"></header>
     <div class="linkask" id="linkAsk" hidden>
@@ -1072,87 +1179,120 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </nav>
 </section>
 <div class="bb-notewrap" id="bNote"></div>
-<div class="ringfig" id="ringFig" aria-hidden="true" hidden></div>
 
 <!-- GUEST · WAITING -->
-<section class="stage" data-state="waiting" hidden>
-  <div class="frame">
-    <div class="brand"><div class="mark"><div class="big"></div><div class="dot"></div></div><span class="name">Beside</span></div>
-    <div class="invite" style="flex:1;justify-content:center">
-      <div class="seatmark" aria-hidden="true"><div class="pane"></div><div class="you hollow"></div></div>
-      <h1 class="display" id="waitTitle">Connecting…</h1>
-      <div class="waitline"><span class="ripple"></span><span id="waitingText">Connecting…</span></div>
-      <p class="hint" id="waitHint"></p>
-      <div class="row" style="justify-content:center">
-        <button class="btn primary" id="gRingBtn">Ring them</button>
-        <button class="btn ghost" data-check-open>Check my setup</button>
-        <button class="btn ghost" id="waitLeaveBtn">Leave</button>
-      </div>
-    </div>
+<section class="stage prestage dark" data-state="waiting" hidden>
+  <!-- you first: your own camera (or your figure), and the empty dot that shows who is missing -->
+  <div class="pre-pane" id="waitPane"><video id="waitCam" muted playsinline autoplay></video><span class="pre-fig" id="waitFig" aria-hidden="true"></span></div>
+  <span class="pre-dot empty" id="waitDot" aria-hidden="true"></span>
+  <div class="pre-words">
+    <h1 id="waitTitle">Connecting…</h1>
+    <p id="waitHint"></p>
+    <p class="pre-status" id="waitingText">Connecting…</p>
+  </div>
+  <div class="pre-bar">
+    <button class="btn primary" id="gRingBtn"><i data-icon="bell"></i><span>Ring them</span></button>
+    <button class="btn" id="waitLeaveBtn">Leave</button>
+  </div>
+  <button class="btn ghost pre-check" data-check-open>Check my setup</button>
+</section>
+
+<!-- GUEST · JOIN: the link opened. You see yourself first, the host waits in the corner, one button. -->
+<section class="stage prestage dark" id="joinStage" hidden>
+  <div class="pre-pane"><video id="joinCam" muted playsinline autoplay></video><span class="pre-fig" id="joinFig" aria-hidden="true"></span>
+    <span class="pre-chip" id="joinChip"><i data-icon="video" data-size="18"></i><span id="joinChipText">This is how you look</span></span>
+    <button class="close pre-x" id="joinX" aria-label="Not now, show Home"><i data-icon="x"></i></button>
+  </div>
+  <span class="pre-dot" id="joinDot" aria-hidden="true"></span>
+  <div class="pre-words">
+    <h1 id="joinStageTitle">Sit beside them</h1>
+    <p id="joinStageText">You sit together as soon as they are in.</p>
+  </div>
+  <div class="pre-bar">
+    <button class="cb" id="joinMicBtn" aria-label="Join with my mic off" aria-pressed="false"><i data-icon="mic" data-slash></i></button>
+    <button class="cb cam" id="joinCamBtn" aria-label="Turn my camera on" aria-pressed="false"><i data-icon="video" data-slash></i></button>
+    <button class="btn primary" id="joinGoBtn">Join</button>
   </div>
 </section>
 
 <!-- CALL: host (live) and guest (watching) share one stage -->
 <section class="stage watch dark" data-state="live watching" hidden>
-  <div class="viewport" id="watchRoot">
-    <!-- paint: the room in a call --><div class="ndscene" aria-hidden="true"><span class="nd-chain"><svg><rect width="100%" height="18" fill="url(#ndChainP)"/></svg></span><span class="nd-cwin"></span><span class="nd-csill"></span></div>
+  <div class="viewport" id="watchRoot" data-view="">
     <div class="bigslot" id="bigSlot"></div>
-    <div class="ndsofa" id="ndSofa" aria-hidden="true"></div>
-    <div class="ndfold" id="ndFold" aria-hidden="true"><i class="l"></i><i class="r"></i><b></b></div>
-    <div class="bubbles" id="bubbles"></div>
     <div class="ytbox" id="ytBox" hidden>
-      <div class="ytwrap"><div class="ytframe" id="ytFrame"></div></div>
-      <div class="ytbar"><span id="ytNote"></span><button class="btn quiet" id="ytKeep" hidden>Keep playing</button><button class="btn quiet" id="ytStop" title="Stop watching for everyone">Stop watching</button></div>
+      <div class="ytwrap"><div class="ytfit"><div class="ytframe" id="ytFrame"></div><span class="ytchip" aria-live="polite"><span class="dot"></span><span id="ytNote">Playing for both of you</span></span></div></div>
+      <div class="ytbar">
+        <button class="rb" id="ytPlay" aria-label="Pause for both of you"><i data-icon="pause" data-size="20"></i></button>
+        <input type="range" id="ytSeek" min="0" max="100" step="1" value="0" aria-label="Where in the film">
+        <span class="yttime" id="ytTime">0:00</span>
+        <button class="btn sm" id="ytKeep" hidden>Keep playing</button>
+        <button class="btn sm" id="ytStop" title="Stop the film for everyone">Stop</button>
+      </div>
     </div>
+    <!-- other people, in a call of three or more (tap one to make it big); the faces under a shared screen -->
+    <div class="bubbles" id="bubbles"></div>
+    <!-- you, as a round dot: drag it to any corner, tap it to swap -->
+    <div class="dotslot" id="dotSlot" data-corner="br" role="button" tabindex="0" aria-label="Swap the two pictures. Drag to move it to another corner."></div>
     <div id="parking" hidden>
       <div class="tile screen" id="screenTile" data-key="screen"><video id="screenVideo" muted playsinline autoplay></video><div class="dots" id="dots"></div><span class="label" id="shareLabel"></span></div>
-      <div class="tile avatar" id="avatarTile" data-key="avatar"><div class="who-face"><span class="who-fig" id="avatarFig" aria-hidden="true"></span><b id="avatarInitial"></b><span id="avatarName"></span><small id="avatarSub">Camera off</small></div></div>
+      <div class="tile avatar" id="avatarTile" data-key="avatar"><div class="who-sky" id="avatarSky" aria-hidden="true"></div><div class="who-face"><span class="who-fig" id="avatarFig" aria-hidden="true"></span><b id="avatarInitial"></b><span id="avatarName"></span><small id="avatarSub">Camera off</small></div><span class="label" id="avatarLabel"></span></div>
       <div class="tile invitecard" id="inviteTile" data-key="invite" data-role="host">
-        <div class="ticket">
-          <div class="top">
-            <div class="label">Your link · same every time</div>
-            <div class="link" id="linkText"></div>
-            <div class="hint live-hint" id="liveHint"></div>
+        <div class="alone-bg" aria-hidden="true"><video id="aloneCam" muted playsinline autoplay></video></div>
+        <div class="alone">
+          <span class="alone-head" id="aloneHead" aria-hidden="true"><i class="ring"></i><i class="ring r2"></i><i class="ring r3"></i><span class="alone-fig" id="aloneFig"></span></span>
+          <h1 id="aloneTitle">Waiting for them</h1>
+          <p id="aloneTime"></p>
+          <div class="ticket">
+            <div class="top">
+              <div class="label">Your link, the same every time</div>
+              <div class="link" id="linkText"></div>
+              <div class="hint live-hint" id="liveHint"></div>
+            </div>
+            <div class="actions">
+              <button class="btn" id="ringBtn"><i data-icon="bell"></i>Ring</button>
+              <button class="btn" id="copyBtn"><i data-icon="copy"></i><span class="label-t">Copy</span></button>
+              <button class="btn" id="shareBtn"><i data-icon="upload"></i>Send link</button>
+            </div>
+            <div class="waitrow"><span class="ripple"></span><span id="inviteStatus">Send this link to the person you want to talk to.</span></div>
           </div>
-          <div class="actions">
-            <button class="btn quiet" id="copyBtn"><i data-icon="copy"></i><span class="label-t">Copy</span></button>
-            <button class="btn quiet" id="shareBtn"><i data-icon="upload"></i>Send link…</button>
-            <button class="btn quiet" id="ringBtn"><i data-icon="bell"></i>Ring</button>
-          </div>
-          <div class="tear"></div>
-          <div class="waitrow"><span class="ripple"></span><span id="inviteStatus">Send this link to the person you want to talk to.</span></div>
         </div>
       </div>
       <div class="tile face peer" id="camBubble" data-key="host" data-role="guest"><video muted playsinline autoplay></video><span class="label" id="camName">Them</span></div>
-      <div class="tile face self" id="gSelf" data-key="self" data-role="guest"><video muted playsinline autoplay></video><span class="label">You</span></div>
-      <div class="tile face self" id="selfFace" data-key="self" data-role="host"><video muted playsinline autoplay></video><span class="label">You</span></div>
+      <div class="tile face self" id="gSelf" data-key="self" data-role="guest"><video muted playsinline autoplay></video><span class="self-fig" aria-hidden="true"></span><span class="label">You</span></div>
+      <div class="tile face self" id="selfFace" data-key="self" data-role="host"><video muted playsinline autoplay></video><span class="self-fig" aria-hidden="true"></span><span class="label">You</span></div>
     </div>
     <audio id="voice" autoplay playsinline></audio>
     <audio id="media" autoplay playsinline></audio>
     <div class="hud" id="hud">
       <div class="top">
-        <span class="pillbox"><span class="mark"><span class="big"></span><span class="dot"></span></span><span id="callTitle">In the call</span></span>
-        <span class="right">
-          <button class="pillbox" id="miniBtn" title="Pop the faces out into their own window. Drag it over the tab you share or onto another screen." hidden><i data-icon="pip"></i><span>Pop out</span></button>
-          <span class="pillbox lag none" id="lag">–</span>
-        </span>
+        <span class="pillbox whochip" id="callChip"><span class="talkdot" aria-hidden="true"></span><i data-icon="video" data-slash data-size="18" class="camoff"></i><span id="callTitle">In the call</span><span class="calltime" id="callTime"></span></span>
+        <span class="pillbox weak" id="lag" role="status" hidden>Weak connection</span>
       </div>
+      <!-- while something is shared: what, and Stop -->
+      <div class="sharebar" id="shareBar" hidden><span class="sb-ic" id="shareBarIcon" aria-hidden="true"><i data-icon="screen" data-size="22"></i></span><span id="shareBarText">You are sharing your screen</span><button class="btn sm end" id="shareBarStop">Stop</button></div>
       <button class="peek" id="peek" hidden></button>
       <div class="soundpop" id="soundPop" role="dialog" aria-label="Sound" hidden></div>
       <button class="hear" id="tapToHear" hidden><i data-icon="speaker"></i><span id="tapToHearText">Tap to hear them</span></button>
-      <div class="dock">
-        <button class="btn icon" id="muteBtn" data-role="host" aria-label="Mute my mic" title="Mic" aria-pressed="false"><i data-icon="mic" data-slash></i></button>
-        <button class="btn icon" id="gMuteBtn" data-role="guest" aria-label="Mute my mic" title="Mic" aria-pressed="false"><i data-icon="mic" data-slash></i></button>
-        <button class="btn icon cam" id="camBtn" data-role="host" aria-label="Turn my camera on" title="Camera" aria-pressed="false"><i data-icon="video" data-slash></i></button>
-        <button class="btn icon cam" id="gCamBtn" data-role="guest" aria-label="Turn my camera on" title="Camera" aria-pressed="false"><i data-icon="video" data-slash></i></button>
-        <button class="btn icon" id="layoutBtn" aria-label="Focus: show one of you big" title="Focus" hidden></button>
-        <button class="btn share" id="screenBtn" data-role="host" title="Share a link, a photo, a video or a file" aria-pressed="false" aria-haspopup="dialog" hidden><i data-icon="share"></i><span class="label-t">Share</span></button>
-        <button class="btn share" id="gScreenBtn" data-role="guest" title="Share a link, a photo, a video or a file" aria-pressed="false" aria-haspopup="dialog" hidden><i data-icon="share"></i><span class="label-t">Share</span></button>
-        <button class="btn icon" id="chatBtn" aria-label="Chat" title="Chat" hidden><i data-icon="chat"></i><span class="badge" id="chatBadge" hidden></span></button>
-        <button class="btn icon" id="soundBtn" aria-label="Sound" title="Sound: volumes and your mic" aria-expanded="false" hidden><i data-icon="speaker"></i></button>
-        <button class="btn icon" id="moreBtn" aria-label="More" title="More" aria-haspopup="dialog"><i data-icon="more"></i></button>
-        <button class="btn leave" id="stopBtn" data-role="host" title="End the call">End</button>
-        <button class="btn leave" id="leaveBtn" data-role="guest" title="Leave the call">Leave</button>
+      <!-- More: the tray. Each a round button with its name under it. -->
+      <div class="tray" id="tray" role="group" aria-label="More" hidden>
+        <button class="tb" id="chatBtn" aria-label="Chat" hidden><i><i data-icon="chat"></i><span class="badge" id="chatBadge" hidden></span></i><span>Chat</span></button>
+        <button class="tb" id="soundBtn" aria-label="Sound" aria-expanded="false" hidden><i><i data-icon="speaker"></i></i><span>Sound</span></button>
+        <button class="tb" id="layoutBtn" aria-label="Side by side" aria-pressed="false" hidden><i><i data-icon="split"></i></i><span>Side by side</span></button>
+        <button class="tb" id="trayFilm" aria-label="Watch a film"><i><i data-icon="play"></i></i><span>Watch a film</span></button>
+        <button class="tb" id="trayPlans" aria-label="Plans"><i><i data-icon="calendar"></i></i><span>Plans</span></button>
+        <button class="tb" id="traySetup" aria-label="Setup" aria-haspopup="dialog"><i><i data-icon="tools"></i></i><span>Setup</span></button>
+        <button class="tb" id="miniBtn" aria-label="Small window: the faces in their own window, on top of everything" aria-pressed="false" hidden><i><i data-icon="pip"></i></i><span>Small window</span></button>
+      </div>
+      <div class="dock" id="dock">
+        <button class="btn cb" id="muteBtn" data-role="host" aria-label="Mute my mic" title="Mic" aria-pressed="false"><i data-icon="mic" data-slash></i></button>
+        <button class="btn cb" id="gMuteBtn" data-role="guest" aria-label="Mute my mic" title="Mic" aria-pressed="false"><i data-icon="mic" data-slash></i></button>
+        <button class="btn cb cam" id="camBtn" data-role="host" aria-label="Turn my camera on" title="Camera" aria-pressed="false"><i data-icon="video" data-slash></i></button>
+        <button class="btn cb cam" id="gCamBtn" data-role="guest" aria-label="Turn my camera on" title="Camera" aria-pressed="false"><i data-icon="video" data-slash></i></button>
+        <button class="btn cb share" id="screenBtn" data-role="host" aria-label="Share" title="Share a link, a photo, a video or a file" aria-pressed="false" aria-haspopup="dialog" hidden><i data-icon="share"></i><span class="label-t">Share</span></button>
+        <button class="btn cb share" id="gScreenBtn" data-role="guest" aria-label="Share" title="Share a link, a photo, a video or a file" aria-pressed="false" aria-haspopup="dialog" hidden><i data-icon="share"></i><span class="label-t">Share</span></button>
+        <button class="btn cb" id="moreBtn" aria-label="More" title="More" aria-expanded="false" aria-controls="tray"><i data-icon="more"></i><span class="mdot" id="moreDot" hidden></span></button>
+        <button class="btn cb leave" id="stopBtn" data-role="host" aria-label="End the call" title="End the call"><i data-icon="end" data-size="28"></i><span class="label-t">Cancel</span></button>
+        <button class="btn cb leave" id="leaveBtn" data-role="guest" aria-label="Leave the call" title="Leave the call"><i data-icon="end" data-size="28"></i></button>
       </div>
     </div>
   </div>
@@ -1168,6 +1308,28 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </aside>
   <div class="viewer" id="viewer" hidden><img id="viewerImg" alt="Photo, full size"></div>
 </section>
+
+<!-- ENDED: a sheet over the dimmed stage: both of you, how long you talked, and a kind next step -->
+<div class="sheet endsheet" data-state="ended" hidden>
+  <div class="endbg dark" id="endBg" aria-hidden="true"></div>
+  <div class="menu endmenu" role="dialog" aria-modal="true" aria-labelledby="endedTitle">
+    <span class="grab" aria-hidden="true"></span>
+    <div class="endheads" id="endHeads" aria-hidden="true"></div>
+    <h2 id="endedTitle">Call ended</h2>
+    <p id="endedText">Your link stays the same for next time.</p>
+    <button class="btn primary" id="endHeart" hidden><i data-icon="heartf"></i><span>Send a heart</span></button>
+    <button class="btn primary" id="endedAction">Start a call</button>
+    <button class="btn" id="endedClose">Done</button>
+  </div>
+</div>
+
+<!-- A RING, while Beside is open on a computer or an iPad: their head, Answer and Not now -->
+<div class="ringbanner dark" id="ringBanner" role="alertdialog" aria-labelledby="ringBannerText" hidden>
+  <span class="rb-head" id="ringBannerHead" aria-hidden="true"></span>
+  <span class="rb-words"><b id="ringBannerText">They are ringing</b><small>Beside</small></span>
+  <button class="btn" id="ringBannerNot">Not now</button>
+  <button class="btn go" id="ringBannerAnswer"><i data-icon="phone"></i><span>Answer</span></button>
+</div>
 
 <!-- OUR BOARD in a call: More opens the countdown, to-dos and calendar here. -->
 <!-- INVITE: the link for someone else, from Calls -->
@@ -1256,7 +1418,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <!-- MORE (sheet over the call) -->
 <div class="sheet" id="moreSheet" hidden>
   <div class="menu" role="dialog" aria-modal="true" aria-labelledby="moreTitle">
-    <header><h2 class="display" id="moreTitle">More</h2><button class="close" id="moreClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <header><h2 class="display" id="moreTitle">Setup</h2><button class="close" id="moreClose" aria-label="Close"><i data-icon="x"></i></button></header>
     <div class="body">
       <div data-role="host">
         <div class="label">Your link · same every time</div>
@@ -1291,8 +1453,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=16"></script>
+<script src="board.js?v=17"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>
