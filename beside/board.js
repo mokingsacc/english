@@ -865,6 +865,15 @@
     const deg = p.unit === 'F' ? Math.round(w.temperature_2m * 9 / 5 + 32) : Math.round(w.temperature_2m);
     return (sky(w.weather_code) ? sky(w.weather_code) + ', ' : '') + deg + '°' + p.unit;
   }
+  // "21° clear": shorter, for the line under the house, in the degrees of whoever is looking (Mo's phone says C,
+  // Semal's F), so both places read the same way.
+  function wxShort(w) {
+    if (!w || typeof w.temperature_2m !== 'number') return '';
+    const f = whoMe() === 'semal';
+    const deg = Math.round(f ? w.temperature_2m * 9 / 5 + 32 : w.temperature_2m);
+    const s = sky(w.weather_code);
+    return deg + '°' + (s ? ' ' + s.toLowerCase() : '');
+  }
   // What each window shows, finer than wxKind, so it matches the words: drizzle and thunder get their own.
   const winKind = (c) => (typeof c !== 'number' ? 'none' : c <= 1 ? 'clear' : c === 2 ? 'part' : c === 3 ? 'cloud' : c <= 48 ? 'fog' : c <= 57 ? 'drizzle'
     : c <= 67 || (c >= 80 && c <= 82) ? 'rain' : c >= 95 ? 'thunder' : 'snow');
@@ -1398,31 +1407,24 @@
     const hi = hr < 5 ? 'Hello' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     ui.hello.firstChild.textContent = fmt(HERE, { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
     ui.hello.lastChild.textContent = hi + (placeholderName(S.name) ? '' : ', ' + S.name);
-    // The latest heart from them, with a quick one back
-    const top = b.thinks.find((t) => !mine(t));
-    const them = top ? whoSent(top) : whoThem();
+    // Their latest note, if one came in the last day: a card in their own words that opens Hearts. (The quick heart
+    // is Home's round heart button now.)
+    const top = b.thinks.find((t) => !mine(t) && t.note && t.at && now - t.at < DAY);
     const nm = theirName(b) || (f ? f.NAME[whoThem()] : 'They');
-    const from = top ? top.from : nm;
-    const key = (top ? top.id + ago(top.at) : '-') + nm + them + S.loaded;
+    const key = top ? top.id + ago(top.at) + nm + whoSent(top) : '-';
     if (ui.hThink.dataset.k !== key) {
       ui.hThink.dataset.k = key;
-      const quick = h('button', { type: 'button', class: 'bb-heart-btn', 'aria-label': 'Send a heart', html: I.heart, onclick: () => {
-        if (quick.disabled) return;
-        quick.disabled = true;
-        sendThink('', null);
-        quick.innerHTML = I.tick;
-        quick.setAttribute('aria-label', 'Sent');
-        setTimeout(() => { quick.disabled = false; quick.innerHTML = I.heart; quick.setAttribute('aria-label', 'Send a heart'); }, 2500);
-      } });
-      ui.hThink.replaceChildren(
-        h('button', { type: 'button', class: 'bb-hthink-open', onclick: () => go('hearts'), 'aria-label': top ? from + ' is thinking of you, ' + ago(top.at) + '. Open Hearts' : 'Open Hearts' },
-          h('span', { class: 'bb-hthink-fig bb-fig-' + them, html: f ? f.figure(them, { pose: 'head', label: '' }) : I.heart }),
-          h('span', { class: 'bb-hthink-words' },
-            h('b', { text: top ? from + ' is thinking of you' : S.loaded ? 'Send a heart' : 'Thinking of you' }),
-            h('span', { class: 'bb-sub', text: top ? ago(top.at) : 'Let ' + nm + ' know you’re thinking of them.' }),
-            top && top.note ? h('span', { class: 'bb-hthink-note', text: top.note }) : null)),
-        quick);
+      ui.hThink.replaceChildren();
+      if (top) {
+        const them = whoSent(top), from = placeholderName(top.from) ? nm : top.from;
+        ui.hThink.append(h('button', { type: 'button', class: 'hnote', onclick: () => go('hearts'), 'aria-label': 'From ' + from + ', ' + ago(top.at) + ': ' + top.note + '. Open Hearts' },
+          h('span', { class: 'hnote-fig bb-fig-' + them, html: f ? f.figure(them, { pose: 'head', label: '' }) : I.heart }),
+          h('span', { class: 'hnote-words' },
+            h('span', { class: 'hnote-from', text: 'From ' + from + ', ' + ago(top.at) }),
+            h('span', { class: 'hnote-text', text: top.note }))));
+      }
     }
+    ui.hThink.hidden = !top;
     // The next plan, in both clocks
     const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
     const chev = h('span', { class: 'bb-hnext-chev', html: svg('chev') });
@@ -1803,7 +1805,7 @@
 .bb-tabs .bb-add-row .bb-ri{color:var(--ink-3)}
 /* Say it: one line that stays above the tab bar */
 .bboard.bb-tabs .bb-talk{position:sticky;bottom:8px;z-index:4;display:flex;align-items:center;gap:8px;min-height:52px;padding:4px 4px 4px 16px;margin:14px 0 0;border-radius:var(--round);background:var(--surface);box-shadow:var(--e2)}
-.tabpanel .bboard.bb-tabs .bb-talk{bottom:calc(var(--tabbar-h,84px) + env(safe-area-inset-bottom) + 8px)}
+.tabpanel .bboard.bb-tabs .bb-talk{bottom:calc(var(--tabbar-top,78px) + 10px)}
 .bboard.bb-tabs .bb-talk .bb-in{flex:1;background:transparent;padding:0;min-height:44px;border-radius:0}
 .bboard.bb-tabs .bb-talk .bb-in:focus{outline:none}
 .bboard.bb-tabs .bb-talk:focus-within{box-shadow:0 0 0 2px var(--ink),var(--e2)}
@@ -1925,7 +1927,9 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
       const w = WX.now[p.z];
       const night = w && typeof w.is_day === 'number' ? w.is_day === 0 : t.h < 6 || t.h >= 19;
       return { who, mine: who === whoMe(), name: S ? nameFor(who, b) : F ? F.NAME[who] : '', place: p.label, time: timeIn(now, p.z), h: t.h, mi: t.mi,
-        words: wxWords(p, w), kind: w ? winKind(w.weather_code) : 'none', night, late: t.h >= 23 || t.h < 6 };
+        words: wxWords(p, w), kind: w ? winKind(w.weather_code) : 'none', night, late: t.h >= 23 || t.h < 6,
+        // Home's line under the house: "04:24" and "21° clear", both in this viewer's own degrees
+        clock: pad(t.h) + ':' + pad(t.mi), wx: wxShort(w) };
     });
     const c = b.countdown;
     const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
@@ -1950,6 +1954,46 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
     const plans = [...new Set(events.map(evKey).filter((k) => k.startsWith(pre)).map((k) => +k.slice(8)))];
     return { name: fmt(HERE, { month: 'long' }).format(now), first, count, today: p.d, plans };
   }
+  // Home's calendar sheet: this month's days with whose plans fall on each, and the next plan in both clocks
+  // ("Thu 12, 17:12 for you, 09:12 for Semal").
+  function monthSheet() {
+    const b = S ? S.lastView || view() : empty();
+    const now = Date.now();
+    const m = monthOf(now, b.events);
+    const p = parts(now, HERE);
+    const pre = p.y + '-' + pad(p.mo) + '-';
+    const days = {};
+    b.events.forEach((e) => {
+      const k = evKey(e);
+      if (!k.startsWith(pre)) return;
+      const d = +k.slice(8), who = whoOf(e.by);
+      days[d] = days[d] || { who: [], titles: [] };
+      if (!days[d].who.includes(who)) days[d].who.push(who);
+      days[d].titles.push(e.title);
+    });
+    const up = b.events.filter((e) => (e.allDay ? evKey(e) >= keyOf(now, HERE) : e.at >= now - 36e5)).sort((x, y) => x.at - y.at)[0];
+    let next = null;
+    if (up) {
+      const z = up.allDay ? 'UTC' : HERE;
+      const day = fmt(z, { weekday: 'short' }).format(up.at) + ' ' + fmt(z, { day: 'numeric' }).format(up.at);
+      const hm = (zz) => { const q = parts(up.at, zz); return pad(q.h) + ':' + pad(q.mi); };
+      const them = nameFor(whoThem(), b) || 'them';
+      next = { title: up.title, who: whoOf(up.by), key: evKey(up),
+        line: day + ', ' + (up.allDay ? 'all day' : hm(zoneOf(whoMe())) + ' for you, ' + hm(zoneOf(whoThem())) + ' for ' + them) };
+    }
+    return { ...m, y: p.y, mo: p.mo, key: pre, days, next, loaded: !!(S && S.loaded) };
+  }
+  // Home's to-do sheet: open ones newest first, then the done ones, latest done first (as the list on Plans).
+  function todoList() {
+    if (!S) return { items: [], loaded: false };
+    const b = S.lastView || view();
+    const open = b.todos.filter((t) => !t.done).reverse();
+    const done = b.todos.filter((t) => t.done).sort((x, y) => (y.doneAt || 0) - (x.doneAt || 0));
+    const them = nameFor(whoThem(), b);
+    const from = (t) => (!t.by || isMe(t.by) ? '' : placeholderName(t.by) ? them : t.by);
+    return { items: open.concat(done).map((t) => ({ id: String(t.id), text: t.text, done: !!t.done, from: from(t) })), loaded: !!S.loaded };
+  }
+  const todoById = (id) => (S ? (S.lastView || view()).todos.find((t) => String(t.id) === String(id)) : null);
 
   window.BesideBoard = {
     mount,
@@ -1960,5 +2004,42 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
     // A heart, the same as the Hearts tab sends (the call's end sheet offers one).
     heart() { if (!S) return false; sendThink('', null); return true; },
     house,
+    month: monthSheet,
+    // The to-do list from Home's sheet: the same add, tick and delete as on Plans (with its Undo).
+    todoList,
+    todoAdd(text) {
+      const t = String(text || '').trim();
+      if (!S || !t) return false;
+      send({ op: 'todo.add', id: newId(), text: t.slice(0, 300) }, '“' + short(t) + '”');
+      return true;
+    },
+    todoTick(id) {
+      const t = todoById(id);
+      if (!t) return false;
+      send({ op: 'todo.toggle', id: t.id, done: !t.done }, '“' + short(t.text) + '”');
+      return true;
+    },
+    todoDelete(id) {
+      const t = todoById(id);
+      if (!t) return false;
+      send({ op: 'todo.delete', id: t.id }, 'that');
+      note('Deleted “' + short(t.text) + '”.', { label: 'Undo', fn: () => send({ op: 'todo.add', id: t.id, text: t.text }, '“' + short(t.text) + '”') });
+      return true;
+    },
+    // Plans, at one day of this month (its plans, or a new plan on it), the same as a tap on that day there; no day:
+    // Plans with a new plan open.
+    planDay(key) {
+      if (!S) return;
+      go('plans');
+      if (key) {
+        if (S.calMonth != null) { S.calMonth = null; render(); }
+        const find = () => S.ui.week && S.ui.week.querySelector('[data-key="' + key + '"]');
+        let d = find();
+        // A day outside this week's strip: open the whole month, where every day of it is.
+        if (!d && !S.folds.month) { S.folds.month = true; render(); d = find(); }
+        if (d) { d.click(); return; }
+      }
+      if (!key && S.ui.calAddOn) S.ui.calAddOn(null);
+    },
   };
 })();
