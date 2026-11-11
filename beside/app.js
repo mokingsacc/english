@@ -97,6 +97,9 @@
   const hashM = location.hash.slice(1).match(/^([a-z0-9]{8})(?:-(.*))?$/);
   const guestCode = hashM ? hashM[1] : '';
   const isGuest = !!guestCode;
+  // Your accent is the other person: the host's devices wear Semal's colour on the main button, the guest's Mo's.
+  document.documentElement.classList.toggle('as-semal', isGuest);
+  document.documentElement.classList.toggle('as-mo', !isGuest);
   function cleanName(n) { return String(n || '').replace(/[^\p{L}\p{N} .'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20); }
   // Your own other devices (iPad, iPhone) host the same room: open  .../?room=k7m2abcd  once there, or add that to the
   // Home Screen. Your partner keeps the usual link.
@@ -129,6 +132,7 @@
     if (app.state !== state) { app.states.push(state); if (app.states.length > 300) app.states.shift(); }
     app.state = state;
     document.body.dataset.app = state;
+    callDark(state === 'live' || state === 'watching');
     document.querySelectorAll('[data-state]').forEach((el) => {
       if (el.dataset.state === 'check') return; // the check panel is an overlay
       if (el.hasAttribute('data-shell')) { el.hidden = !SHELL.includes(state); return; } // the Calls tab, for host or guest
@@ -142,6 +146,12 @@
     if (!isGuest) hostTitle();
   }
   function text(id, s) { const el = $(id); if (el) el.textContent = s; }
+  // Calls are always dark: the sheets, banners and notes that open over a call take the call's dark set.
+  function callDark(on) {
+    ['note', 'moreSheet', 'shareSheet', 'boardSheet', 'linkBanner', 'bNote'].forEach((id) => { const el = $(id); if (el) el.classList.toggle('dark', on); });
+    const ck = document.querySelector('.sheet[data-state="check"]');
+    if (ck) ck.classList.toggle('dark', on);
+  }
   // ---------- OUR BOARD ----------
   // The countdown, Thinking of you, to-dos and calendar (board.js) belong to the room: the host's room code, which
   // the guest's link carries. Shown under the start and join screens, and from More during a call.
@@ -214,7 +224,7 @@
   // light that is off late at night there. The calendar, the fridge and the paper chain open their part of the board.
   // Tap your own figure and it waves (only on this screen: the board has no wave message to send).
   const ROOM_ID = { mo: 'ndRoomMo', semal: 'ndRoomSemal' };
-  const HAND = { mo: ['#1B1D23', '#E2AE88'], semal: ['#1C1D22', '#E7B48F'] };
+  const HAND = { mo: ['#1B1D23', '#E2AE88'], semal: ['#1C1D22', '#E7B48F'] }; // paint: the figures' own sleeve and skin
   let houseOn = false;
   function houseBoot() {
     if (houseOn || !$('house') || !window.BesideFigures) return;
@@ -485,14 +495,17 @@
       pane.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: lead + 500, easing: 'ease-in-out', fill: 'forwards' });
     }
     const scr = document.createElement('div');
-    scr.className = 'tvfx-screen';
+    scr.className = 'tvfx-screen dark';
     fx.append(scr);
     document.body.append(fx);
+    const ground = getComputedStyle(scr).getPropertyValue('--bg').trim();
     const from = { ...snap.screen, round: snap.tv ? 3 : 32 };
     scr.animate([
+      // paint:start (the TV's warm glow and its switched-off grey belong to the drawing)
       { clipPath: clip(from), opacity: snap.tv ? 0 : 1, backgroundColor: '#E8A87C' },
       { clipPath: clip(from), opacity: 1, backgroundColor: '#E8A87C', offset: lead ? lead / (lead + 700) : 0.001 },
-      { clipPath: clip(FULL()), opacity: 1, backgroundColor: '#1C1712' },
+      { clipPath: clip(FULL()), opacity: 1, backgroundColor: ground },
+      // paint:end
     ], { duration: lead + 700, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
     const end = fx.animate([{ opacity: 1 }, { opacity: 1, offset: (lead + 700) / (lead + 1050) }, { opacity: 0 }], { duration: lead + 1050, fill: 'forwards' });
     end.onfinish = () => { if (tvFx === fx) tvDone(); };
@@ -505,15 +518,18 @@
     fx.setAttribute('aria-hidden', 'true');
     tvFx = fx;
     const scr = document.createElement('div');
-    scr.className = 'tvfx-screen';
+    scr.className = 'tvfx-screen dark';
     fx.append(scr);
     document.body.append(fx);
+    const ground = getComputedStyle(scr).getPropertyValue('--bg').trim();
     const tv = app.tab === 'calls' && $('tvBox') && $('tvBox').querySelector('.tv-screen');
     const r = tv && tv.getClientRects().length ? { ...rectOf(tv.getBoundingClientRect()), round: 3 } : { left: innerWidth / 2 - 50, top: innerHeight / 2 - 32, width: 100, height: 64, round: 18 };
     scr.animate([
-      { clipPath: clip(FULL()), backgroundColor: '#1C1712', opacity: 1 },
-      { clipPath: clip(r), backgroundColor: tv ? '#2A2D35' : '#1C1712', opacity: 1, offset: 0.8 },
+      // paint:start
+      { clipPath: clip(FULL()), backgroundColor: ground, opacity: 1 },
+      { clipPath: clip(r), backgroundColor: tv ? '#2A2D35' : ground, opacity: 1, offset: 0.8 },
       { clipPath: clip(r), backgroundColor: '#2A2D35', opacity: 0 },
+      // paint:end
     ], { duration: 760, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).onfinish = () => { if (tvFx === fx) tvDone(); };
   }
 
@@ -542,7 +558,7 @@
     el.textContent = msg;
     const x = document.createElement('button');
     x.setAttribute('aria-label', 'Close');
-    x.textContent = '×';
+    x.innerHTML = window.BesideIcons ? window.BesideIcons.svg('x', 18) : '';
     x.onclick = () => { el.hidden = true; };
     el.appendChild(x);
     el.dataset.kind = kind || 'info';
@@ -1690,10 +1706,8 @@
   const V = { pin: '', mode: store.get('beside.layout') === 'focus' ? 'focus' : 'split', focus: 'them', pair: false, plain: store.get('beside.plaincall') === '1', roomOk: false, swapT: 0, noClick: 0 };
   // A video call for two: Split shows you both, half and half (stacked when the screen is tall, side by side when
   // it is wide); Focus shows one of you big and the other as a small tile. The choice is kept on this device.
-  const LAYOUT_ICON = {
-    split: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg>',
-    focus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="13" y="13" width="6" height="5" rx="1.2" fill="currentColor"/></svg>',
-  };
+  const ico = (n, s, o) => (window.BesideIcons ? window.BesideIcons.svg(n, s, o) : '');
+  const LAYOUT_ICON = { split: ico('split'), focus: ico('pip') };
   function setLayout(mode, focus) {
     V.mode = mode === 'focus' ? 'focus' : 'split';
     if (focus) V.focus = focus;
@@ -1713,7 +1727,7 @@
       b.title = toFocus ? 'Focus' : 'Split';
     }
   }
-  const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  const PERSON = ico('person');
   function amSharing() { return isGuest ? !!G.screenTrack : !!H.video && !!H.me && H.sharer === H.me; }
   function sharerId() { return isGuest ? (G.room && G.room.sharer) || '' : H.sharer; }
   function screenSource() {
@@ -1986,18 +2000,21 @@
     if (!tile || !tile.classList.contains('big') || amSharing() || !screenSource()) return false;
     return isGuest ? G.hostVer >= 2 : !!H.sharer && H.sharer !== H.me;
   }
+  // Each person is one colour everywhere: Mo blue, Semal gold, anyone else neutral.
   function dotColor(id) {
-    if (id === (isGuest ? hostId : H.me)) return 'var(--clay)';
-    let h = 0;
-    for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return ['var(--moss)', 'var(--amber)', 'var(--sky)'][h % 3];
+    const me = isGuest ? (G.peer && G.peer.id) : H.me;
+    if (id && id === me) return ['var(--me)', 'var(--on-me)'];
+    const pair = isGuest ? id === hostId : (watchers()[0] || {}).id === id;
+    return pair ? ['var(--them)', 'var(--on-them)'] : ['var(--ink-2)', 'var(--bg)'];
   }
   function dotEl(doc, x, y, from, name) {
     const el = doc.createElement('div');
     el.className = 'dot';
     el.style.left = Math.round(x * 1000) / 10 + '%';
     el.style.top = Math.round(y * 1000) / 10 + '%';
-    el.style.setProperty('--dc', dotColor(from));
+    const dc = dotColor(from);
+    el.style.setProperty('--dc', dc[0]);
+    el.style.setProperty('--dct', dc[1]);
     el.textContent = (name || '').charAt(0).toUpperCase();
     setTimeout(() => el.remove(), 2600);
     return el;
@@ -2132,6 +2149,7 @@
     meta.content = 'light dark';
     d.head.append(meta, st);
     d.title = 'Beside';
+    d.documentElement.className = 'dark ' + (isGuest ? 'as-semal' : 'as-mo');
     d.body.className = 'mini-body';
     const div = (cls) => { const e = d.createElement('div'); e.className = cls; return e; };
     const root = div('fw');
@@ -2309,6 +2327,7 @@
   }
   // The Sound panel: what you hear, and how your mic is sent. One in the call, one in the faces window and one in
   // the Sound and mic sheet outside a call; all show the same.
+  function rangeFill(r) { r.style.setProperty('--pct', (r.value - r.min) / ((r.max - r.min) || 1) * 100 + '%'); }
   function soundPanel(doc, opts) {
     opts = opts || {};
     const box = doc.createElement('div');
@@ -2326,7 +2345,8 @@
       r.type = 'range'; r.min = '0'; r.max = String(max); r.step = '1';
       r.value = String(Math.round(SND[k] * 100));
       r.setAttribute('aria-label', label);
-      r.addEventListener('input', () => setVol(k, r.value / 100));
+      rangeFill(r);
+      r.addEventListener('input', () => { rangeFill(r); setVol(k, r.value / 100); });
       const pct = doc.createElement('span');
       pct.className = 'sound-pct';
       row.append(name, r, pct);
@@ -2336,6 +2356,8 @@
     dk.className = 'sound-tog';
     const dcb = doc.createElement('input');
     dcb.type = 'checkbox';
+    dcb.className = 'sw';
+    dcb.setAttribute('role', 'switch');
     dcb.checked = SND.duck;
     dcb.addEventListener('change', () => setDuck(dcb.checked));
     const dt = doc.createElement('span');
@@ -2405,6 +2427,7 @@
         const r = row.querySelector('input');
         const n = Math.round(SND[k] * 100);
         if (+r.value !== n) r.value = String(n);
+        rangeFill(r);
         row.querySelector('.sound-pct').textContent = n + '%';
         // An iPhone or iPad plays voices at full volume while a video is open together (see outRest).
         const off = (k === 'media' && amSharing() && !W.id) || (k === 'voice' && IS_IOS && !!W.id);
@@ -3325,7 +3348,7 @@
     c.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
     const x = c.getContext('2d');
     if (!x) return null;
-    x.fillStyle = '#000';
+    x.fillStyle = '#000'; // paint: plain black behind a shared picture, as a video has
     x.fillRect(0, 0, w, h);
     let s = null;
     try { s = c.captureStream(fps); } catch (e) { s = null; }
@@ -3358,16 +3381,18 @@
     if (!c || !x || !sw || !sh) return;
     const k = Math.min(c.width / sw, c.height / sh);
     const w = sw * k, h = sh * k;
-    x.fillStyle = '#000';
+    x.fillStyle = '#000'; // paint: plain black behind a shared picture, as a video has
     x.fillRect(0, 0, c.width, c.height);
     try { x.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h); CV.frames++; } catch (e) {}
   }
   function canvasWords(words) {
     const c = CV.canvas, x = CV.x;
     if (!c || !x) return;
-    x.fillStyle = '#201A13';
+    const st = document.querySelector('.stage.watch') || document.documentElement;
+    const cs = getComputedStyle(st);
+    x.fillStyle = cs.getPropertyValue('--bg').trim() || 'black';
     x.fillRect(0, 0, c.width, c.height);
-    x.fillStyle = '#F0E7D8';
+    x.fillStyle = cs.getPropertyValue('--ink').trim() || 'white';
     x.font = '600 ' + Math.round(c.width / 22) + 'px -apple-system, system-ui, sans-serif';
     x.textAlign = 'center';
     x.textBaseline = 'middle';
@@ -5318,13 +5343,7 @@
   }
 
   // ---------- SELF-CHECK ----------
-  const ICON = {
-    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-    problem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
-    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
-    checking: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>',
-    skip: '',
-  };
+  const ICON = { ok: ico('check'), problem: ico('alert'), warn: ico('alert'), checking: ico('spin'), skip: '' };
   const META = { ok: 'Fine', problem: 'Problem', warn: 'Note', checking: 'checking…', skip: 'Not yet' };
   function checkRow(key, label) {
     const list = $('checkList');
@@ -5667,6 +5686,7 @@
     const sheet = document.querySelector('[data-state="check"]');
     const closeSheet = () => { if (sheet) sheet.hidden = true; wakeControls(); };
     on('checkClose', 'click', closeSheet);
+    on('checkX', 'click', closeSheet);
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       const vw = $('viewer');
