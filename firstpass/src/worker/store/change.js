@@ -6,6 +6,7 @@
 //   applyChange(db, project, {ops, actor, summary?, base_seq?, batch_id?})
 //   undoChange(db, project, {seq?, actor, only_actor?, batch_id?})
 //     -> {ok: true, seq, change, doc} | {ok: true, nothing: true, seq, summary, doc} | {ok: false, status, error, conflict?, seq?}
+//        undoChange's answer also names the change it undid: undone: {seq, actor, summary}
 //   changesSince(db, userId, projectId, since)   the poll: one indexed read; an empty list when nothing is new
 //
 // project is {id, user_id} (a loaded row works). Two writers at the same moment cannot both win: the change row's key
@@ -107,6 +108,9 @@ export async function applyChange(db, project, req) {
   return refuse(409, 'Several changes arrived at the same moment. Send it once more.');
 }
 
+/** The change an undo took back, as its answer names it: {seq, actor, summary}. */
+const undoneOf = c => ({ seq: c.seq, actor: c.actor, summary: c.summary });
+
 /**
  * Undoes one change by applying its stored inverse as a new change. seq: that change; without it, the newest change
  * that is neither undone nor an undo (only_actor: only that actor's, as the connector's undo does for Claude's own).
@@ -120,7 +124,10 @@ export async function undoChange(db, project, req = {}) {
     if (!row) return refuse(404, 'There is no project with that id.');
     if (req.batch_id) {
       const prev = await byBatch(db, row.id, req.batch_id);
-      if (prev) return { ok: true, replay: true, seq: row.seq, change: changeOut(prev), doc: parseDoc(row) };
+      if (prev) {
+        const was = prev.undo_of != null ? await db.prepare('SELECT seq, actor, summary FROM changes WHERE project_id = ?1 AND seq = ?2').bind(row.id, prev.undo_of).first() : null;
+        return { ok: true, replay: true, seq: row.seq, change: changeOut(prev), doc: parseDoc(row), ...(was ? { undone: undoneOf(was) } : {}) };
+      }
     }
     let target;
     if (req.seq != null) {
@@ -145,8 +152,9 @@ export async function undoChange(db, project, req = {}) {
     const base = target.summary.replace(/^(Undo|Redo): /, '');
     const summary = (redo && target.summary.startsWith('Undo: ') ? `Redo: ${base}` : `Undo: ${base}`).slice(0, 300);
     try {
-      return await commit(db, row, { doc, ops, inverse: parse(target.ops, []), actor: req.actor, summary, batchId: req.batch_id,
+      const r = await commit(db, row, { doc, ops, inverse: parse(target.ops, []), actor: req.actor, summary, batchId: req.batch_id,
         undoOf: target.seq, redoOf: redo ? target.undo_of : null });
+      return r.ok ? { ...r, undone: undoneOf(target) } : r;
     } catch (e) {
       if (isUnique(e)) continue;
       throw e;

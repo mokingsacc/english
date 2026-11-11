@@ -30,12 +30,33 @@ test('a change by the page, then polled, then undone, through the API', async ()
   assert.equal(undo.status, 200);
   assert.equal(undo.json.change.summary, 'Undo: ICD 140');
   assert.equal(undo.json.change.undo_of, 1);
+  assert.deepEqual(undo.json.undone, { seq: 1, actor: 'user', summary: 'ICD 140' });
   const after = await t.call('GET', `/api/projects/${p.id}/changes?since=1`);
   assert.equal(after.json.changes[0].undo_of, 1);
   assert.equal(after.json.project.options[0].round.icd, 130);
 
   const got = await t.call('GET', `/api/projects/${p.id}`);
   assert.deepEqual(got.json.history.map(h => [h.seq, h.summary, h.undone]), [[2, 'Undo: ICD 140', null], [1, 'ICD 140', 2]]);
+});
+
+test('undo takes the newest change by anyone and names it: after Claude\'s change, the page\'s undo takes Claude\'s', async () => {
+  const t = await setup();
+  const p = await t.newProject();
+  await t.call('POST', `/api/projects/${p.id}/changes`, { body: { ops: [{ op: 'set', option: 'A', path: 'icd', value: 140 }], summary: 'Her circle', id: 'page-0002' } });
+  const claude = await t.tool('change_option', { option: 'A', changes: [{ path: 'circWidth', value: 20 }], reason: 'Wider lane' });
+  assert.equal(claude.isError, false, claude.summary);
+  const undo = await t.call('POST', `/api/projects/${p.id}/undo`, { body: { id: 'page-undo-1' } });
+  assert.equal(undo.status, 200);
+  assert.deepEqual(undo.json.undone, { seq: 2, actor: 'claude', summary: 'Wider lane' });
+  assert.equal(undo.json.project.options[0].round.icd, 140);
+  // A resend of the same undo names the same change.
+  const again = await t.call('POST', `/api/projects/${p.id}/undo`, { body: { id: 'page-undo-1' } });
+  assert.equal(again.json.replay, true);
+  assert.deepEqual(again.json.undone, undo.json.undone);
+  // The connector's undo says when the change it took back was hers.
+  const hers = await t.tool('undo', { seq: 1 });
+  assert.match(hers.summary, /^Undo: Her circle \(change 1, her change\)\. To put it back, call undo with seq \d+\.$/);
+  assert.deepEqual(hers.data.undone, { seq: 1, actor: 'user', summary: 'Her circle' });
 });
 
 test('nothing new: the smallest answer, from one database read', async () => {

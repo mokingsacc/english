@@ -2,7 +2,8 @@
 //   POST /api/projects/:id/changes {ops, summary?, base_seq?, id?}  -> {ok, seq, change, project} | {ok, nothing, seq, summary}
 //                                   400 {error} bad value, 404 {error}, 409 {error, conflict, seq} changed meanwhile
 //   GET  /api/projects/:id/changes?since=<seq>  -> {seq, changes: []} | {seq, changes: [...], project} | {seq, reset, changes: [], project}
-//   POST /api/projects/:id/undo {seq?, id?}     -> as POST changes; without seq, the newest change not yet undone
+//   POST /api/projects/:id/undo {seq?, id?}     -> as POST changes, plus undone: {seq, actor, summary} (the change it took
+//                                                back); without seq, the newest change by anyone not yet undone
 import { json, readJson, HttpError } from '../http.js';
 import { applyChange, undoChange, changesSince } from '../store/change.js';
 
@@ -10,7 +11,8 @@ import { applyChange, undoChange, changesSince } from '../store/change.js';
 export function changeAnswer(r, projectId) {
   if (!r.ok) return json({ error: r.error, ...(r.conflict ? { conflict: true } : {}), ...(r.seq != null ? { seq: r.seq } : {}) }, r.status || 400);
   if (r.nothing) return json({ ok: true, nothing: true, seq: r.seq, summary: r.summary });
-  return json({ ok: true, ...(r.replay ? { replay: true } : {}), seq: r.seq, change: r.change, project: { id: projectId, ...r.doc, seq: r.seq } });
+  return json({ ok: true, ...(r.replay ? { replay: true } : {}), seq: r.seq, change: r.change, ...(r.undone ? { undone: r.undone } : {}),
+    project: { id: projectId, ...r.doc, seq: r.seq } });
 }
 
 async function post(request, env, ctx, params, url, user) {

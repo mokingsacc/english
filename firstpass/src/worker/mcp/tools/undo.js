@@ -18,9 +18,10 @@ export default {
     const row = await projectFor(ctx, args);
     const r = await undoChange(ctx.db, row, { seq: args.seq, actor: 'claude', only_actor: args.seq == null ? 'claude' : null });
     if (!r.ok) storeRefusal(r);
+    const whose = r.undone && r.undone.actor === 'user' ? ', her change' : '';
     return {
-      text: `${r.change.summary} (change ${r.change.undo_of}). To put it back, call undo with seq ${r.change.seq}.`,
-      data: { project: { id: row.id, seq: r.seq }, change: { seq: r.change.seq, summary: r.change.summary, undo_of: r.change.undo_of } },
+      text: `${r.change.summary} (change ${r.change.undo_of}${whose}). To put it back, call undo with seq ${r.change.seq}.`,
+      data: { project: { id: row.id, seq: r.seq }, change: { seq: r.change.seq, summary: r.change.summary, undo_of: r.change.undo_of }, undone: r.undone || null },
     };
   },
 };
