@@ -479,11 +479,11 @@
     }
   }
   function homeSheetsClose() { Object.keys(HOME_SHEETS).forEach((k) => homeSheet(k, false)); }
-  function setupSheet(open) { if (open) setupVals(); homeSheet('setup', open, $('homeSetupBtn')); }
+  function setupSheet(open) { if (open) homeSetupVals(); homeSheet('setup', open, $('homeSetupBtn')); }
   function calSheet(open) { homeSheet('cal', open, $('ndCal')); if (open) calDraw(); }
   function todoSheet(open) { homeSheet('todo', open, $('ndFridge')); if (open) todoDraw(true); }
   // Each row says how things are: the last check, the mic's way, rings on or off, the guest's name.
-  function setupVals() {
+  function homeSetupVals() {
     text('setupSoundVal', MODE_TEXT[CLEAR.mode] ? MODE_TEXT[CLEAR.mode][0] : '');
     setupHealth();
     ringMeUi();
