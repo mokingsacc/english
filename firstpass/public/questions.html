@@ -1,0 +1,359 @@
+<!doctype html>
+<!-- The questions for the engineer First Pass is built for (11 Nov 2026): tap answers, then Copy my answers to send
+     them back. A plain page with no key and no server call, so a texted link opens it anywhere. Kept in step with the
+     copy published for Mo at claude.ai (/mnt/project-files/areas/first-pass/questions-form.html). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>First Pass Questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one calm column like a design checklist, numbered as the questions really are; a bar at the foot keeps the
+   count and the Copy button in reach. Accent: highway guide-sign green. */
+:root {
+  --paper: #f5f7f5;
+  --card: #ffffff;
+  --ink: #17201c;
+  --ink-soft: #4d5a54;
+  --line: #d3dcd7;
+  --sign: #0b6b47;
+  --sign-ink: #ffffff;
+  --sign-soft: #e3f1ea;
+  --focus: #1d64c8;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1412; --card: #171e1b; --ink: #e4ebe7; --ink-soft: #a3b1aa; --line: #2c3833;
+    --sign: #3fb687; --sign-ink: #08130e; --sign-soft: #183327; --focus: #7fb0ff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1412; --card: #171e1b; --ink: #e4ebe7; --ink-soft: #a3b1aa; --line: #2c3833;
+  --sign: #3fb687; --sign-ink: #08130e; --sign-soft: #183327; --focus: #7fb0ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 16px/1.5 var(--font); }
+.wrap { max-width: 720px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 120px; display: grid; gap: 22px; }
+header { display: grid; gap: 10px; }
+.plate { display: inline-flex; align-items: center; gap: 8px; justify-self: start; background: var(--sign); color: var(--sign-ink); border-radius: 6px; padding: 5px 10px; font: 500 13px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; text-wrap: balance; }
+.lede { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+h2 { margin: 18px 0 0; font-size: 15px; font-weight: 600; color: var(--sign); letter-spacing: 0.05em; text-transform: uppercase; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+h2 small { color: var(--ink-soft); font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 14px; }
+.q { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 14px; display: grid; gap: 12px; }
+.q.done { border-color: color-mix(in srgb, var(--sign) 55%, var(--line)); }
+.qhead { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.num { font: 500 14px/1 var(--mono); color: var(--sign); background: var(--sign-soft); border-radius: 5px; padding: 6px 7px; min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
+.q.done .num { background: var(--sign); color: var(--sign-ink); }
+.qtext { margin: 0; font-weight: 600; font-size: 17px; line-height: 1.35; padding-top: 2px; }
+.hint { display: block; font-weight: 400; color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
+.sub { display: grid; gap: 8px; }
+.sub + .sub { padding-top: 10px; border-top: 1px dashed var(--line); }
+.sublabel { font-size: 15px; font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: inline-block; padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-size: 15px; line-height: 1.3; cursor: pointer; user-select: none; }
+.chip input:checked + span { background: var(--sign); border-color: var(--sign); color: var(--sign-ink); }
+.chip input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chip input:disabled + span { opacity: 0.45; cursor: not-allowed; }
+.chip input:disabled { cursor: not-allowed; }
+textarea, input[type="text"] { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; padding: 9px 11px; }
+textarea { min-height: 76px; resize: vertical; }
+textarea:focus-visible, input[type="text"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.other[hidden], .notewrap[hidden] { display: none; }
+.addnote { justify-self: start; background: none; border: 0; padding: 0; color: var(--ink-soft); font: inherit; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.addnote:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ask { background: var(--sign-soft); border-color: transparent; }
+.result { background: var(--card); border: 2px solid var(--sign); border-radius: 10px; padding: 18px; display: grid; gap: 12px; }
+.result h2 { margin: 0; }
+.result p { margin: 0; color: var(--ink-soft); }
+pre { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 13px/1.5 var(--mono); }
+.btn { border: 0; border-radius: 8px; background: var(--sign); color: var(--sign-ink); font: 600 15px/1 var(--font); padding: 12px 18px; cursor: pointer; }
+.btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.btn.ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); font-weight: 500; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--card); border-top: 1px solid var(--line); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px)); }
+.barin { max-width: 720px; margin: 0 auto; display: flex; gap: 14px; align-items: center; }
+.meter { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.meter b { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 14px; }
+.track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.fill { height: 100%; width: 0; background: var(--sign); transition: width 0.25s ease; }
+.toast { font-size: 14px; color: var(--sign); font-weight: 600; min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+@media (max-width: 480px) { h1 { font-size: 24px; } .q { padding: 14px 14px 12px; } .qtext { font-size: 16px; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <span class="plate">First Pass · roundabouts</span>
+    <h1>Questions before the build</h1>
+    <p class="lede">First Pass is a browser tool for trying a roundabout idea in minutes: checks like fastest path speeds and sight distance, before you build it properly in Civil 3D. Your answers decide what it does first and how it works. Part 1 takes about two minutes. Tap your answers, add a note anywhere, then press Copy my answers at the bottom and send the text back to Mo.</p>
+  </header>
+  <div id="form"></div>
+  <section class="result" id="result" aria-labelledby="result-h">
+    <h2 id="result-h">Your answers</h2>
+    <p>Press Copy, then paste the text into a message to Mo. Your answers stay saved in this browser in case you come back later.</p>
+    <pre id="out" tabindex="0"></pre>
+    <div class="row">
+      <button class="btn" id="copy2" type="button">Copy my answers</button>
+      <button class="btn ghost" id="clear" type="button">Start again</button>
+      <span class="toast" id="toast2" role="status"></span>
+    </div>
+    <div class="row" id="confirmrow" hidden>
+      <span>Clear every answer?</span>
+      <button class="btn ghost" id="clearyes" type="button">Yes, clear them</button>
+      <button class="btn ghost" id="clearno" type="button">Keep them</button>
+    </div>
+  </section>
+</div>
+
+<div class="bar">
+  <div class="barin">
+    <div class="meter">
+      <b id="count">0 of 16 answered</b>
+      <div class="track" aria-hidden="true"><div class="fill" id="fill"></div></div>
+    </div>
+    <span class="toast" id="toast" role="status"></span>
+    <button class="btn" id="copy" type="button">Copy my answers</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const OTHER = '__other';
+  // Each question: n (its number), part, text, hint, and subs (one or more answer parts). A sub is
+  // {id, label?, type: 'multi'|'single'|'text', options?, max?, other? (the option that opens a box), showIf?}.
+  const QUESTIONS = [
+    { n: 1, part: 1, text: 'Where did most of your time go in the last month?', hint: 'Pick up to two.', subs: [
+      { id: 'a', type: 'multi', max: 2, other: 'Something else', options: ['Roundabout layout', 'Highway line and grade', 'Grading and earthwork', 'Drainage', 'Plan sheets, labels and quantities', 'Cleaning up or fixing drawings', 'Something else'] } ] },
+    { n: 2, part: 1, text: 'Your roundabouts are:', hint: 'Pick all that apply.', subs: [
+      { id: 'a', type: 'multi', options: ['Single lane', 'Multilane', 'Mini roundabouts'] } ] },
+    { n: 3, part: 1, text: 'Which roundabout checks take you longest?', hint: 'Pick up to three.', subs: [
+      { id: 'a', type: 'multi', max: 3, other: 'Something else', options: ['Fastest path speeds', 'Sight distance', 'Truck turns', 'Entry angle', 'Capacity', 'Pedestrian and bike crossings', 'Something else'] } ] },
+    { n: 4, part: 1, text: 'Which design trucks do you check?', hint: 'Pick all that apply.', subs: [
+      { id: 'a', type: 'multi', other: 'Other', options: ['California Legal 65 ft', 'STAA', 'WB-67', 'Bus', 'Fire truck', 'Other'] } ] },
+    { n: 5, part: 1, text: 'Where do you work, and on what?', subs: [
+      { id: 'a', label: 'Who you work for', type: 'single', other: 'Other', options: ['Caltrans', 'A county or city', 'A private firm', 'Other'] },
+      { id: 'b', label: 'Which Civil 3D year', type: 'single', options: ['2023', '2024', '2025', '2026', '2027', 'Not sure'] },
+      { id: 'c', label: 'Can you run LISP or Dynamo scripts there?', type: 'single', options: ['Yes', 'No', 'Not sure'] },
+      { id: 'd', label: 'Have you used either?', type: 'multi', options: ['LISP', 'Dynamo', 'Neither'] } ] },
+    { n: 6, part: 1, text: 'What are you allowed to do with AI tools at work?', subs: [
+      { id: 'a', label: 'Allowed', type: 'single', options: ['Nothing', 'Public or made-up data only', 'Real project files', 'Not sure'] },
+      { id: 'b', label: 'Which device would you use this on?', type: 'multi', options: ['Work laptop', 'My own laptop', 'iPad'] } ] },
+    { n: 7, part: 2, text: 'Think of the last time you tried several versions of one design. What was it, how many versions did you try, and how long did each one take?', subs: [
+      { id: 'a', type: 'text' } ] },
+    { n: 8, part: 2, text: 'What boring, repeated task did you do last week that you wish a button did?', hint: 'Name up to three.', subs: [
+      { id: 'a', type: 'text' } ] },
+    { n: 9, part: 2, text: 'When a reviewer sends a design back, what is usually the reason?', subs: [
+      { id: 'a', type: 'text' } ] },
+    { n: 10, part: 2, text: 'How do you do fastest paths and truck turns today?', hint: 'Pick all that apply.', subs: [
+      { id: 'a', type: 'multi', other: 'Other', options: ['Drawn by hand in Civil 3D', 'Vehicle Tracking', 'TORUS', 'AutoTURN', 'A spreadsheet', 'Other'] } ] },
+    { n: 11, part: 2, text: 'Which standards do you design to?', hint: 'Pick all that apply.', subs: [
+      { id: 'a', type: 'multi', options: ['Caltrans Highway Design Manual', 'NCHRP 672', 'NCHRP 1043', 'A county or city standard', 'My firm’s own'] } ] },
+    { n: 12, part: 2, text: 'On highway jobs, what would you most like to test in minutes before building it properly?', hint: 'Pick all that apply.', subs: [
+      { id: 'a', type: 'multi', options: ['A new line', 'Grades', 'Cut and fill balance', 'Banking on curves', 'Widening', 'Ramps'] } ] },
+    { n: 13, part: 2, text: 'Do you design drainage yourself?', subs: [
+      { id: 'a', type: 'single', options: ['Yes', 'Sometimes', 'No'] },
+      { id: 'b', label: 'Which part is slowest?', type: 'single', other: 'Something else', options: ['Inlet spacing', 'Pipe sizes', 'The report', 'Something else'], showIf: (s) => ['Yes', 'Sometimes'].includes(s['13a']) } ] },
+    { n: 14, part: 2, text: 'On plan sheets, which part eats the most time?', subs: [
+      { id: 'a', type: 'single', options: ['Setting up sheets', 'Labels', 'Quantities', 'Redoing them after a change'] } ] },
+    { n: 15, part: 2, text: 'If this tool saved you time on one thing only, what would make you open it every week?', subs: [
+      { id: 'a', type: 'text' } ] },
+    { n: 16, part: 2, text: 'When you lay out a single lane entry:', subs: [
+      { id: 'a', label: 'Which do you fix first?', type: 'single', options: ['The curb radius', 'The entry width', 'The splitter island'] },
+      { id: 'b', label: 'When you widen an entry, what moves?', type: 'single', options: ['The outer curb', 'The island', 'Both', 'It depends'] } ] },
+  ];
+  const ASKS = [
+    { n: 'A', text: 'One finished example', hint: 'A roundabout you have already checked, with its speeds, with anything private removed. It gets rebuilt in First Pass to see if the numbers match yours. That is how the maths gets proved.', subs: [
+      { id: 'a', type: 'single', options: ['I can send one', 'Maybe later', 'I can’t share one'] } ] },
+    { n: 'B', text: 'A ten minute screen recording', hint: 'You doing one roundabout check in Civil 3D, talking as you go. It shows where the time really goes.', subs: [
+      { id: 'a', type: 'single', options: ['I can record one', 'Maybe later', 'I’d rather not'] } ] },
+  ];
+  const ALL = [...QUESTIONS, ...ASKS];
+  const KEY = 'fp-questions-v1';
+
+  let state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { state = {}; }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* kept on screen only */ } };
+
+  const el = (tag, attrs = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === false || v == null) continue;
+      if (k === 'text') e.textContent = v; else if (k === 'class') e.className = v; else e.setAttribute(k, v === true ? '' : v);
+    }
+    for (const k of kids) if (k) e.append(k);
+    return e;
+  };
+
+  const form = document.getElementById('form');
+  const cards = new Map();
+  const subViews = [];
+
+  function buildSub(q, s) {
+    const key = `${q.n}${s.id}`;
+    const wrap = el('div', { class: 'sub' });
+    if (s.label) wrap.append(el('div', { class: 'sublabel', id: `l-${key}`, text: s.label }));
+    if (s.type === 'text') {
+      const ta = el('textarea', { id: `t-${key}`, 'aria-label': s.label || q.text, placeholder: 'A few words is fine' });
+      ta.value = state[key] || '';
+      ta.addEventListener('input', () => { state[key] = ta.value; save(); refresh(); });
+      wrap.append(ta);
+    } else {
+      const chips = el('div', { class: 'chips', role: 'group', 'aria-label': s.label || q.text });
+      const inputs = [];
+      s.options.forEach((opt, i) => {
+        const id = `c-${key}-${i}`;
+        const inp = el('input', { type: s.type === 'single' ? 'radio' : 'checkbox', name: `n-${key}`, id, value: opt });
+        const chosen = s.type === 'single' ? state[key] === opt : (state[key] || []).includes(opt);
+        inp.checked = chosen;
+        inp.addEventListener('change', () => {
+          if (s.type === 'single') state[key] = opt;
+          else {
+            let v = new Set(state[key] || []);
+            if (inp.checked) v.add(opt); else v.delete(opt);
+            if (opt === 'Neither' && inp.checked) v = new Set(['Neither']);
+            else if (inp.checked) v.delete('Neither');
+            state[key] = s.options.filter((o) => v.has(o));
+            inputs.forEach((x) => { x.checked = state[key].includes(x.value); });
+          }
+          save(); refresh();
+        });
+        inputs.push(inp);
+        chips.append(el('label', { class: 'chip', for: id }, inp, el('span', { text: opt })));
+      });
+      wrap.append(chips);
+      let other = null;
+      if (s.other) {
+        other = el('input', { type: 'text', class: 'other', id: `o-${key}`, 'aria-label': `${s.other}: say what`, placeholder: `${s.other}: say what` });
+        other.value = state[`${key}${OTHER}`] || '';
+        other.addEventListener('input', () => { state[`${key}${OTHER}`] = other.value; save(); refresh(); });
+        wrap.append(other);
+      }
+      subViews.push({ q, s, key, inputs, other, wrap });
+    }
+    if (s.showIf) subViews.push({ q, s, key, inputs: [], other: null, wrap, onlyShow: true });
+    return wrap;
+  }
+
+  function buildCard(q, isAsk) {
+    const card = el('section', { class: `q${isAsk ? ' ask' : ''}`, id: `q${q.n}`, 'aria-labelledby': `h${q.n}` });
+    const head = el('div', { class: 'qhead' }, el('span', { class: 'num', text: String(q.n) }),
+      el('p', { class: 'qtext', id: `h${q.n}` }, document.createTextNode(q.text), q.hint ? el('span', { class: 'hint', text: q.hint }) : null));
+    card.append(head);
+    for (const s of q.subs) card.append(buildSub(q, s));
+    const noteKey = `${q.n}note`;
+    const noteWrap = el('div', { class: 'notewrap' });
+    const note = el('textarea', { id: `t-${noteKey}`, 'aria-label': `Note on ${q.n}`, placeholder: 'Anything to add' });
+    note.value = state[noteKey] || '';
+    note.addEventListener('input', () => { state[noteKey] = note.value; save(); refresh(); });
+    noteWrap.append(note);
+    const onlyText = q.subs.every((s) => s.type === 'text');
+    if (!onlyText) {
+      const add = el('button', { type: 'button', class: 'addnote', text: 'Add a note' });
+      noteWrap.hidden = !note.value;
+      add.hidden = !!note.value;
+      add.addEventListener('click', () => { noteWrap.hidden = false; add.hidden = true; note.focus(); });
+      card.append(add, noteWrap);
+    }
+    cards.set(q.n, card);
+    return card;
+  }
+
+  form.append(el('h2', {}, document.createTextNode('Part 1: the six that decide the build'), el('small', { text: 'About two minutes' })));
+  QUESTIONS.filter((q) => q.part === 1).forEach((q) => form.append(buildCard(q)));
+  form.append(el('h2', {}, document.createTextNode('Part 2: ten that sharpen it'), el('small', { text: 'Five more minutes, skip any' })));
+  QUESTIONS.filter((q) => q.part === 2).forEach((q) => form.append(buildCard(q)));
+  form.append(el('h2', {}, document.createTextNode('Two things worth more than any answer'), el('small', { text: 'Just say if you can' })));
+  ASKS.forEach((q) => form.append(buildCard(q, true)));
+  form.style.display = 'grid';
+  form.style.gap = '14px';
+
+  const answerOf = (key, s) => {
+    const v = state[key];
+    if (s.type === 'text') return (v || '').trim();
+    let list = s.type === 'single' ? (v ? [v] : []) : (v || []);
+    if (s.other && list.includes(s.other)) {
+      const t = (state[`${key}${OTHER}`] || '').trim();
+      list = list.map((x) => (x === s.other && t ? `${s.other}: ${t}` : x));
+    }
+    return list.join('; ');
+  };
+  const visible = (s) => !s.showIf || s.showIf(state);
+  const answered = (q) => q.subs.some((s) => visible(s) && answerOf(`${q.n}${s.id}`, s));
+
+  function text() {
+    const d = new Date();
+    const lines = [`First Pass questions: her answers (${d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })})`];
+    let part = 0;
+    for (const q of ALL) {
+      const p = typeof q.n === 'number' ? q.part : 3;
+      if (p !== part) { part = p; lines.push('', p === 1 ? 'PART 1' : p === 2 ? 'PART 2' : 'THE TWO ASKS'); }
+      const parts = q.subs.filter(visible).map((s) => {
+        const a = answerOf(`${q.n}${s.id}`, s);
+        return s.label ? `   ${s.label}: ${a || '(no answer)'}` : `   ${a || '(no answer)'}`;
+      });
+      lines.push(`${q.n}. ${q.text}`, ...parts);
+      const note = (state[`${q.n}note`] || '').trim();
+      if (note) lines.push(`   Note: ${note}`);
+    }
+    return lines.join('\n');
+  }
+
+  const out = document.getElementById('out');
+  function refresh() {
+    for (const v of subViews) {
+      if (v.onlyShow) { v.wrap.hidden = !visible(v.s); continue; }
+      const val = state[v.key];
+      if (v.s.max && v.s.type === 'multi') {
+        const full = (val || []).length >= v.s.max;
+        v.inputs.forEach((x) => { x.disabled = full && !x.checked; });
+      }
+      if (v.other) v.other.hidden = !(v.s.type === 'single' ? val === v.s.other : (val || []).includes(v.s.other));
+    }
+    let n = 0;
+    for (const q of QUESTIONS) { const ok = answered(q); if (ok) n++; cards.get(q.n).classList.toggle('done', ok); }
+    for (const q of ASKS) cards.get(q.n).classList.toggle('done', answered(q));
+    document.getElementById('count').textContent = `${n} of ${QUESTIONS.length} answered`;
+    document.getElementById('fill').style.width = `${(n / QUESTIONS.length) * 100}%`;
+    out.textContent = text();
+  }
+
+  async function copy(toastId) {
+    const t = text();
+    const toast = document.getElementById(toastId);
+    try {
+      await navigator.clipboard.writeText(t);
+      toast.textContent = 'Copied. Paste it into a message to Mo.';
+    } catch {
+      const r = document.createRange(); r.selectNodeContents(out);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      out.scrollIntoView({ block: 'center' });
+      toast.textContent = 'Selected. Copy it with your device’s Copy.';
+    }
+    clearTimeout(toast._t); toast._t = setTimeout(() => { toast.textContent = ''; }, 5000);
+  }
+  document.getElementById('copy').addEventListener('click', () => copy('toast'));
+  document.getElementById('copy2').addEventListener('click', () => copy('toast2'));
+  const confirmRow = document.getElementById('confirmrow');
+  document.getElementById('clear').addEventListener('click', () => { confirmRow.hidden = false; });
+  document.getElementById('clearno').addEventListener('click', () => { confirmRow.hidden = true; });
+  document.getElementById('clearyes').addEventListener('click', () => {
+    state = {}; save();
+    document.querySelectorAll('#form input, #form textarea').forEach((x) => { if (x.type === 'checkbox' || x.type === 'radio') x.checked = false; else x.value = ''; });
+    confirmRow.hidden = true; refresh(); window.scrollTo({ top: 0 });
+  });
+  refresh();
+})();
+</script>
+
+</body>
+</html>
