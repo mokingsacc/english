@@ -1,0 +1,8 @@
+{
+  "name": "firstpass",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/{engine,worker}/**/*.test.{mjs,js}\""
+  }
+}
