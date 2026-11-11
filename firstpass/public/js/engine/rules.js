@@ -112,7 +112,7 @@ export function resolveRules(overrides) {
         continue;
       }
       if (v < r.min || v > r.max) {
-        problems.push(`The project setting for the ${lowerFirst(r.label)} is ${v} ${r.unit}, which is outside the allowed range of ${r.min} to ${r.max} ${r.unit}.`);
+        problems.push(`The project setting for the ${lowerFirst(r.label)} is ${withUnit(v, r.unit)}, which is outside the allowed range of ${r.min} to ${withUnit(r.max, r.unit)}.`);
         continue;
       }
       values[id] = v;
@@ -129,6 +129,18 @@ export function resolveRules(overrides) {
       return v;
     },
   };
+}
+
+// Units as they read in a sentence.
+const UNIT_WORDS = {
+  'ft': 'ft', 'mph': 'mph', 's': 'seconds', 'ft/s2': 'feet per second squared', 'ft/s per mph': 'feet per second for each mph',
+  'passes': 'passes', 'sq ft': 'square feet', 'power': '', 'ft per (mph squared per ft/s2)': '',
+};
+
+/** A value with its unit, for a sentence: 99 ft/s2 gives "99 feet per second squared". */
+export function withUnit(v, unit) {
+  const w = UNIT_WORDS[unit] ?? unit;
+  return w ? `${v} ${w}` : String(v);
 }
 
 function lowerFirst(s) {

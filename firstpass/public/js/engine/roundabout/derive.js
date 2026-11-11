@@ -80,13 +80,12 @@ export function derive(round, rr) {
   // Land take: the outer curbs all round, closed across each leg at its nose station.
   const landChain = [];
   for (const c of corners) {
-    const A = legs[c.from], B = legs[c.to];
+    const B = legs[c.to];
     for (const prim of c.chain) {
       if (prim.tag === 'edge') continue;
       landChain.push({ ...prim, tag: 'landtake' });
     }
     landChain.push(line(B.Fx, B.F, 'landtake'));
-    void A;
   }
   const landArea = closedChainArea(landChain);
 

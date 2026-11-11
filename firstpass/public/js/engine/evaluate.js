@@ -247,10 +247,11 @@ function pointAt(p, sv) {
   return { x: p.x[lo] + (p.x[hi] - p.x[lo]) * f, y: p.y[lo] + (p.y[hi] - p.y[lo]) * f };
 }
 
+/** The leg summary without the engine's own bookkeeping (indexes into its internal arrays). */
 function publicLeg(s) {
-  const { idx, upstreamIdx, upstreamMain, ...rest } = s;
-  void idx; void upstreamIdx; void upstreamMain;
-  return rest;
+  const out = { ...s };
+  delete out.idx; delete out.upstreamIdx; delete out.upstreamMain;
+  return out;
 }
 
 /** Worst entry speed, worst speed difference, land take, and the count of fails and warns. */

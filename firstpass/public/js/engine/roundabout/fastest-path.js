@@ -66,8 +66,8 @@ export function stationPlan(G, rr, pass, passes) {
 /** Solver stopping rules for each pass. Earlier passes are linearised again, so they stop once the bending
  * energy stops falling noticeably; the last pass is solved tightly. */
 export function passOptions(pass, passes) {
-  // Measured on the default and on larger roundabouts: against a solve to rounding, these move no path
-  // point by more than about 0.002 ft and no radius by more than 1 part in 10,000.
+  // Measured on the test shapes (default, T, skew, large, small, offset, six legs): against a solve to
+  // rounding, these move no path point by more than 0.001 ft and no radius by more than 1 part in 100,000.
   if (pass === passes - 1) return { tol: 1e-10, ftol: 1e-9, maxIter: 200 };
   return { tol: 1e-8, ftol: pass === 0 ? 1e-4 : 1e-6, maxIter: 60 };
 }
@@ -112,6 +112,10 @@ export function solveMovement(G, mv, rr, ws, optionsFor = passOptions) {
       plan = stationPlan(G, rr, pass + 1, passes);
       ensure(ws, Math.ceil(polylineLength(px, py, n) / plan.h0) + 8);
       n = resampleStations(ws.px, ws.py, n, plan, ws.rx, ws.ry, ws);
+      // Where the path runs along a straight bound (the far approach and departure) an early pass stops
+      // with its points zigzagging by a few thousandths of a foot, and a reference with that zigzag makes the
+      // next pass slow. A light [1 2 1] filter removes it; the next pass re-solves the offsets anyway.
+      filter121(ws.rx, ws.ry, n, ws.tmp, ws.tmp2);
     }
   }
 
@@ -123,6 +127,15 @@ export function solveMovement(G, mv, rr, ws, optionsFor = passOptions) {
     s[k] = acc;
   }
   return { ok: true, problems: [], n, x: xs, y: ys, s, chains, solver: { iterations, converged: qpStats.converged, gradNorm: qpStats.gradNorm } };
+}
+
+/** One pass of the [1 2 1] / 4 filter over the inner points; the end points stay put. */
+function filter121(xs, ys, n, tx, ty) {
+  for (let k = 1; k < n - 1; k++) {
+    tx[k] = 0.25 * (xs[k - 1] + 2 * xs[k] + xs[k + 1]);
+    ty[k] = 0.25 * (ys[k - 1] + 2 * ys[k] + ys[k + 1]);
+  }
+  for (let k = 1; k < n - 1; k++) { xs[k] = tx[k]; ys[k] = ty[k]; }
 }
 
 /**

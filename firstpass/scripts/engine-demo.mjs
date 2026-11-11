@@ -102,7 +102,7 @@ if (out) {
 function svg(res, round) {
   const C = round.center;
   if (!res.ok) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="200" viewBox="0 0 900 200"><rect width="900" height="200" fill="#fff"/>`
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="120" viewBox="0 0 1400 120"><rect width="1400" height="120" fill="#fff"/>`
       + res.problems.map((p, i) => `<text x="10" y="${30 + i * 24}" font-family="sans-serif" font-size="14">${esc(p)}</text>`).join('') + '</svg>';
   }
   const G = res.geometry;

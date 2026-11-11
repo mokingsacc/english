@@ -147,7 +147,7 @@ export function solveBoxQP(prob, ws) {
     frozen[i] = fr ? 1 : 0;
     if (fixed && fixed[i]) continue;
     if (!(lo[i] < hi[i])) { x[i] = lo[i]; continue; }
-    if (!(x[i] === x[i])) x[i] = 0.5 * (lo[i] + hi[i]);
+    if (!(x[i] === x[i])) x[i] = 0; // a missing start: zero, pulled into the box below
     if (x[i] < lo[i]) x[i] = lo[i]; else if (x[i] > hi[i]) x[i] = hi[i];
     const w = hi[i] - lo[i];
     if (w > range && w < Infinity) range = w;
