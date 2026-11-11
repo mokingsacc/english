@@ -15,7 +15,7 @@ wrong or missing, say so in your report rather than quietly doing something else
   this should have also".
 - "make the look and feel of the thing as close to autodesk civil 3d as possible, so theres no learning curve".
 - "use public data and then where she has permission she can insert her own data".
-- Plain words in every string she sees. No model names in code, comments or commits. Secrets only through env.
+- Plain words in every string she sees. No model names in code or comments, or in the words of a commit message (the attribution lines a session adds at the end of a commit are separate). Secrets only through env.
 
 ## Shape
 
