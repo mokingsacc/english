@@ -712,8 +712,9 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 }
 .msg .ytgo{display:flex;margin-top:8px;min-height:44px;padding:0 16px;font:var(--callout);font-weight:600}
 .menu.boardsheet{max-width:1100px}
-/* ───────────────────────── TABS: Home, Plans, Calls, Hearts (not in a call) ───────────────────────── */
-.shell{min-height:100dvh;padding:calc(max(12px,env(safe-area-inset-top)) + 6px) max(16px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+/* ───────────────────────── TABS: Home, Plans, Hearts (not in a call) ───────────────────────── */
+/* the page scrolls behind the floating bar, so it ends well above it */
+.shell{min-height:100dvh;padding:calc(max(12px,env(safe-area-inset-top)) + 6px) max(16px,env(safe-area-inset-right)) calc(112px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
 .tabpanel{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px;min-width:0}
 .tabpanel.tab-in{animation:tabin var(--move) var(--ease) both}
 @keyframes tabin{from{opacity:0;transform:translateX(calc(var(--dir,1) * 14px))}to{opacity:1;transform:none}}
@@ -721,14 +722,15 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .tabhead .hint{font:var(--caption)}
 .tophead{min-height:56px}
 button:disabled{opacity:.55;cursor:default}
-.tabbar{position:fixed;z-index:30;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--surface) 76%,transparent);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-top:1px solid var(--line);padding:6px max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-.tabbar-in{position:relative;display:grid;grid-template-columns:repeat(4,1fr);max-width:560px;margin:0 auto}
-.tabbar button{position:relative;z-index:1;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--ink-2);font:var(--caption);border-radius:var(--r2);transition:color var(--move) var(--ease)}
-.tabbar button svg{width:24px;height:24px;transition:transform var(--move) var(--ease)}
-.tabbar button[aria-selected="true"]{color:var(--ink);font-weight:600}
-.tabbar button[aria-selected="true"] svg{transform:translateY(-1px)}
+/* one floating capsule of three, near the bottom and clear of the home bar; the current tab sits on a soft fill */
+.tabbar{position:fixed;z-index:30;left:50%;bottom:max(16px,calc(env(safe-area-inset-bottom) - 8px));transform:translateX(-50%);width:min(calc(100% - 32px),380px);padding:5px;border-radius:var(--round);background:color-mix(in srgb,var(--surface) 76%,transparent);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border:1px solid var(--line);box-shadow:var(--e2)}
+.tabbar-in{position:relative;display:grid;grid-template-columns:repeat(3,1fr)}
+.tabbar button{position:relative;z-index:1;min-height:52px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 8px;color:var(--ink-2);font:var(--callout);font-weight:600;border-radius:var(--round);white-space:nowrap;transition:color var(--move) var(--ease)}
+.tabbar button svg{width:22px;height:22px;flex:none}
+.tabbar button[aria-selected="true"]{color:var(--ink)}
 .tabbar button:focus-visible{outline-offset:-2px}
-.tabpill{position:absolute;z-index:0;top:3px;height:31px;width:58px;border-radius:var(--round);background:var(--fill);left:calc(var(--i,0) * 25% + 12.5% - 29px);transition:left var(--move) var(--ease)}
+.tabpill{position:absolute;z-index:0;top:0;bottom:0;width:calc(100% / 3);border-radius:var(--round);background:var(--fill);left:calc(var(--i,0) * 100% / 3);transition:left var(--move) var(--ease)}
+@media (max-width:340px){.tabbar button{gap:5px;padding:0 4px}.tabbar button svg{width:20px;height:20px}}
 /* the call has ended: a card above whichever tab you're on */
 .endcard{max-width:1100px;margin:0 auto 14px;position:relative;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;padding:16px 60px 16px 18px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1);animation:rise var(--arrive) var(--ease) both}
 .endcard-words{flex:1 1 220px;min-width:0}
@@ -738,30 +740,23 @@ button:disabled{opacity:.55;cursor:default}
 .movecard-acts{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap}
 .movecard-not{min-height:44px;min-width:44px;padding:0 10px;font:var(--callout);color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-/* Home */
-.home-grid{display:grid;gap:14px;min-width:0}
-.home-col{display:flex;flex-direction:column;gap:14px;min-width:0}
-.home-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-.home-pair > div{display:grid}
-/* the countdown's Change form needs the whole row */
-.home-pair > #bHomeCount:has(.bb-form:not([hidden])){grid-column:1/-1}
-@media (min-width:900px){.home-grid{grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:18px;align-items:start}.home-col{gap:16px}}
-.acts{display:flex;gap:10px;align-items:center}
-.acts-guest{flex-direction:column;align-items:stretch}
-.acts-row{display:flex;gap:10px}
+/* Home: how they are, the house, both places in one line, one Ring button with a heart, and their latest note */
+#tabHome{max-width:460px;gap:10px}
+/* iPad and Mac: the phone layout, centred, narrow enough that the Ring button shows without a scroll */
+@media (min-width:600px){#tabHome{max-width:clamp(360px,calc((100vh - 270px) / 1.44),460px)}}
+.hometop{display:flex;align-items:flex-start;gap:12px;padding:0 4px;min-height:56px}
+.hometop-words{flex:1;min-width:0}
+.hometop h1{font:var(--title);letter-spacing:-.015em;overflow-wrap:anywhere}
+.hometop p{font:var(--callout);color:var(--ink-2);margin-top:2px}
+.rb.rb44{width:44px;height:44px}
+.rb.rb44 svg{width:20px;height:20px}
+.home-acts{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ringrow{display:flex;gap:10px;align-items:center}
 /* the main button is the other person's colour */
-.act-main{flex:1;min-width:0;min-height:52px;border-radius:var(--round);background:var(--them);color:var(--on-them);display:flex;align-items:center;gap:12px;padding:4px 22px;text-align:left;transition:transform var(--press) var(--ease),filter var(--press) var(--ease)}
-.act-main:hover{filter:brightness(1.05)}
-.act-main:active,.act-round:active{transform:scale(.96)}
-.act-main svg{width:24px;height:24px;flex:none}
-.act-words{display:flex;flex-direction:column;gap:0;min-width:0}
-.act-words b{font:var(--headline);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.act-words small{font:var(--caption);color:color-mix(in srgb,var(--on-them) 76%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.act-text{justify-content:center;font:var(--headline);text-align:center}
-/* small phones: the words may wrap rather than be cut */
-@media (max-width:360px){.acts{gap:8px}.act-main{padding:8px 16px;gap:10px}.act-words b,.act-words small{white-space:normal;overflow:visible}}
-.act-round{width:52px;height:52px;flex:none;border-radius:50%;background:var(--fill);display:grid;place-items:center;transition:transform var(--press) var(--ease)}
-.act-round svg{width:24px;height:24px}
+.ringrow .ringmain{flex:1;min-width:0;padding:0 18px}
+.ringrow .ringmain span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ringrow .rb svg{width:22px;height:22px}
+.ringrow .rb:disabled,.ringrow .ringmain:disabled{opacity:.55}
 .namefield{display:flex;align-items:center;gap:6px;min-height:52px;padding:0 6px 0 18px;border-radius:var(--round);background:var(--fill);font:var(--callout);font-weight:600;color:var(--ink-2)}
 .namefield span{flex:none}
 .namefield input{flex:1;min-width:0;font:var(--body);color:var(--ink);background:transparent;border:0;min-height:48px;padding:0 10px}
@@ -769,19 +764,88 @@ button:disabled{opacity:.55;cursor:default}
 .namefield input:focus{outline:none}
 .namefield:focus-within{box-shadow:0 0 0 2px var(--ink)}
 .linkask{margin:0}
-/* Calls */
-.calls-grid{display:grid;gap:14px;min-width:0}
-@media (min-width:900px){.calls-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}.tvbox{position:sticky;top:20px}}
-.tvbox svg{display:block;width:100%;height:auto;border-radius:var(--r3)}
-.stage.callstage{padding:0;display:flex;flex-direction:column;gap:14px;min-width:0}
-.callstage .starts{max-width:none}
-.callstage .chip{justify-self:start}
+/* their latest note, in their own words (the voice font); no note in the last day, no card. The ids win over the
+   board's own button reset. */
+#bHomeThink:not(:has(.hnote)){display:none}
+#bHomeThink > .bb-hthink{display:block;padding:0;background:none;box-shadow:none}
+#bHomeThink .hnote{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px 12px 12px;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1);text-align:left;color:var(--ink)}
+#bHomeThink .hnote-fig{width:44px;height:44px;border-radius:50%;overflow:hidden;flex:none;background:color-mix(in srgb,var(--mo) 20%,var(--surface))}
+#bHomeThink .hnote-fig.bb-fig-semal{background:color-mix(in srgb,var(--semal) 26%,var(--surface))}
+#bHomeThink .hnote-fig svg{width:100%;height:100%;display:block}
+#bHomeThink .hnote-words{display:flex;flex-direction:column;gap:2px;min-width:0}
+#bHomeThink .hnote-from{font:var(--caption);color:var(--ink-2)}
+#bHomeThink .hnote-text{font:var(--body);font-family:var(--font-voice);font-style:italic;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+#bHomeThink .hnote:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* Calls and setup: grouped rows that each show their state */
+.setupsheet .body{gap:12px}
+.rowbtn .rv{flex:none;max-width:45%;font:var(--callout);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowbtn .rv[data-ok]{color:var(--go)}
+.rowbtn .rv[data-bad]{color:var(--end)}
+.rowbtn .rv:empty{display:none}
+.rowbtn .rv + svg{margin-left:-6px}
+/* the calendar sheet: the month with full-size days, a dot in each person's colour for their plans */
+.hsheet .body{gap:12px}
+.hcal-names,.hcal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.hcal-names span{display:grid;place-items:center;height:24px;font:var(--caption);color:var(--ink-3)}
+.hcal-day{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:48px;border-radius:var(--r2);color:var(--ink);transition:background-color var(--press) var(--ease)}
+.hcal-day b{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font:var(--headline);font-variant-numeric:tabular-nums}
+.hcal-day.today b{background:var(--ink);color:var(--bg)}
+.hcal-day u{display:flex;gap:3px;height:6px;text-decoration:none}
+.hcal-day s{width:6px;height:6px;border-radius:50%;background:var(--mo)}
+.hcal-day s.semal{background:var(--semal)}
+@media (hover:hover){.hcal-day:hover{background:var(--fill)}}
+.hcal-day:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.hnext{width:100%;display:flex;align-items:stretch;gap:12px;padding:12px 16px;border-radius:var(--r3);background:var(--surface-2);text-align:left;color:var(--ink)}
+.hnext i{width:4px;flex:none;border-radius:var(--round);background:var(--mo)}
+.hnext i.semal{background:var(--semal)}
+.hnext b{display:block;font:var(--headline)}
+.hnext small{display:block;font:var(--caption);color:var(--ink-2);margin-top:2px}
+.hnext span{min-width:0;flex:1}
+.hnext svg{width:18px;height:18px;align-self:center;color:var(--ink-3);flex:none}
+.hwide{max-width:none}
+/* the to-do sheet: each row one full-size tap to tick it; swipe a row left to delete it */
+.hlist{background:var(--surface-2);box-shadow:none}
+.hlist:empty{display:none}
+.hrow{position:relative;overflow:hidden}
+.hrow + .hrow::before{content:"";position:absolute;z-index:2;left:56px;right:0;top:0;height:1px;background:var(--line)}
+.hrow-go{position:relative;z-index:1;width:100%;display:flex;align-items:center;gap:14px;min-height:56px;padding:8px 16px;text-align:left;background:var(--surface-2);color:var(--ink);transition:transform var(--move) var(--ease);touch-action:pan-y}
+.hrow-go.drag{transition:none}
+.hrow.open .hrow-go{transform:translateX(-96px)}
+.hrow-tick{width:26px;height:26px;flex:none;border-radius:50%;box-shadow:inset 0 0 0 2px var(--ink-3);display:grid;place-items:center;color:var(--on-go)}
+.hrow-tick svg{width:16px;height:16px;opacity:0}
+.hrow.done .hrow-tick{background:var(--go);box-shadow:none}
+.hrow.done .hrow-tick svg{opacity:1}
+.hrow-words{min-width:0;flex:1}
+.hrow-words b{display:block;font:var(--body);overflow-wrap:anywhere}
+.hrow-words small{display:block;font:var(--caption);color:var(--ink-2)}
+.hrow.done .hrow-words b{color:var(--ink-3);text-decoration:line-through}
+.hrow-del{position:absolute;z-index:0;right:0;top:0;bottom:0;width:96px;display:grid;place-items:center;background:var(--end);color:var(--on-end);font:var(--callout);font-weight:600}
+.hrow-del svg{display:none}
+.hrow:not(.open):not(:has(:focus-visible)) .hrow-del{visibility:hidden}
+/* with a keyboard, Delete shows under the row instead */
+.hrow:has(:focus-visible):not(.open) .hrow-del{position:static;width:100%;min-height:44px;visibility:visible}
+/* with a mouse there is no swipe: a quiet cross at the row's end, on hover */
+@media (hover:hover) and (pointer:fine){
+  .hrow:not(.open):hover .hrow-del{visibility:visible;left:auto;right:6px;top:50%;bottom:auto;z-index:2;width:44px;height:44px;margin-top:-22px;border-radius:50%;background:none;color:var(--ink-3)}
+  .hrow:not(.open):hover .hrow-del:hover{background:var(--fill);color:var(--ink)}
+  .hrow:not(.open):hover .hrow-del svg{display:block;width:20px;height:20px}
+  .hrow:not(.open):hover .hrow-del span{display:none}
+  .hrow:hover .hrow-go{padding-right:56px}
+}
+#todoSheet .menu{margin-bottom:var(--kb,0px)}
+.hadd{position:relative;display:flex;align-items:center;gap:8px;min-height:52px;padding:0 4px 0 48px;border-radius:var(--round);background:var(--fill)}
+.hadd > svg{position:absolute;left:16px;top:50%;width:22px;height:22px;margin-top:-11px;color:var(--ink-2)}
+.hadd input{flex:1;min-width:0;min-height:48px;font:var(--body);color:var(--ink);background:transparent;border:0}
+.hadd input::placeholder{color:var(--ink-3)}
+.hadd input:focus{outline:none}
+.hadd:focus-within{box-shadow:0 0 0 2px var(--ink)}
+.hempty{font:var(--callout);color:var(--ink-2);padding:4px 4px 0}
 .card{background:var(--surface);border-radius:var(--r3);box-shadow:var(--e1);padding:16px;min-width:0}
 .linkcard-acts{margin-top:12px}
 .linkcard-acts .btn{flex:1}
 .linkcard-acts .btn svg{width:20px;height:20px}
 .invitesheet .linkcard-acts .btn{white-space:nowrap;padding:0 12px}
-/* grouped rows: one card, each row an icon, its words, a value and a chevron */
+/* cards, and grouped rows: one card, each row an icon, its words, a value and a chevron */
 .rows{padding:0;overflow:hidden}
 .rowbtn{width:100%;display:flex;align-items:center;gap:13px;min-height:56px;padding:8px 16px;text-align:left;font:var(--body);font-weight:500;transition:background-color var(--press) var(--ease)}
 .rowbtn:hover{background:var(--fill)}
@@ -791,10 +855,6 @@ button:disabled{opacity:.55;cursor:default}
 .rowbtn + .rowbtn{position:relative}
 .rowbtn + .rowbtn::before{content:"";position:absolute;left:51px;right:0;top:0;height:1px;background:var(--line)}
 .rowbtn[aria-pressed="true"] svg:first-child{color:var(--go)}
-.joincard{display:flex;flex-direction:column;gap:10px}
-.joincard p{font:var(--callout)}
-.joincard .starts{margin-top:6px}
-.you-mark{display:none}
 /* paint:start (the figures and the TV room keep their own motion and paint) */
 /* the figures: motion lives on their outer groups, never in the drawings */
 .fig{display:block;overflow:visible}
@@ -826,27 +886,65 @@ button:disabled{opacity:.55;cursor:default}
 .tvfx-screen{position:absolute;inset:0;background:var(--bg);will-change:clip-path}
 /* paint:end */
 /* paint:start (the house drawing keeps its own paint) */
-/* ───────────────────────── Next Door: Home is one house, two rooms ───────────────────────── */
-/* Mo's London room on the left, Semal's LA room on the right, a thin wall between. Each window shows that city's
-   weather and day or night; each room's light is off late at night there. The pictures keep fixed colours. */
-.house{position:relative;min-width:0;padding-top:clamp(40px,7vw,64px)}
-.nd-roof{position:absolute;top:0;left:-2px;right:-2px;width:calc(100% + 4px);height:clamp(48px,8vw,72px);display:block}
-.nd-chimney{position:absolute;top:2px;right:16%;width:22px;height:34px;background:#8A5A48;box-shadow:0 -6px 0 -1px #6F4537}
-.nd-smoke{position:absolute;top:-22px;right:calc(16% + 2px);width:18px;height:22px}
-.nd-smoke i{position:absolute;left:4px;bottom:0;width:10px;height:10px;border-radius:50%;background:#D8CFC3;animation:ndsmoke 5s ease-out infinite}
+/* ───────────────────────── Home A, "a kitchen downstairs": one house ───────────────────────── */
+/* Upstairs, two rooms side by side: Mo's London room on the left, Semal's LA room on the right, each with its clock,
+   its city picture, a window with that city's weather and day or night, a lamp that is off from 11 pm to 6 am there,
+   and its figure. Downstairs, one shared kitchen: the calendar on the wall and the To do note on the fridge, big
+   enough to read. Nothing stands in front of anything and nothing hides behind a figure. ("the house style i like
+   becaise the calender/ the to do list ect has functionality, keep that functionality", 11 Nov 2026.)
+   The house keeps its own paint, all in --house-* variables here; around the frame is the system. In dark mode it is
+   a night house: a dark roof and frame, lit rooms warm and a little dimmer. A room with its lamp off is moonlit blue. */
+.house{position:relative;min-width:0;
+  --house-roof:#8C4B3B;--house-roof-edge:#6F3A2E;--house-chim:#8A5A48;--house-chim-cap:#6F4537;--house-smoke:#D8CFC3;
+  --house-frame:#5A4236;--house-frame-edge:#4A3329;--house-under:0 0 0 transparent;
+  --house-wall-mo:#CBD4D0;--house-wall-semal:#E8D3B5;--house-wall-kit:#E6DECD;--house-tile:rgba(90,66,54,.08);
+  --house-floor:#B98E67;--house-floor-kit:#A98561;--house-trim:#EEE6DA;--house-wf:#F1EBE1;
+  --house-glow:rgba(255,226,170,.62);--house-glow-end:transparent;
+  --house-off-wall:#2C3252;--house-off-floor:#463C57;--house-off-trim:#4E4766;--house-off-wf:#4D4766;--house-off-shade:#544C6C;
+  --house-shade:#F6D9AE;--house-shade-glow:rgba(255,214,140,.9);--house-cord:#5A4236;
+  --house-paper:#FFF9EF;--house-note:#FFFDF6;--house-ink:#3B2C24;--house-red:#A8462A;--house-on-red:#FFFFFF;--house-magnet:#C8573C;
+  --house-fridge-a:#F3F1EC;--house-fridge-b:#E1DDD5;--house-clock:#FFFDF8;--house-tag:#FFF6E6;--house-tag-ink:#6B3B2A;
+  --house-lit:none;--house-dim:brightness(.66) saturate(.85);--house-fig-dim:brightness(.7) saturate(.85)}
+@media (prefers-color-scheme:dark){
+  .house{--house-roof:#5E352C;--house-roof-edge:#48271F;--house-chim:#573A30;--house-chim-cap:#43291F;--house-smoke:#6B6158;
+    --house-frame:#2E221D;--house-frame-edge:#221814;--house-under:0 34px 60px -26px rgba(255,186,104,.34);
+    --house-wall-mo:#B3B8AE;--house-wall-semal:#CDB796;--house-wall-kit:#C9BFAB;
+    --house-floor:#9C7654;--house-floor-kit:#8E6E4E;--house-trim:#D2C8B8;--house-wf:#D8CFC0;
+    --house-glow:rgba(255,214,140,.8);--house-glow-end:rgba(40,24,10,.16);
+    --house-off-wall:#1D2240;--house-off-floor:#2E2740;--house-off-trim:#383250;--house-off-wf:#373150;
+    --house-paper:#F3EAD8;--house-note:#F3EAD8;--house-lit:brightness(.94)}
+}
+/* the roof and its chimney */
+.nd-top{position:relative;height:46px}
+.nd-roof{position:absolute;left:0;bottom:0;width:100%;height:46px;display:block}
+.nd-roof-a{fill:var(--house-roof)}
+.nd-roof-b{stroke:var(--house-roof-edge)}
+.nd-chimney{position:absolute;top:5px;right:16%;width:20px;height:30px;background:var(--house-chim);box-shadow:0 -5px 0 -1px var(--house-chim-cap)}
+.nd-smoke{position:absolute;top:-20px;right:calc(16% + 1px);width:18px;height:22px}
+.nd-smoke i{position:absolute;left:4px;bottom:0;width:10px;height:10px;border-radius:50%;background:var(--house-smoke);animation:ndsmoke 5s ease-out infinite}
 .nd-smoke i + i{animation-delay:-2.5s}
 @keyframes ndsmoke{0%{transform:translate(0,0) scale(.6);opacity:0}20%{opacity:.9}100%{transform:translate(6px,-22px) scale(1.5);opacity:0}}
-.nd-flats{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 8px minmax(0,1fr);height:clamp(280px,40svh,560px);padding:6px 8px 0;background:#5A4236;border-radius:0 0 4px 4px;box-shadow:0 10px 0 -2px #4A3329}
-.nd-wall{background:#5A4236}
-.nd-room{--wall:#CBD4D0;--stripe:rgba(255,255,255,.18);--floor:#B98E67;--trim:#EEE6DA;--frame:#F1EBE1;
-  position:relative;container-type:size;overflow:hidden;background:var(--wall);
-  background-image:repeating-linear-gradient(90deg,transparent 0 14px,var(--stripe) 14px 16px)}
-.nd-room{--pw:min(34cqw,24cqh);--cs:clamp(26px,9cqh,40px)}
+/* the frame: one line weight, one soft shadow (and at night, warm light spilling below) */
+.nd-frame{position:relative;padding:6px;border-radius:0 0 6px 6px;background:var(--house-frame);box-shadow:0 8px 0 -2px var(--house-frame-edge),var(--house-under)}
+.nd-up{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+/* a room: everything is placed in widths of the room, so the room keeps its shape at any phone size */
+.nd-room{--wall:var(--house-wall-mo);--floor:var(--house-floor);--trim:var(--house-trim);--wf:var(--house-wf);--lx:22%;
+  position:relative;aspect-ratio:169/196;container-type:inline-size;overflow:hidden;border-radius:2px;background-color:var(--wall);
+  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.2) 0 2px,transparent 2px 14px)}
 /* London: sage stripes; Los Angeles: warm sand with little dots */
-.nd-room[data-who=semal]{--wall:#E8D3B5;--stripe:rgba(255,255,255,.34);background-image:radial-gradient(circle,var(--stripe) 1.6px,transparent 2.2px);background-size:16px 16px}
-.nd-room::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 6%,rgba(255,226,170,.55),transparent 60%);pointer-events:none}
-.nd-room[data-light=off]{--wall:#2C3252;--stripe:rgba(255,255,255,.04);--floor:#463C57;--trim:#4E4766;--frame:#4D4766}
+.nd-room[data-who=semal]{--wall:var(--house-wall-semal);--lx:78%;background-image:radial-gradient(circle,rgba(255,255,255,.36) 1.6px,transparent 2.2px);background-size:16px 16px}
+.nd-room::before,.nd-kit::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at var(--lx,50%) 4%,var(--house-glow),var(--house-glow-end) 62%);pointer-events:none}
+/* lamp off (11 pm to 6 am there): moonlit blue, the shade dark, no glow */
+.nd-room[data-light=off]{--wall:var(--house-off-wall);--floor:var(--house-off-floor);--trim:var(--house-off-trim);--wf:var(--house-off-wf);background-image:none}
 .nd-room[data-light=off]::before{opacity:0}
+.nd-floor{position:absolute;left:0;right:0;bottom:0;height:13cqw;background:var(--floor);border-top:3cqw solid var(--trim)}
+/* the light: a lamp hanging from the ceiling, lit or not, toward the outer wall so the paper chain hangs between the
+   two lamps and never in front of one */
+.nd-lamp{position:absolute;top:0;left:var(--lx);width:15.4cqw;margin-left:-7.7cqw;height:16.6cqw;pointer-events:none}
+.nd-lamp::before{content:"";position:absolute;left:50%;top:0;width:2px;margin-left:-1px;height:8.3cqw;background:var(--house-cord)}
+/* the shade's rim in the house's line colour, so a lit shade still reads on the warm Los Angeles wall */
+.nd-lamp::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:8.3cqw;background:linear-gradient(var(--house-shade) calc(100% - 2px),var(--house-cord) 0);clip-path:polygon(25% 0,75% 0,100% 100%,0 100%);filter:drop-shadow(0 4px 6px var(--house-shade-glow))}
+.nd-room[data-light=off] .nd-lamp::after{background:linear-gradient(var(--house-off-shade) calc(100% - 2px),var(--house-cord) 0);filter:none}
 /* The heart wall: each heart sent in the last 24 hours, on the wall of the one it was sent to, only ever on bare wall.
    A strong red with a paper edge, so it reads at phone size on either wallpaper and with the light off. */
 .nd-hearts{position:absolute;inset:0;pointer-events:none}
@@ -855,26 +953,18 @@ button:disabled{opacity:.55;cursor:default}
 .nd-room[data-light=off] .nd-heart{filter:brightness(.82)}
 .nd-heart.pop{animation:ndheartpop .7s cubic-bezier(.3,1.5,.5,1) both}
 @keyframes ndheartpop{0%{transform:rotate(var(--r,0deg)) scale(0);opacity:0}100%{transform:rotate(var(--r,0deg)) scale(1);opacity:1}}
-.nd-floor{position:absolute;left:0;right:0;bottom:0;height:10cqh;background:var(--floor);border-top:5px solid var(--trim)}
-/* the light: a lamp hanging from the ceiling, lit or not */
-.nd-lamp{position:absolute;top:0;left:var(--lx,50%);width:24px;margin-left:-12px;height:calc(6cqh + 14px);pointer-events:none}
-.nd-lamp::before{content:"";position:absolute;left:11px;top:0;width:2px;height:6cqh;background:#5A4236}
-.nd-lamp::after{content:"";position:absolute;left:0;bottom:0;width:24px;height:14px;background:#F6D9AE;clip-path:polygon(25% 0,75% 0,100% 100%,0 100%);filter:drop-shadow(0 4px 6px rgba(255,214,140,.9))}
-.nd-room[data-light=off] .nd-lamp::after{background:#544C6C;filter:none}
-.nd-room[data-who=mo]{--lx:42%}
-.nd-room[data-who=semal]{--lx:58%}
-/* the window */
-.nd-win{position:absolute;top:11cqh;height:34cqh;width:min(52cqw,61cqh);left:6cqw;overflow:hidden;--house-sky:#9CC3DD;--house-low:#D5E6EC;--far:#7F8C95;--cloud:#F2F4F5;
-  background:linear-gradient(var(--house-sky),var(--house-low));border:5px solid var(--frame);box-shadow:0 7px 0 -1px var(--trim)}
-.nd-room[data-who=semal] .nd-win{left:auto;right:6cqw}
-.nd-win::before,.nd-win::after{content:"";position:absolute;z-index:3;background:var(--frame)}
+/* the window, low on the wall beside the figure */
+.nd-win{position:absolute;top:53.2cqw;left:5.9cqw;width:47.3cqw;height:43.8cqw;overflow:hidden;border:5px solid var(--wf);border-radius:3px;box-shadow:0 3px 0 -1px rgba(0,0,0,.14);
+  --house-sky:#9CC3DD;--house-low:#D5E6EC;--far:#7F8C95;--cloud:#F2F4F5;background:linear-gradient(var(--house-sky),var(--house-low))}
+.nd-room[data-who=semal] .nd-win{left:auto;right:5.9cqw}
+.nd-win::before,.nd-win::after{content:"";position:absolute;z-index:3;background:var(--wf)}
 .nd-win::before{left:calc(50% - 2px);top:0;bottom:0;width:4px}
-.nd-win::after{top:calc(48% - 2px);left:0;right:0;height:4px}
+.nd-win::after{top:calc(50% - 2px);left:0;right:0;height:4px}
 .nd-win > *{position:absolute;display:block;pointer-events:none}
 .nd-win[data-sky=grey]{--house-sky:#AEB9BE;--house-low:#CDD4D6;--cloud:#DDE2E4}
 .nd-win[data-wx=thunder]{--house-sky:#717986;--house-low:#99A0A8;--cloud:#B4BAC0}
 .nd-win[data-sky=night]{--house-sky:#1C2342;--house-low:#323B63;--far:#141932;--cloud:#545B78}
-.w-sun,.w-moon{top:12%;right:14%;width:clamp(16px,26%,40px);aspect-ratio:1;display:none}
+.w-sun,.w-moon{top:12%;right:14%;width:clamp(12px,26%,40px);aspect-ratio:1;display:none}
 .w-sun{fill:#F2C46F}
 .w-moon{fill:#F1E6C8}
 .w-stars{inset:0 0 50% 0;width:100%;height:50%;fill:#F1E6C8;display:none}
@@ -884,7 +974,7 @@ button:disabled{opacity:.55;cursor:default}
 .w-cloud.c2{top:34%;left:auto;right:-8%;width:54%;animation-duration:18s;animation-direction:alternate-reverse}
 .nd-win[data-wx=part] .w-cloud.c1,.nd-win:is([data-wx=cloud],[data-wx=drizzle],[data-wx=rain],[data-wx=thunder],[data-wx=snow]) .w-cloud{display:block}
 @keyframes nddrift{from{transform:translateX(-6%)}to{transform:translateX(8%)}}
-.w-far{left:0;bottom:0;width:100%;height:26%;fill:var(--far)}
+.w-far{left:0;bottom:0;width:100%;height:30%;fill:var(--far)}
 .w-palm{left:4%;bottom:0;height:62%;width:auto;aspect-ratio:60/90;fill:var(--far)}
 .w-palm.p2{left:auto;right:8%;height:46%}
 .w-fall{inset:0;width:100%;height:100%;display:none}
@@ -901,77 +991,74 @@ button:disabled{opacity:.55;cursor:default}
 .w-flash{inset:0;background:#FFFFFF;opacity:0;display:none;z-index:2;animation:ndflash 7s linear infinite}
 .nd-win[data-wx=thunder] .w-flash{display:block}
 @keyframes ndflash{0%,90%,94%,97%,100%{opacity:0}92%{opacity:.75}95.5%{opacity:.45}}
-/* the clock, the calendar, the fridge */
-.nd-clock{position:absolute;top:13cqh;right:calc(4cqw + (var(--pw) - var(--cs)) / 2);width:var(--cs);aspect-ratio:1}
-.nd-room[data-who=semal] .nd-clock{right:auto;left:calc(4cqw + (var(--pw) - var(--cs)) / 2)}
-/* a framed picture of the city, with its name under it */
-.nd-pic{position:absolute;top:calc(13cqh + var(--cs) + 8px);right:4cqw;width:var(--pw);container-type:inline-size;pointer-events:none;display:flex;flex-direction:column;align-items:center}
-.nd-room[data-who=semal] .nd-pic{right:auto;left:4cqw}
-.nd-pic svg{display:block;width:100%;aspect-ratio:4/3;border:max(3px,5cqw) solid #8A5A48;box-shadow:0 3px 6px -3px rgba(0,0,0,.5);background:#fff}
-.nd-pic b{margin-top:max(3px,4cqw);padding:.15em .5em;border-radius:3px;background:#FFF6E6;color:#3B2C24;font-size:max(8.5px,15cqw);font-weight:700;line-height:1.25;white-space:nowrap;box-shadow:0 2px 4px -2px rgba(0,0,0,.4)}
-.nd-room[data-light=off] .nd-pic{filter:brightness(.7)}
+/* the clock and the framed picture of the city, with its name under it, high on the wall */
+.nd-clock{position:absolute;top:20.1cqw;left:7.1cqw;width:17.75cqw;aspect-ratio:1}
+.nd-room[data-who=semal] .nd-clock{left:auto;right:5.9cqw}
 .nd-clock svg{display:block;width:100%;height:100%}
-.nd-clock circle{fill:#FBF7F0;stroke:#5A4236;stroke-width:2.4}
+.nd-clock circle{fill:var(--house-clock);stroke:var(--house-frame);stroke-width:3}
 .nd-room[data-light=off] .nd-clock circle{fill:#CFCBE0;stroke:#2A2440}
-.nd-clock path{stroke:#5A4236;stroke-width:2.6;stroke-linecap:round;transform-origin:20px 20px}
+.nd-clock path{stroke:var(--house-ink);stroke-width:2.6;stroke-linecap:round;transform-origin:20px 20px}
+.nd-clock .h-hr{stroke-width:3}
+.nd-pic{position:absolute;top:19.5cqw;left:28.4cqw;width:23.7cqw;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:3px}
+.nd-room[data-who=semal] .nd-pic{left:auto;right:27.2cqw;align-items:flex-end}
+.nd-pic svg{display:block;width:100%;height:auto;aspect-ratio:4/3;border:3px solid var(--house-frame);box-shadow:0 2px 4px -2px rgba(0,0,0,.45);background:#fff}
+.nd-pic b{font-size:10px;line-height:13px;font-weight:700;color:var(--house-ink);background:var(--house-paper);border-radius:2px;padding:0 5px;white-space:nowrap;box-shadow:0 1px 3px -1px rgba(0,0,0,.4)}
+.nd-room[data-light=off] :is(.nd-pic,.nd-heart){filter:var(--house-dim)}
+/* the two of you; tap yours and it waves. Their figure is never see-through: the lamp being off says it is late. */
 .nd-cal,.nd-fridge,.nd-chain,.nd-fig{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.nd-cal{position:absolute;left:4cqw;top:49cqh;width:min(48cqw,30cqh);container-type:inline-size;padding:0 0 3cqw;border-radius:3px;background:#FFF9EF;box-shadow:0 3px 8px -4px rgba(40,20,10,.5);display:block;line-height:1.2;text-align:center;color:#3B2C24;transition:transform .25s var(--ease)}
-.nd-cal-m{display:block;padding:3cqw 0 2.4cqw;border-radius:3px 3px 0 0;background:#A8462A;color:#FFF6E6;font-size:13cqw;font-weight:700;white-space:nowrap}
-.nd-cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.8cqw .6cqw;padding:2.6cqw 2cqw 1cqw;font-size:10px;font-size:8.4cqw;letter-spacing:-.02em;font-weight:600;font-variant-numeric:tabular-nums}
-.nd-cal-g i{position:relative;font-style:normal;line-height:1.3}
-.nd-cal-g .wd{color:#A8462A;font-size:7.6cqw;font-weight:700}
-.nd-cal-g .o{opacity:.4}
-.nd-cal-g .t{color:#A8462A;box-shadow:inset 0 0 0 max(1px,1.4cqw) #A8462A;border-radius:999px}
-.nd-cal-g .p::after{content:"";position:absolute;left:50%;bottom:-.9cqw;width:2.4cqw;height:2.4cqw;margin-left:-1.2cqw;border-radius:50%;background:#A8462A}
-.nd-cal-next{display:block;padding:1cqw 4cqw 0;font-family:var(--font-voice);font-size:10cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.nd-cal-next:empty{display:none}
-.nd-fridge{position:absolute;left:4cqw;bottom:calc(10cqh - 2px);width:min(48cqw,30cqh);height:42cqh;container-type:inline-size;border-radius:8px 8px 4px 4px;background:linear-gradient(90deg,#F3F1EC,#E1DDD5);box-shadow:inset 0 -3px 0 rgba(0,0,0,.08),0 4px 10px -6px rgba(0,0,0,.5);transition:transform .25s var(--ease)}
-.nd-fridge::before{content:"";position:absolute;left:0;right:0;top:30%;height:2px;background:#C9C3B8}
-.nd-fridge::after{content:"";position:absolute;right:6px;top:12%;width:3px;height:12%;border-radius:2px;background:#B8B1A5;box-shadow:0 calc(42cqh * .3) 0 #B8B1A5}
-.nd-room[data-light=off] .nd-fridge{filter:brightness(.62) saturate(.8)}
-.nd-note{position:absolute;z-index:1;left:6%;width:88%;box-sizing:border-box;top:14%;padding:7cqw 5cqw 5cqw;background:#FFFDF6;box-shadow:0 2px 5px -2px rgba(0,0,0,.45);transform:rotate(-1.5deg);text-align:left;color:#3B2C24}
-.nd-magnet{position:absolute;left:50%;top:-3.5cqw;width:9cqw;height:9cqw;margin-left:-4.5cqw;border-radius:50%;background:#C8573C;box-shadow:0 1px 2px rgba(0,0,0,.4)}
-.nd-note b{display:block;font-size:12cqw;font-weight:700;line-height:1.25;margin-bottom:2cqw}
-.nd-notes{display:flex;flex-direction:column;gap:2cqw}
-.nd-todo{display:flex;align-items:flex-start;gap:3cqw;font-size:10cqw;line-height:1.25;min-width:0}
-.nd-todo i{flex:none;width:.85em;height:.85em;margin-top:.15em;border:max(1px,1.3cqw) solid #6B5446;border-radius:2px}
-.nd-todo span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
-.nd-none{font-size:10cqw;line-height:1.3;color:#6B5446}
-/* the paper chain across both rooms counts down the days */
-.nd-chain{position:absolute;z-index:4;top:8px;left:50%;width:var(--chain,80%);max-width:calc(100% - 20px);transform:translateX(-50%);height:42px;display:block}
-.nd-chain svg{display:block;width:100%;height:18px}
-.nd-tag{position:absolute;left:50%;top:14px;transform:translateX(-50%) rotate(-4deg);padding:2px 8px;border-radius:3px;background:#FFF6E6;color:#6B3B2A;font-family:var(--font-voice);font-size:13px;line-height:1.3;white-space:nowrap;box-shadow:0 2px 6px -3px rgba(0,0,0,.5)}
-/* the two of you; tap yours and it waves */
-.nd-fig{position:absolute;bottom:5cqh;height:min(40cqh,84cqw);aspect-ratio:102/188;right:2cqw;padding:0;transform-origin:50% 100%}
-.nd-fig svg.fig{display:block;width:100%;height:100%}
+.nd-fig{position:absolute;top:36.1cqw;right:4.7cqw;height:74.6cqw;aspect-ratio:102/188;padding:0;transform-origin:50% 100%}
+.nd-room[data-who=semal] .nd-fig{right:auto;left:4.7cqw}
+.nd-fig svg.fig{display:block;width:100%;height:100%;filter:var(--house-lit)}
+.nd-room[data-light=off] .nd-fig svg.fig{filter:var(--house-fig-dim)}
 .nd-fig .fig-move{animation:figbob 4s ease-in-out infinite}
 .nd-room[data-who=semal] .nd-fig .fig-move{animation-delay:-2s}
-.nd-fig:disabled{cursor:default;opacity:1} /* their figure is never see-through: the lamp being off says it is late */
+.nd-fig:disabled{cursor:default;opacity:1}
 .nd-fig.wave{animation:ndwave 1.4s var(--ease)}
 .nd-fig .nd-hand{position:absolute;right:-16%;top:30%;width:34%;height:auto;aspect-ratio:1;transform-origin:20% 90%;opacity:0;pointer-events:none}
+.nd-room[data-who=semal] .nd-fig .nd-hand{right:auto;left:-16%;transform-origin:80% 90%}
 .nd-fig.wave .nd-hand{animation:ndhand 1.4s var(--ease)}
 @keyframes ndwave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(3deg)}40%,80%{transform:rotate(-2deg)}}
 @keyframes ndhand{0%{opacity:0;transform:rotate(0)}12%{opacity:1}25%,55%{transform:rotate(-24deg)}40%,70%{transform:rotate(14deg)}85%{opacity:1;transform:rotate(0)}100%{opacity:0}}
-.nd-cal:active,.nd-fridge:active{transform:scale(.96)}
+/* the paper chain across both rooms counts down the days; its tag says how many */
+.nd-chain{position:absolute;z-index:4;top:12px;left:50%;width:var(--chain,80%);max-width:calc(100% - 20px);height:44px;transform:translateX(-50%);display:block}
+.nd-chain svg{display:block;width:100%;height:18px}
+.nd-tag{position:absolute;left:50%;top:9px;transform:translateX(-50%) rotate(-4deg);padding:2px 9px;border-radius:3px;background:var(--house-tag);color:var(--house-tag-ink);font-family:var(--font-voice);font-style:italic;font-size:15px;line-height:20px;white-space:nowrap;box-shadow:0 2px 6px -3px rgba(0,0,0,.5)}
+/* downstairs: one shared kitchen across the whole width. The calendar hangs on the wall; the fridge stands on the floor. */
+.nd-kit{--lx:62%;position:relative;margin-top:8px;display:flex;align-items:flex-start;gap:14px;padding:8px 12px 20px;border-radius:2px;overflow:hidden;
+  background-color:var(--house-wall-kit);background-image:linear-gradient(var(--house-tile) 1px,transparent 1px),linear-gradient(90deg,var(--house-tile) 1px,transparent 1px);background-size:24px 24px}
+.nd-kit .nd-floor{height:22px;border-top-width:5px;--floor:var(--house-floor-kit);--trim:var(--house-trim)}
+/* the calendar: the month at 13 px, today ringed, a dot on days with plans, the next plan in a line under it */
+.nd-cal{position:relative;z-index:1;flex:0 1 59%;min-width:0;margin-bottom:7px;border-radius:4px;background:var(--house-paper);box-shadow:0 5px 12px -6px rgba(40,20,10,.6);color:var(--house-ink);text-align:center;overflow:hidden;line-height:1;display:block;transition:transform .25s var(--ease)}
+.nd-cal-m{display:grid;place-items:center;height:28px;background:var(--house-red);color:var(--house-on-red);font-size:15px;font-weight:700;white-space:nowrap}
+.nd-cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));padding:0 4px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.nd-cal-g i{position:relative;display:grid;place-items:center;height:22px;font-style:normal}
+.nd-cal-g .wd{color:var(--house-red);font-weight:700}
+.nd-cal-g .t{color:var(--house-red)}
+.nd-cal-g .t::before{content:"";position:absolute;left:50%;top:50%;width:23px;height:23px;transform:translate(-50%,-50%);border-radius:50%;box-shadow:inset 0 0 0 2px var(--house-red)}
+.nd-cal-g .p::after{content:"";position:absolute;left:50%;bottom:0;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--house-red)}
+.nd-cal-next{display:grid;place-items:center;height:30px;margin-top:3px;padding:0 6px;border-top:1px solid rgba(59,44,36,.14);font-family:var(--font-voice);font-style:italic;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nd-cal-next:empty{visibility:hidden}
+/* the fridge, and the To do note held on it by a magnet */
+.nd-fridge{position:relative;z-index:1;flex:0 1 36.6%;min-width:0;margin-left:auto;margin-top:16px;align-self:stretch;min-height:150px;border-radius:10px 10px 4px 4px;background:linear-gradient(90deg,var(--house-fridge-a),var(--house-fridge-b));box-shadow:inset 0 0 0 1px rgba(90,66,54,.2),inset 0 -3px 0 rgba(0,0,0,.08),0 4px 10px -6px rgba(0,0,0,.5);transition:transform .25s var(--ease)}
+.nd-fridge::before{content:"";position:absolute;left:0;right:0;top:68%;height:2px;background:rgba(0,0,0,.12)}
+.nd-fridge::after{content:"";position:absolute;right:7px;top:calc(68% + 10px);width:4px;height:26px;border-radius:2px;background:rgba(0,0,0,.22)}
+.nd-note{position:absolute;z-index:1;left:6%;top:7%;width:88%;max-height:86%;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding:11px 8px 9px;background:var(--house-note);box-shadow:0 2px 5px -2px rgba(0,0,0,.45);transform:rotate(-1.5deg);text-align:left;color:var(--house-ink);font-size:13px;line-height:16px}
+.nd-magnet{position:absolute;left:50%;top:-5px;width:11px;height:11px;margin-left:-5px;border-radius:50%;background:var(--house-magnet);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.nd-note b{display:block;font-size:15px;line-height:19px;font-weight:700}
+.nd-notes{display:flex;flex-direction:column;gap:4px}
+.nd-todo{display:flex;align-items:flex-start;gap:6px;min-width:0;font-weight:500}
+.nd-todo i{flex:none;width:.8em;height:.8em;margin-top:.2em;border:1.5px solid var(--house-ink);border-radius:2px}
+.nd-todo span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+.nd-more,.nd-none{font-weight:600;opacity:.6}
+.nd-cal:active,.nd-fridge:active{transform:scale(.97)}
 .nd-cal:focus-visible,.nd-fridge:focus-visible,.nd-chain:focus-visible,.nd-fig:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:6px}
-@media (min-width:700px){.nd-fig{right:12cqw}}
-/* A wide room (iPad on its side, the Mac): the calendar goes up beside the window and the fridge stands tall in the
-   middle, so both are bigger. Each figure stands under its window. */
-@container (min-aspect-ratio:6/5){
-  .nd-win{width:min(36cqw,58cqh)}
-  .nd-cal{left:calc(9cqw + min(36cqw,58cqh));top:13cqh;width:min(30cqw,52cqh)}
-  .nd-fridge{left:calc(8cqw + var(--pw));width:min(26cqw,40cqh);height:62cqh}
-  .nd-fridge::after{box-shadow:0 calc(62cqh * .3) 0 #B8B1A5}
-  .nd-fig{right:auto;left:calc(6cqw + min(36cqw,58cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
-  .nd-room[data-who=semal] .nd-fig{left:auto;right:calc(6cqw + min(36cqw,58cqh) / 2 - min(40cqh,84cqw) * 51 / 188)}
-}
 /* paint:end */
-/* under the house: both clocks and the weather, in plain type */
-.nd-words{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 16px;padding:14px 4px 0}
-.nd-words > div{min-width:0;display:flex;flex-direction:column}
-.nd-words b{font:var(--headline);color:var(--ink);overflow-wrap:anywhere}
-.nd-words span{font:var(--callout);color:var(--ink-2)}
-.nd-late{padding:6px 4px 0;font:var(--callout);color:var(--ink-2)}
+/* under the house: both places in one line */
+/* each place stays on one line; when both don't fit side by side, Los Angeles goes under London, to the right */
+.nd-words{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;padding:4px 4px 0;font:var(--caption);color:var(--ink-2)}
+.nd-words p{font:inherit;color:inherit;white-space:nowrap}
+.nd-words p + p{margin-left:auto}
+.nd-words b{color:var(--ink);font-weight:600}
 /* paint:start (their sky in a call keeps its own paint) */
 /* ───────────────────────── their camera is off, or a voice call: the sky where they are ───────────────────────── */
 /* Day or night and the weather come from the same data as the house windows. The two of you sit on one sofa, seen
@@ -1028,7 +1115,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <!-- paint:end -->
 <div class="note" id="note" role="status" aria-live="polite" hidden></div>
 
-<!-- NOT IN A CALL: the tabs. Home, Plans, Calls, Hearts. The board (board.js) draws its parts into the b* boxes. -->
+<!-- NOT IN A CALL: the tabs. Home, Plans, Hearts (calls and setup are a sheet from Home). The board (board.js) draws its parts into the b* boxes. -->
 <section class="boardzone shell" id="boardZone" hidden>
   <!-- Move the call here: this room is in a call on another of your devices (or theirs, for a guest) -->
   <div class="endcard movecard" id="moveCard" role="region" aria-label="Move the call here" hidden>
@@ -1036,16 +1123,23 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
     <div class="movecard-acts"><button class="btn primary" id="moveBtn">Move the call here</button><button class="movecard-not" id="moveNot">Not now</button></div>
   </div>
   <div class="tabpanel" id="tabHome" data-tab="home" role="tabpanel" aria-labelledby="tb-home">
-    <header class="tophead" id="bHello"></header>
+    <!-- how the other person is, by their clock: asleep (their lamp is off, 11 pm to 6 am there) or awake -->
+    <header class="hometop">
+      <div class="hometop-words"><h1 id="homeTitle">Beside</h1><p id="homeSub"></p></div>
+      <button class="rb rb44" id="homeSetupBtn" aria-label="Calls and setup" aria-haspopup="dialog"><i data-icon="sliders" data-size="20"></i></button>
+    </header>
     <div class="linkask" id="linkAsk" hidden>
-      <p><b>First, paste your Beside link.</b> Use the link you were sent, or your own room link (on your Mac: More, then Use this room on my iPad or iPhone).</p>
+      <p><b>First, paste your Beside link.</b> Use the link you were sent, or your own room link (on your Mac: Calls and setup, then Use my room on another device).</p>
       <div class="linkask-row"><input id="linkAskInput" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://sitbeside.pages.dev/#…" aria-label="Your Beside link"><button class="btn primary" id="linkAskGo">Open</button></div>
     </div>
     <!-- paint:start (the house drawing) -->
     <div class="house" id="house">
-      <svg class="nd-roof" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L200 3 L400 60 Z" fill="#8C4B3B"/><path d="M0 60 L200 3 L400 60" fill="none" stroke="#6F3A2E" stroke-width="6" vector-effect="non-scaling-stroke"/></svg>
-      <span class="nd-chimney" aria-hidden="true"></span><span class="nd-smoke" aria-hidden="true"><i></i><i></i></span>
-      <div class="nd-flats bb-figs">
+      <div class="nd-top" aria-hidden="true">
+        <svg class="nd-roof" viewBox="0 0 400 60" preserveAspectRatio="none"><path class="nd-roof-a" d="M0 60 L200 3 L400 60 Z"/><path class="nd-roof-b" d="M0 60 L200 3 L400 60" fill="none" stroke-width="6" vector-effect="non-scaling-stroke"/></svg>
+        <span class="nd-chimney"></span><span class="nd-smoke"><i></i><i></i></span>
+      </div>
+      <div class="nd-frame bb-figs">
+       <div class="nd-up">
         <div class="nd-room" id="ndRoomMo" data-who="mo">
           <span class="nd-lamp" aria-hidden="true"></span>
           <span class="nd-hearts" aria-hidden="true"></span>
@@ -1063,11 +1157,9 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
           </div>
           <span class="nd-clock" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path class="h-hr" d="M20 20 V11"/><path class="h-mn" d="M20 20 V7"/></svg></span>
           <span class="nd-pic" aria-hidden="true"><svg viewBox="0 0 40 30"><rect width="40" height="30" fill="#BFD6E2"/><rect y="24" width="40" height="6" fill="#8A8F94"/><path d="M8 24 V9 L10 4 L12 9 V24 Z" fill="#C9A66B"/><circle cx="10" cy="11.5" r="1.6" fill="#FFF6E6"/><rect x="17" y="14" width="20" height="10" rx="2" fill="#C8382D"/><path d="M19 16h4v2.5h-4zM24.5 16h4v2.5h-4zM30 16h4v2.5h-4zM19 20h4v2h-4zM24.5 20h4v2h-4z" fill="#FFF6E6"/><circle cx="21" cy="24.5" r="1.8" fill="#2A2420"/><circle cx="33" cy="24.5" r="1.8" fill="#2A2420"/></svg><b>London</b></span>
-          <button type="button" class="nd-cal" id="ndCal" aria-label="Calendar"><b class="nd-cal-m" id="ndCalMonth">Calendar</b><span class="nd-cal-g" id="ndCalGrid"></span><span class="nd-cal-next" id="ndCalNext"></span></button>
           <span class="nd-floor" aria-hidden="true"></span>
           <button type="button" class="nd-fig" id="ndFigMo" data-who="mo" disabled></button>
         </div>
-        <span class="nd-wall" aria-hidden="true"></span>
         <div class="nd-room" id="ndRoomSemal" data-who="semal">
           <span class="nd-lamp" aria-hidden="true"></span>
           <span class="nd-hearts" aria-hidden="true"></span>
@@ -1085,82 +1177,38 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
           </div>
           <span class="nd-clock" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><path class="h-hr" d="M20 20 V11"/><path class="h-mn" d="M20 20 V7"/></svg></span>
           <span class="nd-pic" aria-hidden="true"><svg viewBox="0 0 40 30"><rect width="40" height="30" fill="#F4B27E"/><circle cx="27" cy="12" r="5" fill="#FBE3A6"/><path d="M0 22 Q8 14 16 19 Q24 12 32 18 Q36 15 40 17 V30 H0 Z" fill="#8E5A6E"/><path d="M9 30 Q10 20 13 13 M30 30 Q31 22 33 16" stroke="#3A2630" stroke-width="1.4" fill="none"/><path d="M13 13 Q8 11 5 14 M13 13 Q18 10 21 13 M13 13 Q10 8 7 8 M13 13 Q16 8 19 8 M33 16 Q29 14 27 16 M33 16 Q37 14 39 16 M33 16 Q31 12 29 12 M33 16 Q35 12 37 12" stroke="#3A2630" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg><b>Los Angeles</b></span>
-          <button type="button" class="nd-fridge" id="ndFridge" aria-label="To-do list"><span class="nd-note"><i class="nd-magnet"></i><b>To do</b><span class="nd-notes" id="ndNotes"></span></span></button>
           <span class="nd-floor" aria-hidden="true"></span>
           <button type="button" class="nd-fig" id="ndFigSemal" data-who="semal" disabled></button>
         </div>
+       </div>
+       <!-- downstairs: one shared kitchen. The calendar is one tap, the note on the fridge is one tap. -->
+       <div class="nd-kit">
+        <button type="button" class="nd-cal" id="ndCal" aria-label="Calendar" aria-haspopup="dialog"><b class="nd-cal-m" id="ndCalMonth">Calendar</b><span class="nd-cal-g" id="ndCalGrid"></span><span class="nd-cal-next" id="ndCalNext"></span></button>
+        <button type="button" class="nd-fridge" id="ndFridge" aria-label="To-do list" aria-haspopup="dialog"><span class="nd-note"><i class="nd-magnet"></i><b>To do</b><span class="nd-notes" id="ndNotes"></span></span></button>
+        <span class="nd-floor" aria-hidden="true"></span>
+       </div>
         <button type="button" class="nd-chain" id="ndChain" aria-label="Countdown"><svg aria-hidden="true"><rect width="100%" height="18" fill="url(#ndChainP)"/></svg><span class="nd-tag" id="ndTag">Countdown</span></button>
       </div>
-      <div class="nd-words"><div><b id="ndTimeMo"></b><span id="ndWxMo"></span></div><div><b id="ndTimeSemal"></b><span id="ndWxSemal"></span></div></div>
-      <p class="nd-late" id="ndLate" hidden></p>
     </div>
     <!-- paint:end -->
-    <div class="home-grid">
-      <div class="home-col">
-        <div class="acts" data-role="host">
-          <button class="act-main" id="homeRingBtn"><i data-icon="phone"></i><span class="act-words"><b id="homeRingText">Ring them</b><small>Rings their phone</small></span></button>
-          <button class="act-round" id="videoBtn" aria-label="Video call" title="Video call"><i data-icon="video"></i></button>
-          <button class="act-round" id="startBtn" aria-label="Voice call" title="Voice call"><i data-icon="mic"></i></button>
-        </div>
-        <div class="acts acts-guest" data-role="guest">
-          <label class="namefield"><span>Your name</span><input id="nameInput" maxlength="20" autocomplete="given-name" placeholder="so they know it’s you"></label>
-          <div class="acts-row">
-            <button class="act-main act-text" id="joinBtn">Join the call</button>
-            <button class="act-round" id="joinNoMicBtn" aria-label="Join without my mic" title="Join without my mic"><i data-icon="mic" data-slash></i></button>
-          </div>
-        </div>
+    <!-- both places in one line, under the house -->
+    <div class="nd-words"><p><b>London</b> <span id="ndTimeMo"></span><span id="ndWxMo"></span></p><p><b>Los Angeles</b> <span id="ndTimeSemal"></span><span id="ndWxSemal"></span></p></div>
+    <div class="home-acts">
+      <label class="namefield" id="nameRow" data-role="guest"><span>Your name</span><input id="nameInput" maxlength="20" autocomplete="given-name" placeholder="so they know it’s you"></label>
+      <!-- one Ring button: a video call that rings their devices (voice is chosen inside the call), and a heart -->
+      <div class="ringrow">
+        <button class="btn primary ringmain" id="homeRingBtn"><i data-icon="video"></i><span id="homeRingText">Ring them</span></button>
+        <button class="rb" id="homeHeartBtn" aria-label="Send a heart"><i data-icon="heart"></i></button>
       </div>
-      <div class="home-col">
-        <div id="bHomeThink"></div>
-        <!-- the board still draws these; the house shows them now, and the chain opens the countdown -->
-        <div hidden><div id="bSkies"></div><div class="home-pair"><div id="bHomeCount"></div><div id="bHomeNext"></div></div></div>
-      </div>
+      <div id="bHomeThink"></div>
+      <!-- the board still draws these; the house shows them now, and the chain opens the countdown -->
+      <div hidden><div id="bSkies"></div><div id="bHomeCount"></div><div id="bHomeNext"></div></div>
     </div>
   </div>
 
   <div class="tabpanel" id="tabPlans" data-tab="plans" role="tabpanel" aria-labelledby="tb-plans" hidden>
     <header class="tabhead"><h1 class="display">Plans</h1><span class="hint" id="bShared">Shared with them</span></header>
     <div class="boardin" id="boardMount"></div>
-  </div>
-
-  <div class="tabpanel" id="tabCalls" data-tab="calls" role="tabpanel" aria-labelledby="tb-calls" hidden>
-    <header class="tabhead"><h1 class="display">Calls</h1><span class="hint">Talk, see each other, share a screen</span></header>
-    <div class="calls-grid">
-      <div class="tvbox" id="tvBox"></div>
-      <section class="stage callstage" data-state="idle" data-shell data-role="host" hidden>
-        <div class="starts">
-          <button class="btn primary big" id="callVideoBtn"><i data-icon="video"></i>Video call</button>
-          <div class="starts-row">
-            <button class="btn quiet" id="callVoiceBtn"><i data-icon="phone"></i>Voice call</button>
-            <button class="btn quiet" id="shareStartBtn"><i data-icon="share"></i>Share my screen</button>
-          </div>
-          <button class="chip" id="micStartToggle" aria-pressed="true"><i data-icon="mic"></i><span id="micStartLabel">Mic on</span><span class="switch"></span></button>
-        </div>
-        <div class="card rows">
-          <button class="rowbtn" data-check-open><i data-icon="check"></i><span>Check my setup</span><i data-icon="chev"></i></button>
-          <button class="rowbtn" data-sound-open aria-haspopup="dialog"><i data-icon="speaker"></i><span>Sound and mic</span><i data-icon="chev"></i></button>
-          <button class="rowbtn" id="mineIdleBtn"><i data-icon="device"></i><span>Use my room on my iPad or iPhone</span><i data-icon="chev"></i></button>
-          <button class="rowbtn ring-me"><i data-icon="bell"></i><span>Let Beside ring me</span><i data-icon="chev"></i></button>
-          <button class="rowbtn" id="inviteRowBtn" aria-haspopup="dialog"><i data-icon="personplus"></i><span>Invite someone else</span><i data-icon="chev"></i></button>
-        </div>
-      </section>
-      <section class="stage callstage" data-state="join" data-shell data-role="guest" hidden>
-        <div class="card joincard">
-          <span class="you-mark" id="hostInitial" aria-hidden="true"></span>
-          <h2 class="display" id="joinTitle">You’re invited to a call.</h2>
-          <p id="joinText">You can talk, see each other if you like, and see what they show you. Nothing is recorded.</p>
-          <div class="starts">
-            <button class="btn primary big" id="callJoinBtn"><i data-icon="phone"></i>Join the call</button>
-            <button class="btn quiet" id="callJoinNoMicBtn"><i data-icon="mic" data-slash></i>Join without my mic</button>
-          </div>
-        </div>
-        <div class="card rows">
-          <button class="rowbtn ring-me"><i data-icon="bell"></i><span>Let Beside ring me</span><i data-icon="chev"></i></button>
-          <button class="rowbtn" data-check-open><i data-icon="check"></i><span>Check my setup</span><i data-icon="chev"></i></button>
-          <button class="rowbtn" data-sound-open aria-haspopup="dialog"><i data-icon="speaker"></i><span>Sound and mic</span><i data-icon="chev"></i></button>
-        </div>
-      </section>
-    </div>
   </div>
 
   <div class="tabpanel" id="tabHearts" data-tab="hearts" role="tabpanel" aria-labelledby="tb-hearts" hidden>
@@ -1173,7 +1221,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <span class="tabpill" aria-hidden="true"></span>
       <button role="tab" id="tb-home" data-go="home" aria-controls="tabHome" aria-selected="true"><i data-icon="home"></i><span>Home</span></button>
       <button role="tab" id="tb-plans" data-go="plans" aria-controls="tabPlans" aria-selected="false" tabindex="-1"><i data-icon="calendar"></i><span>Plans</span></button>
-      <button role="tab" id="tb-calls" data-go="calls" aria-controls="tabCalls" aria-selected="false" tabindex="-1"><i data-icon="video"></i><span>Calls</span></button>
       <button role="tab" id="tb-hearts" data-go="hearts" aria-controls="tabHearts" aria-selected="false" tabindex="-1"><i data-icon="heart"></i><span>Hearts</span></button>
     </div>
   </nav>
@@ -1331,8 +1378,53 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   <button class="btn go" id="ringBannerAnswer"><i data-icon="phone"></i><span>Answer</span></button>
 </div>
 
+<!-- CALLS AND SETUP: what the Calls tab was, one sheet from the small button on Home. Each row shows its state. -->
+<div class="sheet" id="setupSheet" hidden>
+  <div class="menu setupsheet" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+    <header><h2 class="display" id="setupTitle">Calls and setup</h2><button class="close" id="setupClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <div class="body">
+      <div class="card rows">
+        <button class="rowbtn" data-check-open><i data-icon="check"></i><span>Check my setup</span><span class="rv" id="setupCheckVal"></span><i data-icon="chev"></i></button>
+        <button class="rowbtn" data-sound-open aria-haspopup="dialog"><i data-icon="speaker"></i><span>Sound and mic</span><span class="rv" id="setupSoundVal"></span><i data-icon="chev"></i></button>
+        <button class="rowbtn ring-me"><i data-icon="bell"></i><span id="ringMeLabel">Ring this phone</span><span class="rv" id="ringMeVal">Off</span><i data-icon="chev"></i></button>
+        <button class="rowbtn" id="mineIdleBtn" data-role="host"><i data-icon="device"></i><span>Use my room on another device</span><i data-icon="chev"></i></button>
+        <button class="rowbtn" id="inviteRowBtn" data-role="host" aria-haspopup="dialog"><i data-icon="link"></i><span>Invite someone else</span><i data-icon="chev"></i></button>
+        <button class="rowbtn" id="nameRowBtn" data-role="guest"><i data-icon="person"></i><span>Your name</span><span class="rv" id="nameRowVal"></span><i data-icon="chev"></i></button>
+      </div>
+      <!-- the quiet way in: open the room without ringing anyone (your camera starts off) -->
+      <div class="card rows" data-role="host"><button class="rowbtn" id="startBtn"><i data-icon="phone"></i><span>Start a call without ringing</span><i data-icon="chev"></i></button></div>
+      <div class="card rows" data-role="guest"><button class="rowbtn" id="joinBtn"><i data-icon="phone"></i><span>Start a call without ringing</span><i data-icon="chev"></i></button></div>
+    </div>
+  </div>
+</div>
+<!-- THE CALENDAR ON THE WALL, opened: the month with full-size days, the next plan, Add a plan. One more tap goes to Plans. -->
+<div class="sheet" id="calSheet" hidden>
+  <div class="menu hsheet" role="dialog" aria-modal="true" aria-labelledby="calTitle">
+    <header><h2 class="display" id="calTitle">Calendar</h2><button class="close" id="calClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <div class="body">
+      <div class="hcal-names" aria-hidden="true" id="calNames"></div>
+      <div class="hcal-grid" id="calGrid" role="group" aria-label="This month"></div>
+      <div id="calNext"></div>
+      <button class="btn big hwide" id="calAdd"><i data-icon="plus"></i>Add a plan</button>
+    </div>
+  </div>
+</div>
+<!-- THE NOTE ON THE FRIDGE, opened: the list, each row one tap to tick it, and a field to add one -->
+<div class="sheet" id="todoSheet" hidden>
+  <div class="menu hsheet" role="dialog" aria-modal="true" aria-labelledby="todoTitle">
+    <header><h2 class="display" id="todoTitle">To do</h2><button class="close" id="todoClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <div class="body">
+      <div class="card rows hlist" id="todoList"></div>
+      <form class="hadd" id="todoForm" autocomplete="off">
+        <i data-icon="plus" aria-hidden="true"></i>
+        <input id="todoInput" type="text" maxlength="300" placeholder="Add a to-do" aria-label="New to-do" autocapitalize="sentences" enterkeyhint="done">
+        <button type="submit" class="btn sm primary" id="todoGo" hidden>Add</button>
+      </form>
+    </div>
+  </div>
+</div>
 <!-- OUR BOARD in a call: More opens the countdown, to-dos and calendar here. -->
-<!-- INVITE: the link for someone else, from Calls -->
+<!-- INVITE: the link for someone else, from Calls and setup -->
 <div class="sheet" id="inviteSheet" hidden>
   <div class="menu invitesheet" role="dialog" aria-modal="true" aria-labelledby="inviteTitle">
     <header><h2 class="display" id="inviteTitle">Invite someone else</h2><button class="close" id="inviteClose" aria-label="Close"><i data-icon="x"></i></button></header>
@@ -1453,8 +1545,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=17"></script>
+<script src="board.js?v=18"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=49"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
