@@ -9,6 +9,12 @@ import { createCompareView } from './compare-view.js';
 export const PANO_TABS = [{ id: 'checks', label: 'Checks' }, { id: 'compare', label: 'Compare' }];
 // Column heads (22 px), three rows (23 px each) and the tab strip (25 px).
 export const FIRST_HEIGHT = 22 + 3 * 23 + 25;
+/** The first height for a window this tall: every check row (eight today) when there is room, so none is cut off at the
+ * bottom (Mo, 11 Nov 2026: "the bottom bit just cuts off"); five rows on a middling window; three on a short one. */
+export function firstHeight(windowH, rows = 8) {
+  const n = windowH >= 860 ? rows : windowH >= 700 ? Math.min(rows, 5) : 3;
+  return 22 + n * 23 + 25 + 2;
+}
 
 export function createPanorama(app, root) {
   const strip = h('div', { class: 'pano-strip' });
@@ -31,9 +37,9 @@ export function createPanorama(app, root) {
   const compare = createCompareView(app, bodies.compare);
 
   let tab = prefs.get('panorama.tab', 'checks');
-  // First height: the column heads, three check rows and the tabs, so a small laptop screen keeps room for the drawing.
+  // First height: the column heads, every check row that fits the window (firstHeight) and the tabs.
   // Dragging the top edge sets her own height, remembered on this browser.
-  let height = prefs.get('panorama.height', FIRST_HEIGHT);
+  let height = prefs.get('panorama.height', firstHeight(window.innerHeight));
   const setH = () => root.style.setProperty('--pano-h', `${height}px`);
   setH();
   const setState = (s) => {

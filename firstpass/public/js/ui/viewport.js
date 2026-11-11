@@ -32,7 +32,11 @@ const RADII = [['entryRadiusBuilt', 'entry curb radius'], ['exitRadiusBuilt', 'e
  */
 export function wheelKind(e, memo, now) {
   if (memo.kind && now - memo.at < GESTURE_MS) { memo.at = now; return memo.kind; }
-  const wheel = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 60);
+  // Chrome and Safari also give the old wheelDeltaY: a trackpad's is exactly -3 times deltaY, a mouse wheel's is not
+  // (120 a notch). That tells a Mac trackpad's fast flick (deltaY 100 or more, nothing sideways) from a wheel; Mo's
+  // flicks were taken for a wheel and zoomed the drawing away (11 Nov 2026). Without it, the size of the step decides.
+  const old = typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0 && e.deltaY !== 0 ? e.wheelDeltaY : null;
+  const wheel = e.deltaMode !== 0 || (e.deltaX === 0 && (old !== null ? Math.abs(old + 3 * e.deltaY) > 1.5 : Math.abs(e.deltaY) >= 60));
   memo.kind = wheel ? 'zoom' : 'pan';
   memo.at = now;
   return memo.kind;

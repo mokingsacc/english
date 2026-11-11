@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup } from './helpers.mjs';
-import { naipUrl, tileBox, tileAt, inCalifornia, CALIFORNIA_BOX, TILES } from '../../src/worker/api/tiles.js';
+import { naipUrl, quickUrl, sourceUrl, tileBox, tileAt, inCalifornia, CALIFORNIA_BOX, TILES } from '../../src/worker/api/tiles.js';
 
 // What a browser sends for an image on its own page.
 const PAGE = { key: null, headers: { 'Sec-Fetch-Site': 'same-origin' } };
@@ -29,6 +29,14 @@ test('the Web Mercator box and the service address for a known tile', () => {
     'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage?bbox=-13552590.863,4662658.725,-13551979.367,4663270.222&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image');
 });
 
+test('zoom 16 and coarser come from the ready-made tiles, finer zooms from the image service', () => {
+  assert.equal(quickUrl(16, 10605, 25142), 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/16/25142/10605');
+  assert.equal(sourceUrl(16, 10605, 25142), quickUrl(16, 10605, 25142));
+  assert.equal(sourceUrl(10, 165, 392), quickUrl(10, 165, 392));
+  assert.equal(sourceUrl(17, 21210, 50284), naipUrl(17, 21210, 50284));
+  assert.equal(sourceUrl(18, 42420, 100568), naipUrl(18, 42420, 100568));
+});
+
 test('the first request goes to the service, the second is served from the cache', async () => {
   const fetch = fakeFetch();
   const cache = fakeCache();
@@ -39,7 +47,7 @@ test('the first request goes to the service, the second is served from the cache
   assert.equal(a.headers.get('x-tile-cache'), 'miss');
   assert.match(a.headers.get('cache-control'), /max-age=2592000/);
   assert.equal(fetch.calls.length, 1);
-  assert.equal(fetch.calls[0], naipUrl(16, 10605, 25142));
+  assert.equal(fetch.calls[0], sourceUrl(16, 10605, 25142));
   await t.settle();
   const b = await t.call('GET', '/tiles/naip/16/10605/25142.jpg', PAGE);
   assert.equal(b.status, 200);
@@ -48,16 +56,16 @@ test('the first request goes to the service, the second is served from the cache
   assert.deepEqual([...cache.store.keys()], ['https://fp.test/tiles/naip/16/10605/25142']);
 });
 
-test('zoom 12 to 20 only, tiles inside the map, and the service\'s failures in plain words', async () => {
+test('zoom 10 to 20 only, tiles inside the map, and the service\'s failures in plain words', async () => {
   let n = 0;
   const fetch = fakeFetch(() => (n++ === 0 ? new Response('<html>502 Bad Gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })
     : new Response('{"error":{"code":400}}', { status: 200, headers: { 'Content-Type': 'application/json' } })));
   const t = await setup({ vars: { TILE_FETCH: fetch, TILE_CACHE: fakeCache() } });
-  const low = await t.call('GET', '/tiles/naip/11/0/0', PAGE);
+  const low = await t.call('GET', '/tiles/naip/9/0/0', PAGE);
   assert.equal(low.status, 400);
-  assert.match(low.json.error, /zoom 12 to 20 only/);
+  assert.match(low.json.error, /zoom 10 to 20 only/);
   assert.equal((await t.call('GET', '/tiles/naip/21/0/0', PAGE)).status, 400);
-  assert.match((await t.call('GET', '/tiles/naip/12/4096/0', PAGE)).json.error, /outside the map/);
+  assert.match((await t.call('GET', '/tiles/naip/10/1024/0', PAGE)).json.error, /outside the map/);
   assert.equal((await t.call('GET', '/tiles/naip/12/a/b', PAGE)).status, 400);
   const down = await t.call('GET', '/tiles/naip/16/10605/25142', PAGE);
   assert.equal(down.status, 502);

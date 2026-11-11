@@ -1,4 +1,4 @@
-// The aerial photo under the drawing: standard Web Mercator XYZ tiles from /tiles/naip/{z}/{x}/{y} (zoom 12 to 20),
+// The aerial photo under the drawing: standard Web Mercator XYZ tiles from /tiles/naip/{z}/{x}/{y} (zoom 10 to 18),
 // each placed by sending its corners through crs.js fromLatLon and drawing the image with the affine transform those
 // corners give (a tile is small enough that this is exact to well under a pixel). Each tile is drawn exactly on its
 // square, and its last row and column are stretched a little under the next tile so no seam shows (stretching the whole
@@ -12,12 +12,21 @@
 // The project's zone is read on every paint (epsgOf), since her site can move to another zone while the page is open;
 // each tile's corners are kept for the zone they were worked out in, and all of them are dropped when the zone changes.
 // The layers keep the photo in a bitmap of its own (draw/layers.js), so a grip drag does not draw the tiles again.
+// Speed (11 Nov 2026, Mo: "the map takes so long to load", "the map only loads the top bit"): zoom 18 is the finest
+// asked for, since the photo's own pixels are about 0.6 m and finer tiles only enlarge them (four to sixteen times the
+// tiles for nothing). Under finer tiles the zoom 16 tiles of the same view are always asked for first: the server takes
+// those from a ready-made tile service that answers in well under a second, so the whole view has a photo at once and
+// sharpens as the slower zoom 17 and 18 tiles come. Tiles are asked for from the middle of the view outwards, and a view
+// that would need more than MAX_TILES at its zoom takes a coarser zoom instead of leaving rows out; a view wider than
+// zoom 10 shows no photo and the status bar says to zoom in.
 
 import { MODEL_BG } from './colors.js';
 
-export const ZMIN = 12, ZMAX = 20, TILE = 256;
+export const ZMIN = 10, ZMAX = 18, TILE = 256;
+export const COVER_Z = 16;   // the ready-made service's finest zoom: asked for first under finer tiles
 const FT_PER_M = 3.2808333333;   // US survey foot
-const MAX_TILES = 48, FADE_MS = 250, KEEP = 400, ALPHA = 0.6;   // ALPHA: how strongly the photo shows
+export const MAX_TILES = 80;
+const  FADE_MS = 250, KEEP = 400, ALPHA = 0.6;   // ALPHA: how strongly the photo shows
 export const RETRY_MS = [2000, 6000, 20000];   // waits before asking again for a tile that failed
 const UP = 4;                                  // how many zoom levels up a stand-in tile may come from
 const SEAM = 0.75;                             // tile pixels a tile's last row and column reach under the next one
@@ -55,15 +64,30 @@ export function zoomFor(k, lat) {
   return Math.max(ZMIN, Math.min(ZMAX, Math.round(z + 0.25)));
 }
 
-/** The tiles that cover a world box (state plane ft), as [{ z, x, y }], at most MAX_TILES. */
-export function tilesFor(box, crs, epsg, z) {
+/** The range of tiles at zoom z that covers a world box (state plane ft): { x0, x1, y0, y1, count }. */
+export function tileRange(box, crs, epsg, z) {
   const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x0, box.y1], [box.x1, box.y1]].map(([x, y]) => crs.toLatLon(epsg, x, y));
   const ts = corners.map((c) => tileXY(c.lat, c.lon, z));
   const x0 = Math.floor(Math.min(...ts.map((t) => t.x))), x1 = Math.floor(Math.max(...ts.map((t) => t.x)));
   const y0 = Math.floor(Math.min(...ts.map((t) => t.y))), y1 = Math.floor(Math.max(...ts.map((t) => t.y)));
+  return { x0, x1, y0, y1, count: (x1 - x0 + 1) * (y1 - y0 + 1) };
+}
+
+/** The tiles that cover a world box (state plane ft), as [{ z, x, y }], the middle of the view first, at most MAX_TILES
+ * (only a view too wide for its zoom has more, and fitZoom picks a coarser zoom for that). */
+export function tilesFor(box, crs, epsg, z) {
+  const r = tileRange(box, crs, epsg, z);
+  const mx = (r.x0 + r.x1) / 2, my = (r.y0 + r.y1) / 2;
   const out = [];
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (out.length < MAX_TILES) out.push({ z, x, y });
-  return out;
+  for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) out.push({ z, x, y });
+  out.sort((a, b) => ((a.x - mx) ** 2 + (a.y - my) ** 2) - ((b.x - mx) ** 2 + (b.y - my) ** 2));
+  return out.slice(0, MAX_TILES);
+}
+
+/** The zoom to ask for: z, or coarser until the view needs at most MAX_TILES; null when even ZMIN needs more. */
+export function fitZoom(box, crs, epsg, z) {
+  for (let zz = Math.min(z, ZMAX); zz >= ZMIN; zz--) if (tileRange(box, crs, epsg, zz).count <= MAX_TILES) return zz;
+  return null;
 }
 
 /** A tile's corners in world coordinates: { nw, ne, sw, se }. */
@@ -158,8 +182,17 @@ export function createUnderlay({ tileUrl, epsgOf, onChange = () => {}, onStatus 
       fading = false;
       if (!on || !crs) return;
       const epsg = epsgOf();
-      let list;
-      try { list = tilesFor(cam.visible(), crs, epsg, zoomFor(cam.k, lat)); } catch { return; }
+      let list, cover = [];
+      try {
+        const box = cam.visible();
+        const z = fitZoom(box, crs, epsg, zoomFor(cam.k, lat));
+        if (z === null) { if (state !== 'far') status('far', 'Zoom in to see the photo', 'the view is wider than the photo is served for'); return; }
+        if (state === 'far') status('on', '', '');
+        list = tilesFor(box, crs, epsg, z);
+        if (z > COVER_Z) cover = tilesFor(box, crs, epsg, COVER_Z);
+      } catch { return; }
+      // The quick zoom 16 tiles are asked for before the finer ones, so they arrive first and stand in under them.
+      for (const t of cover) get(t);
       const t0 = now();
       const s = (p) => ({ x: cam.sx(p.x), y: cam.sy(p.y) });
       const place = (t) => { const c = cornersOf(t, epsg); const m = affineFor(s(c.nw), s(c.ne), s(c.sw)); ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr); };

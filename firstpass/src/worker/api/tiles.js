@@ -1,15 +1,19 @@
-// Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y from the USGS NAIP Plus image service (public
-// domain), cut to the tile's Web Mercator box, kept in the Cache API for 30 days, zoom 12 to 20 only, and only over
-// California (404 elsewhere). No key is needed, since the page draws them as images, but only First Pass's own page
+// Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y, kept in the Cache API for 30 days, zoom 10 to 20
+// only, and only over California (404 elsewhere). Both sources are USGS, public domain, NAIP photos in the US: zoom 10
+// to 16 from The National Map's ready-made imagery tiles (USGSImageryOnly, answers in well under a second, but has no
+// finer zoom), zoom 17 and finer from the NAIP Plus image service, which cuts each tile to its Web Mercator box when
+// asked (sharp, but a tile the cache has not seen took up to 18 s on 11 Nov 2026). The page asks for zoom 16 first and
+// at most zoom 18, the photo's own detail (public/js/draw/underlay.js). No key is needed, since the page draws them as images, but only First Pass's own page
 // gets them: a request must come from the same site (Sec-Fetch-Site same-origin, or an Origin or Referer on this host),
 // or it is refused (403), so the route cannot be used as anyone's free photo service. The fetch and the cache can be
 // handed in through env (TILE_FETCH, TILE_CACHE), so tests need no network.
 import { errorResponse } from '../http.js';
 
-export const TILES = { zMin: 12, zMax: 20, maxAge: 30 * 86_400, timeoutMs: 20_000 };
+export const TILES = { zMin: 10, zMax: 20, quickMax: 16, maxAge: 30 * 86_400, timeoutMs: 20_000 };
 /** The box tiles are served in: California with a little margin, in degrees. */
 export const CALIFORNIA_BOX = { south: 32.4, north: 42.1, west: -124.6, east: -114.0 };
 export const NAIP = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage';
+export const QUICK = 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile';
 const EDGE = 20037508.342789244;   // half the Web Mercator world, metres
 
 /** The tile's Web Mercator box [minx, miny, maxx, maxy] in metres. */
@@ -24,6 +28,12 @@ export function naipUrl(z, x, y) {
   const bbox = tileBox(z, x, y).map(v => v.toFixed(3)).join(',');
   return `${NAIP}?bbox=${bbox}&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image`;
 }
+
+/** The ready-made service's address for one tile (its path is zoom, row, column). */
+export const quickUrl = (z, x, y) => `${QUICK}/${z}/${y}/${x}`;
+
+/** Where a tile comes from: the ready-made tiles up to zoom 16, the image service above that. */
+export const sourceUrl = (z, x, y) => (z <= TILES.quickMax ? quickUrl(z, x, y) : naipUrl(z, x, y));
 
 /** The whole tile {z, x, y} holding a point. */
 export function tileAt(z, lat, lon) {
@@ -69,7 +79,7 @@ export async function fetchNaip(env, z, x, y, timeoutMs = TILES.timeoutMs) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    const res = await fetchOf(env)(naipUrl(z, x, y), { signal: ac.signal, headers: { Accept: 'image/jpeg' } });
+    const res = await fetchOf(env)(sourceUrl(z, x, y), { signal: ac.signal, headers: { Accept: 'image/jpeg' } });
     const type = res.headers.get('Content-Type') || '';
     if (!res.ok || !/^image\//i.test(type)) return { error: `the service answered ${res.status}${type ? ` (${type.split(';')[0]})` : ''}` };
     return { bytes: await res.arrayBuffer(), type: type.split(';')[0] };

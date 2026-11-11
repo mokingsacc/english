@@ -49,7 +49,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - src/worker/api/export.js: GET /api/projects/:id/export/:file: one option of a project as a drawing file to save, built from the stored project by
 - src/worker/api/projects.js: Project routes: list and create her projects, and read one with its recent history (the export is api/export.js).
 - src/worker/api/selfcheck.js: GET /api/selfcheck: the server checks itself and answers in her words, one line each: the database answers, people
-- src/worker/api/tiles.js: Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y from the USGS NAIP Plus image service (public
+- src/worker/api/tiles.js: Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y, kept in the Cache API for 30 days, zoom 10 to 20
 - src/worker/debug/bugs.js: Problem reports (ported from practice-hub's debug/bugs.js). The page's Report a problem sheet (public/js/shared/
 - src/worker/debug/trace.js: Request traces for problem reports (ported from practice-hub's debug/trace.js, simplified: no cron, no AI calls).
 - src/worker/engine.js: The one place the Worker imports the maths engine: the same files the page loads from public/js/engine/.
@@ -142,7 +142,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/draw/paint-model.js: Paints the roundabout itself from an evaluate result: land take, sight triangles, islands with their hatch, edge and
 - public/js/draw/paint-overlay.js: Paints what sits over the model and changes with every mouse move: the grid, selection and rollover highlights, grips
 - public/js/draw/prims.js: Tracing the engine's true lines and arcs onto a 2D canvas through the camera: arcs stay arcs (canvas arc() in screen
-- public/js/draw/underlay.js: The aerial photo under the drawing: standard Web Mercator XYZ tiles from /tiles/naip/{z}/{x}/{y} (zoom 12 to 20),
+- public/js/draw/underlay.js: The aerial photo under the drawing: standard Web Mercator XYZ tiles from /tiles/naip/{z}/{x}/{y} (zoom 10 to 18),
 - public/js/engine/checks/entry-speed.js: Entry speed: the fastest path speed on entry (V1, from the entry curve R1) and on the right turn (V5, from
 - public/js/engine/checks/exit-speed.js: Exit speed (for information): the fastest speed of cars leaving by each leg (V3), which matters for people
 - public/js/engine/checks/geometry.js: The shape can be built: every curb meets the circle as drawn, and a car can follow every movement with the
@@ -178,6 +178,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/ui/doctabs.js: The file tabs above the drawing: one tab per option (Option A, Option B, ...) as drawing tabs, the one on screen
 - public/js/ui/dom.js: Small DOM helpers the page's parts share: h() to make elements, setText()/setAttr() that write only when the value
 - public/js/ui/dyninput.js: Dynamic input: the small box by the cursor while a grip is dragged, showing the value being changed (its label from
+- public/js/ui/findme.js: "Show the roundabout": a button over the top of the drawing that appears only when the roundabout is off the screen
 - public/js/ui/keys.js: The keyboard, as in the CAD original: typing anywhere outside a text field goes to the command line without a click
 - public/js/ui/menu.js: Shortcut menus (right click) and flyout lists: one floating menu at a time, closed by a click elsewhere, Esc or a
 - public/js/ui/palettes.js: Docked palettes (Toolspace on the left, Properties on the right): a title strip with the name written down its edge,

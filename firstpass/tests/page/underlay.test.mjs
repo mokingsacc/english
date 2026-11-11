@@ -4,7 +4,7 @@
 // failed tile asked for again, and a coarser tile standing in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tileXY, tileLatLon, zoomFor, tilesFor, tileWorld, affineFor, createUnderlay, ancestorOf, drawSquare, RETRY_MS, ZMIN, ZMAX, TILE } from '../../public/js/draw/underlay.js';
+import { tileXY, tileLatLon, zoomFor, tilesFor, tileRange, fitZoom, tileWorld, affineFor, createUnderlay, ancestorOf, drawSquare, RETRY_MS, ZMIN, ZMAX, TILE, MAX_TILES, COVER_Z } from '../../public/js/draw/underlay.js';
 import { createCamera } from '../../public/js/draw/camera.js';
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, msg || `${a} is not within ${tol} of ${b}`);
@@ -28,28 +28,31 @@ test('tile numbers and tile corners are inverses (Web Mercator)', () => {
   close(c.x, 0.5, 1e-12); close(c.y, 0.5, 1e-12);
 });
 
-test('the zoom follows the scale and stays from 12 to 20', () => {
+test('the zoom follows the scale and stays from ZMIN to ZMAX (10 to 18)', () => {
   const zs = [0.01, 0.1, 0.5, 1, 2, 5, 50].map((k) => zoomFor(k, LAT0));
   for (let i = 1; i < zs.length; i++) assert.ok(zs[i] >= zs[i - 1]);
   assert.equal(zoomFor(1e-6, LAT0), ZMIN);
   assert.equal(zoomFor(1e6, LAT0), ZMAX);
-  // About one photo pixel to a screen pixel: at zoom z a pixel is 156543 cos(lat) / 2^z metres.
-  const z = zoomFor(1, LAT0);
+  // About one photo pixel to a screen pixel below zoom 18: at zoom z a pixel is 156543 cos(lat) / 2^z metres. At k = 0.25
+  // (4 ft to a screen pixel) that is zoom 16 or 17.
+  const k = 0.25, z = zoomFor(k, LAT0);
   const ftPerPhotoPx = (156543.03392 * Math.cos((LAT0 * Math.PI) / 180) * 3.2808333333) / 2 ** z;
-  assert.ok(ftPerPhotoPx > 0.35 && ftPerPhotoPx < 1.5, String(ftPerPhotoPx));
+  assert.ok(ftPerPhotoPx * k > 0.35 && ftPerPhotoPx * k < 1.5, String(ftPerPhotoPx * k));
+  // Closer in, zoom 18 is kept: the photo's own pixels are about 0.6 m, so finer tiles would only enlarge them.
+  assert.equal(zoomFor(4, LAT0), 18);
 });
 
 test('the tiles for a view cover it, and there are never too many', () => {
   const box = { x0: X0 - 300, y0: Y0 - 200, x1: X0 + 300, y1: Y0 + 200 };
   const z = 17;
   const list = tilesFor(box, fakeCrs, 2226, z);
-  assert.ok(list.length >= 1 && list.length <= 48);
+  assert.ok(list.length >= 1 && list.length <= MAX_TILES);
   for (const t of list) assert.equal(t.z, z);
   // The view's middle falls in one of them.
   const mid = tileXY(LAT0, LON0, z);
   assert.ok(list.some((t) => t.x === Math.floor(mid.x) && t.y === Math.floor(mid.y)));
   const huge = tilesFor({ x0: X0 - 1e5, y0: Y0 - 1e5, x1: X0 + 1e5, y1: Y0 + 1e5 }, fakeCrs, 2226, 20);
-  assert.equal(huge.length, 48);
+  assert.equal(huge.length, MAX_TILES);
 });
 
 test('a tile is drawn by the transform that puts its corners where the converter says', () => {
@@ -89,7 +92,8 @@ test('with a converter, loaded tiles are drawn with their transform and fade in'
   const u = createUnderlay({ tileUrl: (z, x, y) => `/tiles/naip/${z}/${x}/${y}`, epsgOf: () => 2226, onChange: () => changed++, importCrs: async () => fakeCrs, makeImage });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(u.state(), 'on');
-  const cam = createCamera({ cx: X0, cy: Y0, k: 1, w: 600, h: 400 });
+  const cam = createCamera({ cx: X0, cy: Y0, k: 0.1, w: 600, h: 400 });   // zoom 16 or coarser: no quick cover tiles
+  assert.ok(zoomFor(0.1, LAT0) <= COVER_Z);
   const log = [];
   const ctx = { save() {}, restore() {}, setTransform: (...m) => log.push(['t', ...m]), drawImage: (img, ...r) => { if (r[6] === TILE && r[7] === TILE) log.push(['img', img._src]); }, set globalAlpha(v) { log.push(['alpha', v]); }, fillRect: (...r) => log.push(['veil', ...r]) };
   u.paint(ctx, cam, 2, { lat: LAT0 });
@@ -202,13 +206,13 @@ test('the part of a coarser tile in memory stands in for a tile still loading', 
   assert.deepEqual(ancestorOf({ z: 18, x: 801, y: 400 }, 1), { key: '17/400/200', sx: 128, sy: 0, size: 128 });
   const r = rig();
   await new Promise((ok) => setTimeout(ok, 0));
-  const coarse = createCamera({ cx: X0, cy: Y0, k: 0.5, w: 100, h: 100 });
+  const coarse = createCamera({ cx: X0, cy: Y0, k: 0.05, w: 100, h: 100 });
   r.u.paint(r.ctx, coarse, 1, { lat: LAT0 });
   for (const i of r.images) i.onload();
   r.tick(1000);
-  const zc = zoomFor(0.5, LAT0);
-  const fine = createCamera({ cx: X0, cy: Y0, k: 4, w: 100, h: 100 });
-  const zf = zoomFor(4, LAT0);
+  const zc = zoomFor(0.05, LAT0);
+  const fine = createCamera({ cx: X0, cy: Y0, k: 1, w: 100, h: 100 });
+  const zf = zoomFor(1, LAT0);
   assert.ok(zf - zc >= 1 && zf - zc <= 4, `${zc} to ${zf}`);
   r.log.length = 0;
   r.u.paint(r.ctx, fine, 1, { lat: LAT0 });
@@ -248,4 +252,39 @@ test('a tile is drawn exactly on its square, its last column and row reaching un
   drawSquare({ drawImage: (img, ...r) => calls.push(r) }, {}, 64, 128, 64);
   assert.deepEqual(calls[0], [64, 128, 64, 64, 0, 0, TILE, TILE]);
   assert.deepEqual(calls[1].slice(0, 6), [64 + 64 - 0.25, 128, 0.25, 64, TILE, 0]);
+});
+
+test('a wide view takes a coarser zoom rather than leaving rows out, and the middle of the view comes first', () => {
+  const box = { x0: X0 - 20000, y0: Y0 - 9000, x1: X0 + 20000, y1: Y0 + 9000 };
+  assert.ok(tileRange(box, fakeCrs, 2226, 18).count > MAX_TILES);
+  const z = fitZoom(box, fakeCrs, 2226, 18);
+  assert.ok(z !== null && z < 18 && z >= ZMIN);
+  const r = tileRange(box, fakeCrs, 2226, z);
+  assert.ok(r.count <= MAX_TILES);
+  const list = tilesFor(box, fakeCrs, 2226, z);
+  assert.equal(list.length, r.count, 'every tile of the view, none left out');
+  const mid = tileXY(LAT0, LON0, z);
+  const d = (t) => Math.hypot(t.x + 0.5 - mid.x, t.y + 0.5 - mid.y);
+  assert.ok(d(list[0]) <= d(list.at(-1)), 'the middle first');
+  // Wider than zoom 10 can cover: no photo.
+  assert.equal(fitZoom({ x0: X0 - 3e6, y0: Y0 - 2e6, x1: X0 + 3e6, y1: Y0 + 2e6 }, fakeCrs, 2226, 18), null);
+});
+
+test('close in, the quick zoom 16 tiles are asked for before the finer ones; too wide a view says to zoom in', async () => {
+  const srcs = [];
+  const makeImage = () => ({ set src(v) { srcs.push(v); } });
+  const statuses = [];
+  const u = createUnderlay({ tileUrl: (z, x, y) => `${z}/${x}/${y}`, epsgOf: () => 2226, importCrs: async () => fakeCrs, makeImage, onStatus: (s) => statuses.push(s) });
+  await new Promise((r) => setTimeout(r, 0));
+  const ctx = { save() {}, restore() {}, setTransform() {}, drawImage() {}, set globalAlpha(v) {}, fillRect() {} };
+  u.paint(ctx, createCamera({ cx: X0, cy: Y0, k: 2, w: 800, h: 500 }), 1, { lat: LAT0 });
+  const zs = srcs.map((s) => Number(s.split('/')[0]));
+  assert.equal(zs[0], COVER_Z);
+  assert.ok(zs.includes(18));
+  assert.ok(zs.lastIndexOf(COVER_Z) < zs.indexOf(18), 'every quick tile before the first fine one');
+  u.paint(ctx, createCamera({ cx: X0, cy: Y0, k: 1e-5, w: 1600, h: 900 }), 1, { lat: LAT0 });
+  assert.equal(statuses.at(-1).text, 'Zoom in to see the photo');
+  u.paint(ctx, createCamera({ cx: X0, cy: Y0, k: 2, w: 800, h: 500 }), 1, { lat: LAT0 });
+  assert.equal(statuses.at(-1).state, 'on');
+  assert.equal(statuses.at(-1).text, '');
 });

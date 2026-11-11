@@ -22,7 +22,7 @@
 /* ---- Checks */
 .ck-banner { position: sticky; top: 0; z-index: 2; padding: 5px 10px; background: #5a2a2a; color: #ffdcd6; border-bottom: 1px solid #7a3a36; }
 .ck-table { min-width: 740px; }
-.ck-row { display: grid; grid-template-columns: 42px minmax(150px, 1.1fr) 92px 92px minmax(180px, 2fr) minmax(180px, 2fr); align-items: start; min-height: 21px; border-bottom: 1px solid #2d343e; background: var(--c-row); }
+.ck-row { display: grid; grid-template-columns: 42px minmax(150px, 1.1fr) 108px 92px minmax(180px, 2fr) minmax(180px, 2fr); align-items: start; min-height: 21px; border-bottom: 1px solid #2d343e; background: var(--c-row); }
 .ck-row > span { padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; }
 .ck-row:not(.ck-head):hover { background: #424b59; }
 .ck-row.focus { background: var(--c-select); }
@@ -37,7 +37,8 @@
 .ck-row .ck-t { font-weight: 600; }
 .ck-row.st-fail .ck-v { color: #ff8b7f; font-weight: 600; }
 .ck-row.st-warn .ck-v { color: #ffdc5c; }
-.ck-v, .ck-l { text-align: right; font-variant-numeric: tabular-nums; }
+.ck-v, .ck-l { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-row .ck-t { white-space: nowrap; }
 .ck-e, .ck-f { color: var(--c-ink-dim); white-space: nowrap; }
 .ck-row.focus .ck-e, .ck-row.focus .ck-f { white-space: normal; }
 .ck-row .ck-f { color: var(--c-ink); }

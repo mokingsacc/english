@@ -445,3 +445,22 @@ Fixes from the independent review of 11 Nov, before the first deploy. Mo chose "
   tells her to send it on. A key in the page address is replaced with `<key>`.
 - The aerial photo is drawn into its own bitmap, so a grip drag does not redraw the tiles, and it is placed again
   when the project's zone changes.
+
+## The photo, the trackpad and the bottom panel after the first live look (11 Nov 2026)
+
+Mo opened the live page on his Mac: "the map takes so long to load", "the map only loads the top bit", "the bottom bit
+just cuts off", and "now im lost, like i cant get back to the roundabout".
+
+- Photo source by zoom (`src/worker/api/tiles.js`): zoom 10 to 16 from USGS The National Map's ready-made imagery
+  tiles (USGSImageryOnly, under a second), zoom 17 to 20 from the NAIP Plus image service (an uncached tile took 18 s).
+  Both public domain. The route serves zoom 10 to 20 (400 otherwise), California only, own page only, as before.
+- The page asks for zoom 18 at most (the photo's pixels are about 0.6 m; finer tiles only enlarge them), asks for the
+  zoom 16 tiles of the view first so the whole view has a photo at once, then the sharp ones from the middle out. A view
+  that needs more than 80 tiles takes a coarser zoom instead of leaving rows out; wider than zoom 10, no photo and the
+  status bar says "Zoom in to see the photo".
+- A Mac trackpad's flick is told from a mouse wheel by `wheelDeltaY` (exactly -3 times `deltaY` for a trackpad in Chrome
+  and Safari), so two-finger scrolling pans instead of zooming the drawing away.
+- "Show the roundabout" (`ui/findme.js`): a button over the top of the drawing while the roundabout is off screen or
+  under 24 px across; it zooms back to the first view.
+- The Panorama's first height shows every check row when the window is at least 860 px high (five rows from 700 px,
+  three below). Values, limits and check names do not wrap.

@@ -26,6 +26,7 @@ import { createSettings } from '../ui/settings.js';
 import { createProperties } from '../ui/properties.js';
 import { createDocTabs } from '../ui/doctabs.js';
 import { createViewport } from '../ui/viewport.js';
+import { createFindMe } from '../ui/findme.js';
 import { createDynInput } from '../ui/dyninput.js';
 import { createPanorama } from '../ui/panorama.js';
 import { createCmdline } from '../ui/cmdline.js';
@@ -271,6 +272,7 @@ export function boot() {
   ui.dialogs = createDialogs(app);
   ui.layers = ui.dialogs.layers;
   app.dyn = createDynInput(app, $('viewport'));
+  ui.findMe = createFindMe(app, $('viewport'));
   viewport = app.viewport = createViewport(app, canvas);
   createTooltips(document.body);
 

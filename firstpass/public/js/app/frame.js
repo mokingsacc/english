@@ -63,6 +63,7 @@ export function createFrames(app) {
       underlay: app.underlayFace,
     };
     app.layers.draw(scene, app.camera);
+    if (app.ui.findMe) app.ui.findMe.update(app.camera, F.index);
     app.ui.statusbar.update(st, vs.cursor && vs.cursor.visible ? vs.cursor : null);
     if (app.viewport.dragging() && vs.cursor) app.dyn.place(vs.cursor.sx, vs.cursor.sy, dragShown());
     if (panelsDirty) {

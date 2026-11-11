@@ -134,6 +134,11 @@ test('a mouse wheel zooms and a trackpad pans, told from the events; one gesture
   // After a pause the next notch is a wheel again; a sideways step is never a wheel.
   assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: -100 }, memo, 4000), 'zoom');
   assert.equal(wheelKind({ deltaMode: 0, deltaX: 30, deltaY: 100 }, memo, 6000), 'pan');
+  // With the old wheelDeltaY (Chrome, Safari): a trackpad's is -3 times deltaY, even for a big flick; a wheel's is not.
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 140, wheelDeltaY: -420 }, memo, 8000), 'pan', 'a Mac trackpad flick');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 100, wheelDeltaY: -120 }, memo, 10000), 'zoom', 'a Windows wheel notch');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 4.000244140625, wheelDeltaY: -120 }, memo, 12000), 'zoom', 'a Mac wheel notch');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 3, wheelDeltaY: -9 }, memo, 14000), 'pan', 'a slow trackpad scroll');
 });
 
 test('a pinch zooms as far as the fingers spread; a wheel notch about 1.25', () => {
