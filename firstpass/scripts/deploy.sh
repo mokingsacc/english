@@ -116,6 +116,9 @@ PROJECTS=$($WRANGLER pages project list --json) || stop "Could not list the Page
 HAS=$(printf '%s' "$PROJECTS" | json '(j || []).some((p) => p["Project Name"] === arg) ? "yes" : ""' "$NAME")
 if [ -z "$HAS" ]; then
   say "Making the Pages project \"$NAME\" (the first deploy only)..."
+  # wrangler 4.160 notices when an AI agent runs it and tries to make a Workers project instead; that attempt deploys
+  # nothing. The first deploy (11 Nov 2026) made this Pages project by hand with --force. In a new account, add --force
+  # here if that happens again.
   $WRANGLER pages project create "$NAME" --production-branch main \
     || stop "Could not make the Pages project \"$NAME\". If the name is taken, change name in wrangler.toml, then run this again."
 fi

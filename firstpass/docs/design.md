@@ -298,6 +298,14 @@ Per leg, entry side (the exit mirrors it with the exit radius and exit width):
 - The data model's example values near the top of this file are the first defaults; the engine's parameter table holds
   the current ones.
 
+## Live (11 Nov 2026)
+
+First Pass is live at https://firstpass-9hg.pages.dev (Cloudflare added -9hg because another account holds the plain
+name). Deployed by `scripts/deploy.sh` from the owner's Mac after Mo's own "yh go live". D1 database `firstpass`, id in
+`wrangler.toml`. Two users: Mo (admin) and Semal. All six live checks passed: the page, health, a keyed write and read
+with a DXF export, the connector (10 tools), the tile rule (an image for the page, 403 for another site), Check myself
+all green. A sample project "Live check" stays in Mo's list (projects cannot be deleted yet).
+
 ## Open items on the server (11 Nov 2026, from its builder's report)
 
 - No limit yet on how often the connector can change a drawing. Projects cannot be deleted or renamed (options can).

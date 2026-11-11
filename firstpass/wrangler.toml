@@ -11,6 +11,6 @@ compatibility_flags = ["nodejs_als"]
 [[d1_databases]]
 binding = "DB"
 database_name = "firstpass"
-# Placeholder: scripts/deploy.sh makes the database on the first deploy and writes its id here (not a secret).
-database_id = "00000000-0000-0000-0000-000000000000"
+# The id of the D1 database below; scripts/deploy.sh wrote it on the first deploy, 11 Nov 2026 (an id is not a secret).
+database_id = "b15c4068-0571-42f7-9a4e-97b09aeb270d"
 migrations_dir = "migrations"
