@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { routeTable, WORKER_PREFIXES } from '../../src/worker/index.js';
+import { routeTable, WORKER_PREFIXES } from '../../src/worker/routes.js';
 
 const ROUTES = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../public/_routes.json'), 'utf8'));
 const covered = p => ROUTES.include.some(r => (r.endsWith('/*') ? p.startsWith(r.slice(0, -1)) : p === r))

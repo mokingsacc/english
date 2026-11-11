@@ -142,6 +142,9 @@ test('add_option, compare_options, sweep, undo, export_link', async () => {
 
   const link = await t.tool('export_link', { option: 'B' });
   assert.equal(link.data.link, `https://fp.test/#p=${p.id}&o=B&do=export-dxf`);
+  assert.equal(link.data.export_ready, true);
+  assert.match(link.summary, /opens Wider circle and downloads it as a DXF/);
+  assert.doesNotMatch(link.summary, /not built/);
   assert.ok(!link.data.link.includes(t.alice.key));
 });
 

@@ -1,5 +1,6 @@
-// Connector tool export_link: a link that opens First Pass on one option and saves it as a DXF in her browser (the
-// export runs in the page, where her key already is; the link holds no secret). DXF export is a later part.
+// Connector tool export_link: a link that opens First Pass on one option and downloads it as a DXF in her browser (the
+// export runs in the page, where her key already is, with the same writer as GET /api/projects/:id/export/<option>.dxf;
+// the link holds no secret).
 import { PROJECT_ARG, OPTION_ARG, projectFor, parseDoc, optionOf } from '../common.js';
 import { READ_ONLY } from '../annotations.js';
 
@@ -17,8 +18,8 @@ export default {
     const opt = optionOf(parseDoc(row), args.option);
     const link = exportLink(ctx.origin, row.id, opt.id);
     return {
-      text: `Open this in the browser where First Pass is open: ${link} . It opens ${opt.name}. DXF export itself is not built yet (a later part), so for now the link only opens the option.`,
-      data: { link, project: row.id, option: opt.id, export_ready: false },
+      text: `Open this in the browser where First Pass is open: ${link} . It opens ${opt.name} and downloads it as a DXF for Civil 3D.`,
+      data: { link, project: row.id, option: opt.id, export_ready: true },
     };
   },
 };

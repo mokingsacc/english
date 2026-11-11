@@ -51,7 +51,7 @@ async function owners() {
 }
 
 export async function generated() {
-  const { routeTable } = await import(pathToFileURL(path.join(ROOT, 'src/worker/index.js')).href);
+  const { routeTable } = await import(pathToFileURL(path.join(ROOT, 'src/worker/routes.js')).href);
   const { TOOLS } = await import(pathToFileURL(path.join(ROOT, 'src/worker/mcp/registry.js')).href);
   const own = await owners();
   const lines = [START, '', '## Routes: the handler behind each one', '',
