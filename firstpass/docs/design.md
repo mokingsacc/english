@@ -233,6 +233,10 @@ and the page never shows Autodesk's name, logo or product names as its own.
   `MOVE`, `LEG` (add), `ZOOM E`, `U`, `OPTION` (copy the current option), `EXPORT`, `CHECK`.
 - Live: `evaluate` runs on every drag frame; fastest paths draw coloured by speed with small speed labels; checks
   update in place. A drag commits one change on release.
+- Speed: the drawing area is one 2D canvas (the browser draws it on the graphics card), sized for the screen's pixel
+  ratio. Redraw only inside `requestAnimationFrame`, at most once per frame, and only when something changed (no idle
+  loop). The photo tiles are drawn images, cached in memory. Panels update only the rows whose values changed. Budget:
+  a drag frame (evaluate plus redraw) under 16 ms on a laptop; Check myself reports the measured time.
 - Sync: after any commit, and every 1.5 s while visible, the page asks for changes since its `seq`; Claude's changes
   appear as named steps in the history and can be undone.
 - Also: Check myself (data service reachable, connector linked, engine self-test, export valid, each line in plain
