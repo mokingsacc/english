@@ -74,7 +74,7 @@ const TEXT_MAX = 300;
 const NAME_MAX = 40;
 const TODO_MAX = 200;
 const EVENT_MAX = 300;
-const THINK_KEEP = 20;
+const THINK_KEEP = 200; // hearts kept, both people together (each about 100 bytes; photos are kept apart, one key each)
 const PHOTO_MAX = 400 * 1024; // bytes, after the browser shrinks it
 const BODY_MAX = 700 * 1024; // the photo as base64 plus the rest
 const AT_MIN = Date.UTC(2000, 0, 1);
@@ -433,7 +433,9 @@ export class Board {
           photo = { id, data: o.photo };
         }
         if (b.thinks.some((x) => x.id === id)) return null;
-        const all = [{ id, from, note, at: now, photo: !!photo }].concat(b.thinks);
+        // role: who sent it, whatever name that device goes by (the page puts the heart on the other one's wall)
+        const role = typeof o.role === 'string' && RING_RE.test(o.role) ? o.role : undefined;
+        const all = [{ id, from, note, at: now, photo: !!photo, role }].concat(b.thinks);
         nb.thinks = all.slice(0, THINK_KEEP);
         return { board: nb, photo, drop: all.slice(THINK_KEEP).filter((x) => x.photo).map((x) => x.id) };
       }
