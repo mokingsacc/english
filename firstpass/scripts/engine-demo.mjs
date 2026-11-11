@@ -3,9 +3,12 @@
 //
 //   node scripts/engine-demo.mjs out.svg            the default four-leg roundabout
 //   node scripts/engine-demo.mjs out.svg t          a three-leg T (bearings 0, 90, 270)
-//   node scripts/engine-demo.mjs out.svg skew       a skewed four-leg (bearings 0, 75, 180, 255)
-//   node scripts/engine-demo.mjs out.svg big        a large circle with long, flat curbs
+//   node scripts/engine-demo.mjs out.svg skew       a skewed four-leg (bearings 0, 75, 180, 255), default sizes
+//   node scripts/engine-demo.mjs out.svg skewfit    the same skew on a 160 ft circle with smaller curb radii
+//   node scripts/engine-demo.mjs out.svg big        the largest circle, with long, flat curbs
 //   node scripts/engine-demo.mjs out.svg small      a small circle with tight curbs
+//   node scripts/engine-demo.mjs out.svg six        six legs
+//   node scripts/engine-demo.mjs out.svg offset     legs shifted to the left and right, with uneven sizes
 //   node scripts/engine-demo.mjs out.svg shape.json a roundabout read from a file
 //
 // Extra name=value arguments change values before evaluating, for example icd=150 or legs.*.exitRadius=90.
@@ -22,9 +25,26 @@ function shape(name) {
   if (name === 'default') return r;
   if (name === 't') { r.legs = [0, 90, 270].map((b) => defaultLeg(b)); return r; }
   if (name === 'skew') { r.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); return r; }
+  if (name === 'skewfit') {
+    r.icd = 160;
+    r.legs = [0, 75, 180, 255].map((b) => ({ ...defaultLeg(b), entryRadius: 60, exitRadius: 100 }));
+    return r;
+  }
   if (name === 'big') {
-    r.icd = 240; r.circWidth = 22; r.apronWidth = 16;
-    r.legs.forEach((l) => { l.entryRadius = 200; l.exitRadius = 400; l.splitterLength = 200; l.splitterWidth = 30; l.entryWidth = 20; l.exitWidth = 20; });
+    r.icd = 300; r.circWidth = 24; r.apronWidth = 16;
+    r.legs.forEach((l) => { l.entryRadius = 200; l.exitRadius = 300; l.splitterLength = 200; l.splitterWidth = 20; l.entryWidth = 20; l.exitWidth = 20; });
+    return r;
+  }
+  if (name === 'six') {
+    r.icd = 200; r.circWidth = 20;
+    r.legs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ ...defaultLeg(b, `L${i + 1}`, `Leg ${i + 1}`), entryRadius: 45, exitRadius: 60, splitterWidth: 10, entryWidth: 14, exitWidth: 14 }));
+    return r;
+  }
+  if (name === 'offset') {
+    r.icd = 150;
+    r.legs.forEach((l) => { l.exitRadius = 100; });
+    r.legs[0].offsetLeft = 12; r.legs[1].offsetLeft = -8; r.legs[2].approachSpeed = 30; r.legs[2].entryRadius = 100;
+    r.legs[3].entryWidth = 20; r.legs[3].splitterWidth = 20; r.legs[3].exitRadius = 80; r.legs[1].bearing = 95;
     return r;
   }
   if (name === 'small') {
@@ -104,13 +124,17 @@ function svg(res, round) {
 
   const pathOf = (chain, close) => {
     let d = '';
-    chain.forEach((p, i) => {
-      if (i === 0) d += `M${X(p.a).toFixed(3)} ${Y(p.a).toFixed(3)}`;
+    let at = null;
+    chain.forEach((p) => {
+      // Start a new piece wherever this primitive does not carry on from the last one.
+      if (!at || Math.hypot(at.x - p.a.x, at.y - p.a.y) > 1e-6) d += `M${X(p.a).toFixed(3)} ${Y(p.a).toFixed(3)}`;
+      at = p.b;
       if (p.type === 'line') d += `L${X(p.b).toFixed(3)} ${Y(p.b).toFixed(3)}`;
       else {
         const a0 = Math.atan2(p.a.y - p.c.y, p.a.x - p.c.x), a1 = Math.atan2(p.b.y - p.c.y, p.b.x - p.c.x);
         let sw = p.ccw ? a1 - a0 : a0 - a1;
         sw = ((sw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        // y is flipped for the screen, so a counterclockwise arc on the ground is drawn with sweep flag 0.
         d += `A${p.r.toFixed(3)} ${p.r.toFixed(3)} 0 ${sw > Math.PI ? 1 : 0} ${p.ccw ? 0 : 1} ${X(p.b).toFixed(3)} ${Y(p.b).toFixed(3)}`;
       }
     });
@@ -122,15 +146,11 @@ function svg(res, round) {
   parts.push(`<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="#f4f1ea"/>`);
   // Pavement: the area inside the outer curbs, and each approach road beyond the nose.
   parts.push(`<path d="${pathOf(G.layers.landtake, true)}" fill="#c9c9c9"/>`);
-  const edges = G.layers.edge;
-  for (let i = 0; i < edges.length; i += 2) {
-    const a = edges[i], b = edges[i + 1];
-    parts.push(`<path d="${poly([a.a, a.b, b.a, b.b])}" fill="#c9c9c9"/>`);
-  }
+  for (const L of G.legs) parts.push(`<path d="${poly([L.farIn, L.F, L.Fx, L.farOut])}" fill="#c9c9c9"/>`);
   // Sight triangles under everything else.
   for (const t of G.sightTriangles) {
     const col = t.stream === 'entering' ? '#7b4fd6' : '#d68a1f';
-    parts.push(`<path d="${poly(t.polygon)}" fill="${col}" fill-opacity="0.13" stroke="${col}" stroke-opacity="0.6" stroke-width="${lw(1)}"/>`);
+    parts.push(`<path d="${poly(t.polygon)}" fill="${col}" fill-opacity="0.08" stroke="${col}" stroke-opacity="0.7" stroke-width="${lw(1)}"/>`);
   }
   // Islands.
   parts.push(`<path d="${pathOf(G.layers.island, true)}" fill="#d8cdb0" stroke="#222" stroke-width="${lw(1.6)}"/>`);

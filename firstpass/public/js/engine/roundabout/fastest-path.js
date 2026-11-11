@@ -51,11 +51,15 @@ function ensureQP(ws, n) {
 
 /**
  * Station plan for a pass: spacing h0 through the roundabout and out to `fp.station.fine` ft past each
- * nose, growing to `fp.station.far` at the far ends. The first of several passes uses twice the spacing:
+ * nose, growing to `fp.station.far` at the far ends. h0 is `fp.station`, or more on a larger circle. The first of several passes uses twice the spacing:
  * it only has to find the shape for the next pass to linearise about.
  */
 export function stationPlan(G, rr, pass, passes) {
-  const h0 = rr.get('fp.station') * (pass === 0 && passes > 1 ? 2 : 1);
+  // On a larger circle the curves are flatter, so the points can be further apart for the same sag of the
+  // path between them (sag = spacing squared / (8 radius)) on the tightest curve, the one round the island.
+  const rTight = Math.max(1, G.Rc + rr.get('fp.offset.curb'));
+  const base = Math.max(rr.get('fp.station'), Math.sqrt(8 * rTight * rr.get('fp.station.sag')));
+  const h0 = base * (pass === 0 && passes > 1 ? 2 : 1);
   return { h0, hFar: Math.max(h0, rr.get('fp.station.far')), far: Math.max(0, G.lead - rr.get('fp.station.fine')) };
 }
 

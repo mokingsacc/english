@@ -32,7 +32,7 @@ export function radius(r) {
 
 /** "the North leg" from a leg name. */
 export function theLeg(name) {
-  return /^the /i.test(name) ? name : `the ${name}`;
+  return /^(the|leg)\b/i.test(name) ? name : `the ${name}`;
 }
 
 /** Join phrases as "a", "a and b", or "a, b and c". */

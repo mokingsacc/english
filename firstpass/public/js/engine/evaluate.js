@@ -122,6 +122,7 @@ function evaluateShape(round, rules) {
     legs: G.legs.map((L) => ({
       id: L.id, name: L.name, bearing: L.bearing,
       nose: W(L.nose), Se: W(L.Se), Sx: W(L.Sx), far: W(L.farCl), entranceMid: W(L.entranceMid), exitMid: W(L.exitMid),
+      F: W(L.F), Fx: W(L.Fx), farIn: W(L.farIn), farOut: W(L.farOut), T1: W(L.T1), T2: W(L.T2), T1x: W(L.T1x), T2x: W(L.T2x),
       entryWidthBuilt: L.entryWidthBuilt, exitWidthBuilt: L.exitWidthBuilt,
     })),
     landTake,
@@ -258,11 +259,13 @@ function headline(legs, landTake, checks, problems) {
   const warns = checks.filter((c) => c.status === 'warn').length;
   let entry = null, drop = null;
   for (const L of legs) {
+    // Compared to a hundredth of a mph, so that legs with the same speed keep the first one named rather than
+    // whichever rounding happens to favour.
     for (const [v, m] of [[L.V.V1, L.main], [L.V.V5, L.right]]) {
-      if (v !== null && (entry === null || v > entry.value)) entry = { value: v, leg: L.id, movement: m };
+      if (v !== null && (entry === null || above(v, entry.value))) entry = { value: v, leg: L.id, movement: m };
     }
     const d = speedDifference(L);
-    if (d && (drop === null || d.value > drop.value)) drop = { ...d, leg: L.id };
+    if (d && (drop === null || above(d.value, drop.value))) drop = { ...d, leg: L.id };
   }
   const parts = [];
   if (problems && problems.length) {
@@ -283,8 +286,14 @@ function headline(legs, landTake, checks, problems) {
   };
 }
 
+function above(a, b) {
+  return Math.round(a * 100) > Math.round(b * 100);
+}
+
 function countSentence(fails, warns) {
-  const c = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+  const n = (k) => (k === 1 ? '1 check' : `${k} checks`);
   if (!fails && !warns) return 'No check fails or warns.';
-  return `${c(fails, 'check fails', 'checks fail')} and ${c(warns, 'check warns', 'checks warn')}.`;
+  if (!warns) return `${n(fails)} ${fails === 1 ? 'fails' : 'fail'} and none warns.`;
+  if (!fails) return `No check fails and ${n(warns)} ${warns === 1 ? 'warns' : 'warn'}.`;
+  return `${n(fails)} ${fails === 1 ? 'fails' : 'fail'} and ${n(warns)} ${warns === 1 ? 'warns' : 'warn'}.`;
 }
