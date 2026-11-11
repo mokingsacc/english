@@ -519,15 +519,38 @@ button.chip{cursor:pointer}
 .note button{flex:none;width:44px;height:44px;margin:-4px 0;border-radius:50%;display:grid;place-items:center;color:inherit}
 .note button svg{width:18px;height:18px}
 @keyframes pillin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
-/* Share: one sheet for links, photos, videos, files and the screen */
+/* Share: four tiles in a two by two grid, then the link field. Each tile is one button (icon, name, five words);
+   a tile this device can't do is dimmed and says why in place of its five words. */
 #shareSheet .opt{display:flex;flex-direction:column;gap:6px}
-#shareSheet .opt.off .btn,#shareSheet .opt.off input{opacity:.5}
-#shareSheet .btn:disabled{cursor:default}
-#shareSheet .opt > .btn{width:100%;justify-content:flex-start;padding:0 18px}
-#shareSheet .why{font:var(--callout);color:var(--ink-2)}
-#shareSheet .linkrow{display:flex;gap:8px}
-#shareSheet .linkrow input{flex:1;min-width:0}
-#shareSheet .linkrow .btn{flex:none;padding:0 18px}
+#shareSheet .opt.off input{opacity:.5}
+#shareSheet button:disabled{cursor:default}
+#shareSheet .why{display:none;padding:0 4px;font:var(--caption);color:var(--ink-2)}
+#shareSheet .opt.off > .why,#shareSheet .why.said{display:block}
+.sharegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#shareSheet .stile{gap:0;border-radius:var(--r3);background:var(--fill);overflow:hidden}
+.stbtn{width:100%;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:44px;padding:16px;text-align:left;color:var(--ink);transition:background-color var(--press) var(--ease)}
+button.stbtn:hover:not(:disabled){background:var(--fill)}
+.sti{width:38px;height:38px;margin-bottom:7px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--ink)}
+.sti svg{width:22px;height:22px}
+.stn{font:var(--headline)}
+.sts{font:var(--caption);color:var(--ink-2)}
+.ststub{display:none}
+.stbtn[hidden] + .ststub{display:flex}
+.stbtn:disabled .sts{display:none}
+.stbtn:disabled,.ststub{flex:none;padding-bottom:4px}
+.stbtn:disabled > :not(.sts),.ststub > *{opacity:.5}
+#shareSheet .stile > .why{padding:0 16px 16px}
+#shareSheet .stbtn:disabled ~ .why,#shareSheet .stbtn[hidden] ~ .why{display:block}
+/* the link field: the link icon, the box, Paste, and a round Share in their colour */
+#shareSheet .linkrow{display:flex;align-items:center;gap:6px;min-height:52px;padding:0 4px 0 18px;border-radius:var(--round);background:var(--fill);color:var(--ink-3)}
+#shareSheet .linkrow:focus-within{outline:2px solid var(--ink);outline-offset:1px}
+#shareSheet .linkrow > svg{width:22px;height:22px;flex:none}
+#shareSheet .linkrow input{flex:1;min-width:0;min-height:44px;padding:0 4px;background:none}
+#shareSheet .linkrow input:focus{outline:0}
+#shareSheet .linkrow .btn{flex:none;background:var(--fill)}
+#shareSheet .linkrow .rb{width:44px;height:44px;background:var(--them);color:var(--on-them)}
+#shareSheet .linkrow .rb svg{width:20px;height:20px}
+#shareSheet .linkrow .rb:disabled{opacity:.5}
 #shareSheet .now{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:var(--r2);background:color-mix(in srgb,var(--them) 16%,transparent)}
 #shareSheet .now .row{display:flex;gap:8px}
 #shareSheet .now .btn{flex:1}
@@ -549,6 +572,32 @@ button.chip{cursor:pointer}
 .menu .links .btn{padding:0 10px;min-height:44px;font:var(--callout);font-weight:600}
 /* the sheet over a call is the dark set */
 .sheet.dark{color:var(--ink)}
+/* Share and Setup over a call float over a face: glass, with the grab bar on a phone */
+#shareSheet.dark > .menu,#moreSheet.dark > .menu{background:color-mix(in srgb,var(--surface) 88%,transparent);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--e2)}
+@media (max-width:699px){#shareSheet > .menu::before,#moreSheet > .menu::before{content:"";display:block;width:38px;height:5px;margin:8px auto 0;border-radius:var(--round);background:var(--ink-3);opacity:.5}}
+/* Setup: grouped rows (an icon, the words, the value, a chevron); Screen sharing and Your name open in place.
+   Each row draws its line on its own top edge, pulled up 1 px, so the first row shown never has one, whichever
+   rows a guest or a host doesn't get. */
+#moreSheet .rows{background:var(--fill);box-shadow:none}
+.setrows > *{position:relative;margin-top:-1px}
+.setrows > *::before{content:"";position:absolute;left:51px;right:0;top:0;height:1px;background:var(--line)}
+.setrows .v{flex:none;margin-left:auto;font:var(--callout);font-style:normal;color:var(--ink-2);white-space:nowrap}
+.setrows .v b{font-weight:inherit}
+.setrows .v.good{color:var(--go)}
+.setrows .v.bad{color:var(--end)}
+.setrows .rowbtn svg:last-child{transition:transform var(--move) var(--ease)}
+.setrows .ring-me[aria-pressed="true"] .v-off,.setrows .ring-me:not([aria-pressed="true"]) .v-on{display:none}
+.setrows .ring-me[aria-pressed="true"] svg:last-child{color:var(--ink-3)}
+.setlink{cursor:default}
+.setlink:hover{background:none}
+.setlink .rl small{display:block;font:var(--caption);color:var(--ink-2)}
+.setlink .btn{flex:none;background:var(--fill)}
+.setmore > summary{list-style:none;cursor:pointer}
+.setmore > summary::-webkit-details-marker{display:none}
+.setmore[open] > summary svg:last-child{transform:rotate(90deg)}
+.setin{display:flex;flex-direction:column;gap:8px;padding:2px 16px 16px}
+.setin .field input{width:100%}
+#moreSheet .setnew{align-self:center;font:var(--callout);font-weight:600}
 /* chat: a drawer on the right on computers, a bottom sheet on phones; your bubbles are your colour */
 .chat{position:fixed;z-index:20;top:0;right:0;bottom:0;width:360px;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);border-left:1px solid var(--line);padding-top:env(safe-area-inset-top)}
 .chat header{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 10px 20px}
@@ -562,15 +611,39 @@ button.chip{cursor:pointer}
 .msg .body a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 .msg .body.photo{padding:4px;white-space:normal}
 .msg img.photo{display:block;max-width:100%;max-height:280px;border-radius:var(--r3);cursor:zoom-in}
-.filecard{display:flex;flex-direction:column;gap:7px;width:min(240px,62vw);white-space:normal}
-.filecard .fname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.filecard .fmeta{font:var(--caption);opacity:.75;font-variant-numeric:tabular-nums}
-.filecard .bar{height:4px;border-radius:var(--round);background:color-mix(in srgb,currentColor 18%,transparent);overflow:hidden}
+/* names only once a third person is in the call (layout() marks the chat .many) */
+.chat:not(.many) .msg .who{display:none}
+/* a file is a card: its icon, name and size, then Open and Save on the right */
+.msg .body:has(> .filecard:first-child){padding:8px}
+.filecard{display:grid;grid-template-columns:38px minmax(0,1fr) auto;grid-template-areas:"ic nm acts" "ic mt acts" "bar bar bar";column-gap:12px;align-items:center;width:300px;max-width:100%;white-space:normal}
+.filecard .fic{grid-area:ic;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--fill)}
+.filecard .fic svg{width:22px;height:22px}
+.msg.mine .filecard .fic{background:color-mix(in srgb,var(--on-me) 14%,transparent)}
+.filecard .fname{grid-area:nm;font:var(--headline);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filecard .fmeta{grid-area:mt;font:var(--caption);opacity:.75;font-variant-numeric:tabular-nums}
+.filecard .bar{grid-area:bar;margin-top:8px;height:4px;border-radius:var(--round);background:color-mix(in srgb,currentColor 18%,transparent);overflow:hidden}
 .filecard .bar i{display:block;height:100%;width:0;background:currentColor;transition:width var(--press) var(--ease)}
-.filecard .acts{display:flex;gap:8px}
+.filecard .acts{grid-area:acts;display:flex;gap:6px}
 .filecard .acts:empty{display:none}
-.filecard .acts a{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:var(--round);font:var(--callout);font-weight:600;text-decoration:none;background:var(--surface);color:var(--ink)}
-.body.photo .filecard{padding:6px 10px 8px;width:auto}
+/* Open and Save both: they go on their own line under the name, so the name keeps its room */
+.filecard:has(.acts > a + a){grid-template-areas:"ic nm nm" "ic mt mt" ". acts acts" "bar bar bar"}
+.filecard:has(.acts > a + a) .acts{margin-top:8px}
+.filecard .fmeta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filecard .acts a{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:var(--round);font:var(--callout);font-weight:600;text-decoration:none;background:var(--fill);color:var(--ink)}
+.body.photo .filecard{padding:6px 6px 4px;width:auto}
+.body.photo .filecard .fic{display:none}
+.body.photo .filecard{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"mt acts" "bar bar"}
+/* a message that is only a link is a card you can open: its icon, the site, the page, and Open */
+.msg .body.linkmsg{padding:8px}
+.linkcard{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;column-gap:12px;width:300px;max-width:100%;color:inherit;text-decoration:none}
+.msg .body .linkcard{text-decoration:none}
+.linkcard .fic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--fill)}
+.msg.mine .linkcard .fic{background:color-mix(in srgb,var(--on-me) 14%,transparent)}
+.linkcard .fic svg{width:22px;height:22px}
+.linkcard b{display:block;font:var(--headline);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkcard small{display:block;font:var(--caption);opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkcard .go{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:var(--round);font:var(--callout);font-weight:600;background:var(--fill)}
+.msg.mine .linkcard .go{background:color-mix(in srgb,var(--on-me) 14%,transparent)}
 .composer{display:flex;align-items:center;gap:8px;padding:10px 12px max(10px,env(safe-area-inset-bottom));background:var(--bg)}
 .composer input[type=text]{flex:1;min-width:0}
 .composer .btn.icon{min-height:52px;min-width:52px;flex:none}
@@ -648,19 +721,30 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 @keyframes hello{0%{opacity:0;transform:translateY(14%) scale(.9)}60%{opacity:1;transform:translateY(-3%) scale(1.02)}100%{opacity:1;transform:none}}
 @keyframes figtalk{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
 /* paint:end */
-/* sound: two volumes, voices and the shared video. Real sliders and a switch. */
-.soundpop{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--bar-b) + 70px);z-index:8;width:min(calc(100% - 32px),360px);padding:14px 16px 12px;border-radius:var(--r3);background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--e2);animation:fade var(--move) var(--ease)}
-.sound{display:grid;gap:8px;color:var(--ink)}
-.sound-h{margin:2px 0 0;font:var(--caption);color:var(--ink-2)}
-.sound-h:not(:first-child){margin-top:8px}
-.sound-row{display:grid;grid-template-columns:96px 1fr 48px;align-items:center;gap:10px;min-height:44px;font:var(--callout)}
-.sound-tog{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;min-height:44px;cursor:pointer;font:var(--callout)}
-.sound-tog input{order:2}
+/* Sound: one panel wherever it opens (the call, the Sound sheet outside a call, the faces window). A grouped card
+   with the two sliders and the switch, the five mic chips with one line on the chosen one, then Hear myself and Fix
+   sound side by side. In a call it is a bottom sheet on a phone and a card above the bar on a wider screen. */
+.soundpop{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--bar-b) + 70px);z-index:8;width:min(calc(100% - 32px),420px);padding:8px 20px 20px;border-radius:var(--r4);background:color-mix(in srgb,var(--surface) 88%,transparent);color:var(--ink);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--glass-edge),var(--e2);animation:fade var(--move) var(--ease)}
+.sound-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0 6px}
+@media (max-width:699px){
+  .soundpop{left:0;right:0;bottom:0;transform:none;width:auto;padding:8px 20px calc(20px + env(safe-area-inset-bottom));border-radius:var(--r4) var(--r4) 0 0}
+  .soundpop::before{content:"";display:block;width:38px;height:5px;margin:0 auto 2px;border-radius:var(--round);background:var(--ink-3);opacity:.5}
+}
+.sound{display:grid;gap:14px;color:var(--ink)}
+.sound-card{border-radius:var(--r3);background:var(--fill);overflow:hidden}
+.sound-card > *{position:relative;margin-top:-1px;padding:5px 16px}
+.sound-card > *::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
+.sound-h{margin:0 0 -6px;padding:0 4px;font:var(--caption);color:var(--ink-2)}
+.sound-row{display:grid;grid-template-columns:minmax(0,104px) 1fr;align-items:center;gap:14px;min-height:56px;font:var(--body)}
+.sound-tog{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;min-height:56px;cursor:pointer;font:var(--body)}
 .sound-modes{display:flex;flex-wrap:wrap;gap:8px}
 .sound-mode{min-height:44px;padding:0 16px;border-radius:var(--round);border:0;background:var(--fill);color:var(--ink);font:var(--callout);font-weight:600;cursor:pointer;transition:background-color var(--press) var(--ease)}
 .sound-mode[aria-checked="true"]{background:var(--ink);color:var(--bg)}
-.sound-say{min-height:34px;font:var(--caption);color:var(--ink-2)}
-.sound-testrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sound-say{margin:-6px 0 0;padding:0 4px;min-height:17px;font:var(--caption);color:var(--ink-2)}
+.sound-acts{display:flex;gap:10px}
+.sound-testrow{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.sound-testrow .btn{width:100%;padding:0 14px}
+.sound-test-say:empty{display:none}
 .sound-fixrow[hidden]{display:none}
 .sndlog{margin:0 20px 12px;font:var(--caption)}
 .sndlog summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font:var(--callout);font-weight:600;color:var(--ink-2)}
@@ -670,9 +754,10 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 .sndlog time{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sndlog-say:empty{display:none}
 .sndlog-say{margin:8px 0 0;color:var(--ink-3);font:var(--caption)}
-.sound-test-say{font:var(--caption);color:var(--ink-2)}
+.sound-test-say{padding:0 4px;font:var(--caption);color:var(--ink-2)}
 .sound-row.off{opacity:.45}
-.sound-pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+/* the percent stays in the page for a screen reader (with the slider's own value), but is not drawn */
+.sound-pct{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* the slider: a 6 px track, the filled part in ink, a 26 px white thumb (--pct is set as it moves) */
 :is(.sound,.ytbar) input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;background:transparent;cursor:pointer}
 :is(.sound,.ytbar) input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:var(--round);background:linear-gradient(var(--ink),var(--ink)) 0 0/var(--pct,50%) 100% no-repeat,var(--fill)}
@@ -681,8 +766,9 @@ body.dropping #watchRoot::after{content:"Drop to send";position:absolute;inset:1
 :is(.sound,.ytbar) input[type=range]::-moz-range-progress{height:6px;border-radius:var(--round);background:var(--ink)}
 :is(.sound,.ytbar) input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:var(--knob);box-shadow:var(--knob-shadow)}
 :is(.sound,.ytbar) input[type=range]:disabled{cursor:default}
-.sound-hint{font:var(--caption);color:var(--ink-2)}
+.sound-hint{margin:-4px 0 0;padding:0 4px;font:var(--caption);color:var(--ink-2)}
 .soundpop{max-height:calc(100dvh - 140px);overflow-y:auto;overscroll-behavior:contain}
+@media (max-width:699px){.soundpop{max-height:calc(100dvh - 48px)}}
 .fw-sound{max-height:calc(100vh - 70px);overflow-y:auto}
 /* a film together: the real YouTube player on top in a rounded frame, one line of controls that works for both of
    you, their face below it and you in the corner (on a wide screen the film on the left, their face on the right) */
@@ -1271,7 +1357,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <!-- while something is shared: what, and Stop -->
       <div class="sharebar" id="shareBar" hidden><span class="sb-ic" id="shareBarIcon" aria-hidden="true"><i data-icon="screen" data-size="22"></i></span><span id="shareBarText">You are sharing your screen</span><button class="btn sm end" id="shareBarStop">Stop</button></div>
       <button class="peek" id="peek" hidden></button>
-      <div class="soundpop" id="soundPop" role="dialog" aria-label="Sound" hidden></div>
+      <div class="soundpop" id="soundPop" role="dialog" aria-labelledby="soundPopTitle" hidden><header class="sound-head"><h2 id="soundPopTitle">Sound</h2><button class="close" id="soundPopClose" aria-label="Close"><i data-icon="x"></i></button></header></div>
       <button class="hear" id="tapToHear" hidden><i data-icon="speaker"></i><span id="tapToHearText">Tap to hear them</span></button>
       <!-- More: the tray. Each a round button with its name under it. -->
       <div class="tray" id="tray" role="group" aria-label="More" hidden>
@@ -1349,7 +1435,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <!-- SOUND AND MIC outside a call: the same panel as in a call -->
 <div class="sheet" id="soundSheet" hidden>
   <div class="menu soundsheet" role="dialog" aria-modal="true" aria-labelledby="soundTitle">
-    <header><h2 class="display" id="soundTitle">Sound and mic</h2><button class="close" id="soundClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <header><h2 class="display" id="soundTitle">Sound</h2><button class="close" id="soundClose" aria-label="Close"><i data-icon="x"></i></button></header>
     <div class="body" id="soundSheetBody"></div>
   </div>
 </div>
@@ -1383,27 +1469,36 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
         <span id="shareNowText">You’re sharing.</span>
         <div class="row"><button class="btn quiet" id="sharePause" hidden>Pause the video</button><button class="btn primary" id="shareStop">Stop sharing</button></div>
       </div>
+      <!-- four tiles: a name and five words each. A tile this device can't do shows its reason instead (the
+           .why line, which a screen reader also hears as the tile's description). -->
+      <div class="sharegrid">
+        <div class="opt stile" id="shareScreenOpt">
+          <button class="stbtn" id="shareScreen" aria-describedby="shareScreenWhy"><span class="sti"><i data-icon="screen"></i></span><span class="stn">My screen</span><span class="sts">One tab or one window</span></button>
+          <div class="stbtn ststub" aria-hidden="true"><span class="sti"><i data-icon="screen"></i></span><span class="stn">My screen</span></div>
+          <div class="why" id="shareScreenWhy"></div>
+        </div>
+        <div class="opt stile" id="shareMediaOpt">
+          <button class="stbtn" id="shareMediaBtn" aria-describedby="shareMediaWhy"><span class="sti"><i data-icon="photo"></i></span><span class="stn">Photo or video</span><span class="sts">They see it full size</span></button>
+          <div class="why" id="shareMediaWhy"></div>
+          <input type="file" id="shareMediaInput" accept="image/*,video/*" hidden>
+        </div>
+        <div class="opt stile" id="shareFileOpt">
+          <button class="stbtn" id="shareFileBtn" aria-describedby="shareFileWhy"><span class="sti"><i data-icon="file"></i></span><span class="stn">A file</span><span class="sts">Goes to the chat</span></button>
+          <div class="why" id="shareFileWhy"></div>
+        </div>
+        <div class="opt stile" id="shareFilmOpt">
+          <button class="stbtn" id="shareFilmBtn" aria-describedby="shareFilmWhy"><span class="sti"><i data-icon="play"></i></span><span class="stn">A film</span><span class="sts">YouTube plays for both</span></button>
+          <div class="why" id="shareFilmWhy"></div>
+        </div>
+      </div>
       <div class="opt" id="shareLinkOpt">
-        <div class="label">A link</div>
         <form class="linkrow" id="shareLinkForm" autocomplete="off" novalidate>
-          <input id="shareLinkInput" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="Paste a link" aria-label="Link to share">
-          <button type="button" class="btn quiet" id="sharePaste" hidden>Paste</button>
-          <button type="submit" class="btn primary" id="shareLinkGo">Share</button>
+          <i data-icon="link"></i>
+          <input id="shareLinkInput" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="Paste a link" aria-label="Link to share" aria-describedby="shareLinkWhy">
+          <button type="button" class="btn sm" id="sharePaste" hidden>Paste</button>
+          <button type="submit" class="rb" id="shareLinkGo" aria-label="Share" title="Share"><i data-icon="send"></i></button>
         </form>
         <div class="why" id="shareLinkWhy"></div>
-      </div>
-      <div class="opt" id="shareMediaOpt">
-        <button class="btn quiet" id="shareMediaBtn"><i data-icon="photo"></i>A photo or video</button>
-        <div class="why" id="shareMediaWhy"></div>
-        <input type="file" id="shareMediaInput" accept="image/*,video/*" hidden>
-      </div>
-      <div class="opt" id="shareFileOpt">
-        <button class="btn quiet" id="shareFileBtn"><i data-icon="file"></i>A file</button>
-        <div class="why" id="shareFileWhy"></div>
-      </div>
-      <div class="opt" id="shareScreenOpt">
-        <button class="btn quiet" id="shareScreen"><i data-icon="screen"></i>My screen</button>
-        <div class="why" id="shareScreenWhy"></div>
       </div>
     </div>
   </div>
@@ -1419,33 +1514,47 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <div class="sheet" id="moreSheet" hidden>
   <div class="menu" role="dialog" aria-modal="true" aria-labelledby="moreTitle">
     <header><h2 class="display" id="moreTitle">Setup</h2><button class="close" id="moreClose" aria-label="Close"><i data-icon="x"></i></button></header>
+    <!-- grouped rows: an icon, the words, the current value and a chevron. Screen sharing and Your name open in
+         place. Make a new link, the one risky action, stands apart. -->
     <div class="body">
-      <div data-role="host">
-        <div class="label">Your link · same every time</div>
-        <div class="link" id="moreLinkText"></div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn quiet" id="moreCopyBtn"><i data-icon="copy"></i><span class="label-t">Copy</span></button>
-          <button class="btn quiet" id="moreShareBtn"><i data-icon="upload"></i>Send link…</button>
+      <div class="card rows setrows" data-role="host">
+        <div class="rowbtn setlink">
+          <i data-icon="link"></i><span class="rl">Your link<small>The same every time</small></span>
+          <button class="btn sm" id="moreCopyBtn"><span class="label-t">Copy</span></button>
+          <button class="btn sm" id="moreShareBtn">Send</button>
         </div>
-        <button class="btn quiet wide" id="mineBtn" style="margin-top:10px">Use this room on my iPad or iPhone</button>
+        <div class="link" id="moreLinkText" hidden></div>
       </div>
-      <button class="btn quiet wide" id="boardBtn">Countdown, to-dos and calendar</button>
-      <button class="btn quiet wide ring-me"><span>Let Beside ring me</span></button>
-      <button class="btn quiet wide" id="changeBtn" data-role="host" hidden><i data-icon="swap"></i>Share a different tab</button>
-      <div data-role="host">
-        <div class="seg" id="modeToggle" role="group" aria-label="Picture priority">
-          <button aria-pressed="true" data-mode="detail">Sharp text</button>
-          <button aria-pressed="false" data-mode="motion">Smooth motion</button>
-        </div>
-        <div class="seg-note" style="margin-top:8px">Sharp text keeps small writing readable. Smooth motion is better for video or scrolling fast.</div>
+      <div class="card rows setrows">
+        <button class="rowbtn" id="mineBtn" data-role="host"><i data-icon="device"></i><span>Move this call to another device</span><i data-icon="chev"></i></button>
+        <!-- ringMeUi writes its sentence into the first span, kept hidden here: the row says On or Off instead -->
+        <button class="rowbtn ring-me"><span class="ring-say" hidden></span><i data-icon="bell"></i><span id="ringRowName">Ring this phone</span><em class="v"><b class="v-on">On</b><b class="v-off">Off</b></em><i data-icon="chev"></i></button>
+        <button class="rowbtn" id="changeBtn" data-role="host" hidden><i data-icon="swap"></i><span>Share a different tab</span><i data-icon="chev"></i></button>
+        <button class="rowbtn" id="fsBtn" data-role="guest"><i data-icon="full"></i><span>Full screen</span><i data-icon="chev"></i></button>
       </div>
-      <label class="field" data-role="host">Your name, shown to the people you invite
-        <input id="hostName" maxlength="20" autocomplete="given-name" placeholder="Your name"></label>
-      <button class="btn quiet wide" id="fsBtn" data-role="guest"><i data-icon="full"></i>Full screen</button>
-      <div class="links">
-        <button class="btn ghost" data-check-open><i data-icon="check"></i>Check my setup</button>
-        <button class="btn ghost" id="newLinkBtn" data-role="host">Make a new link</button>
+      <div class="card rows setrows">
+        <details class="setmore" data-role="host">
+          <summary class="rowbtn"><i data-icon="screen"></i><span>Screen sharing</span><em class="v" id="modeVal">Sharp text</em><i data-icon="chev"></i></summary>
+          <div class="setin">
+            <div class="seg" id="modeToggle" role="group" aria-label="Picture priority">
+              <button aria-pressed="true" data-mode="detail">Sharp text</button>
+              <button aria-pressed="false" data-mode="motion">Smooth motion</button>
+            </div>
+            <div class="seg-note">Sharp text keeps small writing readable. Smooth motion is better for video or scrolling fast.</div>
+          </div>
+        </details>
+        <details class="setmore" data-role="host">
+          <summary class="rowbtn"><i data-icon="person"></i><span>Your name</span><em class="v" id="nameVal"></em><i data-icon="chev"></i></summary>
+          <div class="setin">
+            <label class="field">Shown to the people you invite
+              <input id="hostName" maxlength="20" autocomplete="given-name" placeholder="Your name"></label>
+          </div>
+        </details>
+        <button class="rowbtn" data-check-open><i data-icon="check"></i><span>Check my setup</span><em class="v" id="checkVal"></em><i data-icon="chev"></i></button>
       </div>
+      <button class="btn danger setnew" id="newLinkBtn" data-role="host">Make a new link</button>
+      <!-- Plans has its own door in the tray now; this one stays for anything that still opens it by id -->
+      <button id="boardBtn" hidden>Plans</button>
     </div>
   </div>
 </div>
@@ -1455,6 +1564,6 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="icons.js?v=1"></script>
 <script src="board.js?v=17"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=49"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>

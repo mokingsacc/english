@@ -1859,6 +1859,8 @@
     const camOff = V.pair && them === avatar;
     const n = isGuest ? 2 + G.people.length : watchers().length + 1;
     text('callTitle', !V.pair ? n + ' people' : camOff ? (name ? name + '’s camera is off' : 'Their camera is off') : name || 'In the call');
+    const chatEl = $('chat');
+    if (chatEl) chatEl.classList.toggle('many', n > 2); // the chat names who wrote only when three or more are in
     const chip = $('callChip');
     if (chip) chip.classList.toggle('camoff', camOff);
     if (inCallWithSomeone() && !(isGuest ? G.left : H.stopping)) { // not while the call is being taken down
@@ -2065,17 +2067,32 @@
     trayOpen(false);
     const ch = $('changeBtn');
     if (ch) ch.hidden = !amSharing() || isGuest || !!CV.kind;
+    setupVals();
     m.hidden = false;
     wakeControls();
     const x = $('moreClose');
     if (x) x.focus();
   }
+  // Setup's rows show their current value: the picture priority, your name, the last Check my setup, and which
+  // device the ring row is about. Rings, the mode and the name keep their own code; this only reads them.
+  function setupVals() {
+    text('modeVal', H.mode === 'motion' ? 'Smooth motion' : 'Sharp text');
+    text('nameVal', myName());
+    const cv = $('checkVal');
+    if (cv) {
+      const bad = app.checkDone ? Object.values(app.checks || {}).filter((c) => c.state === 'bad').length : -1;
+      cv.textContent = bad < 0 ? '' : bad ? bad + (bad === 1 ? ' problem' : ' problems') : 'All good';
+      cv.classList.toggle('good', bad === 0);
+      cv.classList.toggle('bad', bad > 0);
+    }
+    const pad = /iPad/.test(navigator.userAgent) || (IS_IOS && Math.min(screen.width, screen.height) >= 600);
+    text('ringRowName', pad ? 'Ring this iPad' : matchMedia('(pointer: coarse)').matches ? 'Ring this phone' : 'Ring this computer');
+  }
   function closeMore() { trayOpen(false); const m = $('moreSheet'); if (m) m.hidden = true; }
   // Watch a film: the Share sheet, at its link field (a YouTube link plays for everyone).
   function filmAsk() {
     shareOpen(true);
-    const i = $('shareLinkInput');
-    if (i && !i.disabled) i.focus();
+    shareFilm();
   }
   function soundOpen(on) {
     const p = $('soundPop'), b = $('soundBtn');
@@ -2440,15 +2457,18 @@
     try { navigator.mediaSession.setActionHandler('enterpictureinpicture', on && HAS_MINI ? () => { miniOpen(); } : null); } catch (e) { /* not offered here */ }
   }
   // The Sound panel: what you hear, and how your mic is sent. One in the call, one in the faces window and one in
-  // the Sound and mic sheet outside a call; all show the same.
+  // the Sound sheet outside a call; all show the same: a grouped card (Their voice, Film sound, the switch), the
+  // five mic chips with one line on the chosen one, then Hear myself and Fix sound side by side.
   function rangeFill(r) { r.style.setProperty('--pct', (r.value - r.min) / ((r.max - r.min) || 1) * 100 + '%'); }
   function soundPanel(doc, opts) {
     opts = opts || {};
     const box = doc.createElement('div');
     box.className = 'sound';
     const head = (txt) => { const h = doc.createElement('h3'); h.className = 'sound-h'; h.textContent = txt; return h; };
-    box.appendChild(head('What you hear'));
-    [['voice', 'Their voice', 150], ['media', 'Video sound', 100]].forEach(([k, label, max]) => {
+    const card = doc.createElement('div');
+    card.className = 'sound-card';
+    box.appendChild(card);
+    [['voice', 'Their voice', 150], ['media', 'Film sound', 100]].forEach(([k, label, max]) => {
       const row = doc.createElement('label');
       row.className = 'sound-row';
       row.dataset.k = k;
@@ -2460,11 +2480,11 @@
       r.value = String(Math.round(SND[k] * 100));
       r.setAttribute('aria-label', label);
       rangeFill(r);
-      r.addEventListener('input', () => { rangeFill(r); setVol(k, r.value / 100); });
+      r.addEventListener('input', () => { rangeFill(r); r.setAttribute('aria-valuetext', r.value + '%'); setVol(k, r.value / 100); });
       const pct = doc.createElement('span');
       pct.className = 'sound-pct';
       row.append(name, r, pct);
-      box.appendChild(row);
+      card.appendChild(row);
     });
     const dk = doc.createElement('label');
     dk.className = 'sound-tog';
@@ -2475,9 +2495,9 @@
     dcb.checked = SND.duck;
     dcb.addEventListener('change', () => setDuck(dcb.checked));
     const dt = doc.createElement('span');
-    dt.textContent = 'Lower the video when someone talks';
-    dk.append(dcb, dt);
-    box.appendChild(dk);
+    dt.textContent = 'Quieter film when someone talks';
+    dk.append(dt, dcb);
+    card.appendChild(dk);
     const hint = doc.createElement('p');
     hint.className = 'sound-hint';
     box.appendChild(hint);
@@ -2502,11 +2522,14 @@
     const say = doc.createElement('p');
     say.className = 'sound-say';
     box.appendChild(say);
+    const acts = doc.createElement('div');
+    acts.className = 'sound-acts';
+    box.appendChild(acts);
     if (!opts.noTest) {
       const tb = doc.createElement('button');
       tb.type = 'button';
       tb.className = 'btn quiet sound-test';
-      tb.textContent = 'Hear myself';
+      tb.innerHTML = ico('ear') + '<span>Hear myself</span>';
       const ts = doc.createElement('span');
       ts.className = 'sound-test-say';
       ts.setAttribute('aria-live', 'polite');
@@ -2514,7 +2537,7 @@
       const tr = doc.createElement('div');
       tr.className = 'sound-testrow';
       tr.append(tb, ts);
-      box.appendChild(tr);
+      acts.appendChild(tr);
     }
     // In a call: one button that restarts the sound on both sides (see SOUND WATCH).
     const fr = doc.createElement('div');
@@ -2523,13 +2546,13 @@
     const fb = doc.createElement('button');
     fb.type = 'button';
     fb.className = 'btn quiet sound-fix';
-    fb.textContent = 'Fix sound';
+    fb.innerHTML = ico('tools') + '<span>Fix sound</span>';
     fb.addEventListener('click', () => soundFix());
     const fs = doc.createElement('span');
     fs.className = 'sound-test-say sound-fix-say';
     fs.setAttribute('aria-live', 'polite');
     fr.append(fb, fs);
-    box.appendChild(fr);
+    acts.appendChild(fr);
     return box;
   }
   function soundUi() {
@@ -2543,6 +2566,7 @@
         if (+r.value !== n) r.value = String(n);
         rangeFill(r);
         row.querySelector('.sound-pct').textContent = n + '%';
+        r.setAttribute('aria-valuetext', n + '%');
         // An iPhone or iPad plays voices at full volume while a video is open together (see outRest).
         const off = (k === 'media' && amSharing() && !W.id) || (k === 'voice' && IS_IOS && !!W.id);
         r.disabled = off;
@@ -2568,6 +2592,8 @@
           : !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
           : mine ? 'You’re sharing: use the video’s own volume. Everyone hears that change.'
             : 'You’re sharing without sound. Share a tab with “Also share tab audio” on to send its sound.';
+        // the usual line ("Changes only what you hear") is left off the panel; a line that explains a slider is kept
+        h.hidden = !(IS_IOS && W.id) && !amSharing();
       }
     });
   }
@@ -2704,10 +2730,43 @@
       a.href = url;
       a.target = '_blank';
       a.rel = 'noopener';
-      a.textContent = url;
+      a.textContent = linkLabel(url);
+      a.title = url;
       el.appendChild(a);
       if (tail) el.appendChild(document.createTextNode(tail));
     });
+  }
+  // A link as people say it: the site and the page, without https:// or www, cut short when long.
+  function linkLabel(url) {
+    let t = url;
+    try { const u = new URL(url); t = u.hostname.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname) + u.search; } catch (e) {}
+    return t.length > 42 ? t.slice(0, 40) + '…' : t;
+  }
+  // A message that is only a link: a card you can open (its icon, the site, the page, and Open).
+  function linkCard(body, url) {
+    let host = url, page = '';
+    try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); page = (u.pathname === '/' ? '' : u.pathname) + u.search; } catch (e) {}
+    const a = document.createElement('a');
+    a.className = 'linkcard';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = url;
+    const fic = document.createElement('span');
+    fic.className = 'fic';
+    fic.setAttribute('aria-hidden', 'true');
+    fic.innerHTML = ico('link');
+    const w = document.createElement('span');
+    const b = document.createElement('b');
+    b.textContent = host;
+    w.appendChild(b);
+    if (page) { const sm = document.createElement('small'); sm.textContent = page; w.appendChild(sm); }
+    const go = document.createElement('span');
+    go.className = 'go';
+    go.textContent = 'Open';
+    a.append(fic, w, go);
+    body.classList.add('linkmsg');
+    body.appendChild(a);
   }
   function chatRow(mine, name) {
     const list = $('chatList');
@@ -2722,7 +2781,8 @@
     if (list) {
       const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
       list.appendChild(row);
-      if (stick || mine) list.scrollTop = list.scrollHeight;
+      // after the caller has filled the bubble (text, a card), so the whole of it shows
+      if (stick || mine) Promise.resolve().then(() => { list.scrollTop = list.scrollHeight; });
     }
     return body;
   }
@@ -2734,7 +2794,9 @@
   function chatAdd(mine, name, t) {
     trimChat();
     const body = chatRow(mine, name);
-    linkify(body, t);
+    const lone = String(t).trim().match(/^https?:\/\/[^\s<>"']+$/);
+    if (lone && !ytId(t)) linkCard(body, lone[0].replace(/[.,!?;:)\]]+$/, ''));
+    else linkify(body, t);
     if (ytId(t)) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -3266,6 +3328,10 @@
     const body = chatRow(mine, name);
     const card = document.createElement('div');
     card.className = 'filecard';
+    const fic = document.createElement('span');
+    fic.className = 'fic';
+    fic.setAttribute('aria-hidden', 'true');
+    fic.innerHTML = ico('file');
     const fn = document.createElement('div');
     fn.className = 'fname';
     fn.textContent = f.fname;
@@ -3277,7 +3343,7 @@
     bar.appendChild(fill);
     const acts = document.createElement('div');
     acts.className = 'acts';
-    card.append(fn, meta, bar, acts);
+    card.append(fic, fn, meta, bar, acts);
     body.appendChild(card);
     let last = 0;
     const verb = mine ? 'Sending' : 'Receiving';
@@ -3304,6 +3370,9 @@
       finish(url, type) {
         api.progress(1);
         if (isImage(type)) { api.photo(url); return; }
+        // the card grows by its buttons: a chat that was at the bottom stays at the bottom
+        const l = $('chatList');
+        const stick = !!l && l.scrollHeight - l.scrollTop - l.clientHeight < 80;
         if (type === 'application/pdf') {
           const o = document.createElement('a');
           o.href = url; o.target = '_blank'; o.rel = 'noopener'; o.textContent = 'Open'; o.className = 'open';
@@ -3312,6 +3381,7 @@
         const s = document.createElement('a');
         s.href = url; s.download = f.fname; s.textContent = 'Save'; s.className = 'save';
         acts.appendChild(s);
+        if (stick) l.scrollTop = l.scrollHeight;
       },
       fail(msg) {
         card.dataset.pct = 'failed';
@@ -3487,6 +3557,22 @@
     const sb = $('shareScreen');
     if (sb) { sb.hidden = !CAN_SHARE; sb.disabled = !!why.screen; }
     text('shareScreenWhy', why.screen || 'Shows one tab or one window. Never the whole screen.');
+    // A film: the link field, ready for a YouTube link, so it can do what a link can.
+    set('shareFilmOpt', 'shareFilmBtn', 'shareFilmWhy', why.link, 'YouTube plays for both of you.');
+    const lw = $('shareLinkWhy');
+    if (lw) lw.classList.remove('said');
+  }
+  // A line under the link field that must be seen (the sheet otherwise keeps the link's usual line for a screen reader).
+  function linkSay(t) {
+    text('shareLinkWhy', t);
+    const lw = $('shareLinkWhy');
+    if (lw) lw.classList.add('said');
+  }
+  function shareFilm() {
+    const i = $('shareLinkInput');
+    if (!i || i.disabled) return;
+    linkSay('Paste a YouTube link here. It plays for both of you.');
+    i.focus();
   }
   // A pasted link: the address itself, or the first link inside some pasted words. "example.com" gets https://.
   function shareUrl(raw) {
@@ -3501,9 +3587,9 @@
   function shareLinkGo() {
     const inp = $('shareLinkInput');
     const why = shareWhy();
-    if (why.link) { text('shareLinkWhy', why.link); return; }
+    if (why.link) { linkSay(why.link); return; }
     const u = shareUrl(inp && inp.value);
-    if (!u) { text('shareLinkWhy', 'That isn’t a link. Copy the page’s address, then tap Paste.'); return; }
+    if (!u) { linkSay('That isn’t a link. Copy the page’s address, then tap Paste.'); return; }
     if (inp) inp.value = '';
     shareOpen(false);
     if (ytId(u)) {
@@ -3521,9 +3607,9 @@
     try {
       const t = await navigator.clipboard.readText();
       if (inp) inp.value = (t || '').trim();
-      if (!shareUrl(t)) text('shareLinkWhy', 'There’s no link to paste. Copy the page’s address first.');
+      if (!shareUrl(t)) linkSay('There’s no link to paste. Copy the page’s address first.');
     } catch (e) {
-      text('shareLinkWhy', 'Paste isn’t allowed here. Tap the box, then paste the link into it.');
+      linkSay('Paste isn’t allowed here. Tap the box, then paste the link into it.');
       if (inp) inp.focus();
     }
   }
@@ -3767,6 +3853,7 @@
     on('shareMediaInput', 'change', (e) => { const f = e.target; const file = f.files && f.files[0]; f.value = ''; shareOpen(false); sharePick(file); });
     on('shareFileBtn', 'click', () => { shareOpen(false); chatOpen(true); const f = $('fileInput'); if (f) f.click(); });
     on('shareScreen', 'click', () => { shareOpen(false); if (isGuest) guestShare(); else hostShare(); });
+    on('shareFilmBtn', 'click', shareFilm);
     on('linkBannerOpen', 'click', linkBannerOpen);
     on('linkBannerClose', 'click', () => linkBanner(''));
   }
@@ -5906,8 +5993,8 @@
     shareWire();
     on('changeBtn', 'click', () => { closeMore(); hostChange(); });
     on('stopBtn', 'click', () => hostStop());
-    document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => hostMode(b.dataset.mode)));
-    on('hostName', 'change', (e) => setHostName(e.target.value));
+    document.querySelectorAll('#modeToggle [data-mode]').forEach((b) => b.addEventListener('click', () => { hostMode(b.dataset.mode); setupVals(); }));
+    on('hostName', 'change', (e) => { setHostName(e.target.value); setupVals(); });
     on('newLinkBtn', 'click', newLink);
     on('joinBtn', 'click', () => guestJoin(true));
     on('joinNoMicBtn', 'click', () => guestJoin(false));
@@ -5962,6 +6049,7 @@
     const sp = $('soundPop');
     if (sp) sp.appendChild(soundPanel(document));
     on('soundBtn', 'click', fromTray(() => soundOpen(!!sp && sp.hidden)));
+    on('soundPopClose', 'click', () => { soundOpen(false); const mb = $('moreBtn'); if (mb) mb.focus(); });
     on('ytKeep', 'click', () => { if (W.id) ytSend({ id: W.id, at: ytWant(), play: true }); });
     on('ytStop', 'click', () => ytClose(false));
     document.addEventListener('pointerdown', (e) => {
