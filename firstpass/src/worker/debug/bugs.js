@@ -4,7 +4,7 @@
 //
 //   POST /api/bugs              {id (made by the page, so a resend is the same report), note, page, state, calls, crumbs,
 //                                errors, app, shot?: {mime, data (base64)}, extra?} -> {id, duplicate, traces}
-//   GET  /api/bugs?state=open   the reports, short (bugList)
+//   GET  /api/bugs?state=open   the reports, short (bugList); ?all=1 every user's, for the owner (admin) only
 //   GET  /api/bugs/:id          one report: its bundle, the traces it names, shot url (bugGet)
 //   GET  /api/bugs/:id/shot     the screenshot itself
 //   POST /api/bugs/:id/close    {fix, state?: fixed | dropped}
@@ -14,6 +14,10 @@
 // (state.project, from window.fpState()) is kept whole in bundle.project. Each named call's trace is pinned to the report.
 // Scrubbed before it is stored: no header, key, token, cookie or password field; addresses lose their query string, the
 // link's #k= key and the connector's token.
+//
+// Whose reports: each user reads and closes only their own, except the owner (users.admin, migrations/0002_admin.sql),
+// who can reach every user's by its id and list them all, each with the reporter's name, so the owner's Claude Code
+// fixes what she reports. The functions below take the caller's user id and {any: true} for the owner.
 import { HttpError, json, readJson } from '../http.js';
 import { BUILD } from '../version.js';
 import { fromRing, persistTrace, rawDb, TRACE_ID_RE } from './trace.js';
@@ -165,37 +169,50 @@ export async function saveReport(env, user, body, { now = Date.now() } = {}) {
 
 const safeLen = t => { try { return JSON.parse(t || '[]').length; } catch { return 0; } };
 
-/** The reports, newest first, short: {open, reports: [{id, at, source, page, note, shot, traces, state, fix}]}. */
-export async function bugList(env, user, { state = 'open', limit = BUG.listMax } = {}) {
+/**
+ * The reports, newest first, short: {open, reports: [{id, at, source, page, note, shot, traces, state, fix, reporter?}]}.
+ * all: every user's (the owner's view), each with the reporter's name; otherwise only this user's.
+ */
+export async function bugList(env, user, { state = 'open', limit = BUG.listMax, all = false } = {}) {
   const st = ['open', 'fixed', 'dropped', 'all'].includes(state) ? state : 'open';
+  const who = all ? null : user;
   const db = rawDb(env.DB);
-  const rows = (await db.prepare(`SELECT id, at, source, page, note, state, fix, trace_ids, shot_data IS NOT NULL AS shot
-    FROM bug_reports WHERE user_id = ?1 AND (?2 = 'all' OR state = ?2) ORDER BY at DESC LIMIT ?3`).bind(user, st, Math.min(Math.max(1, Number(limit) || BUG.listMax), 100)).all()).results || [];
-  const open = await db.prepare(`SELECT count(*) AS n FROM bug_reports WHERE user_id = ?1 AND state = 'open'`).bind(user).first('n');
+  const rows = (await db.prepare(`SELECT b.id, b.at, b.source, b.page, b.note, b.state, b.fix, b.trace_ids, b.shot_data IS NOT NULL AS shot, u.name AS reporter
+    FROM bug_reports b LEFT JOIN users u ON u.id = b.user_id WHERE (?1 IS NULL OR b.user_id = ?1) AND (?2 = 'all' OR b.state = ?2)
+    ORDER BY b.at DESC LIMIT ?3`).bind(who, st, Math.min(Math.max(1, Number(limit) || BUG.listMax), 100)).all()).results || [];
+  const open = await db.prepare(`SELECT count(*) AS n FROM bug_reports WHERE (?1 IS NULL OR user_id = ?1) AND state = 'open'`).bind(who).first('n');
   return { open: Number(open) || 0, reports: rows.map(r => ({ id: r.id, at: new Date(r.at).toISOString(), source: r.source, page: r.page,
-    note: String(r.note || '').slice(0, 160), shot: !!r.shot, traces: safeLen(r.trace_ids), state: r.state, ...(r.fix ? { fix: r.fix } : {}) })) };
+    note: String(r.note || '').slice(0, 160), shot: !!r.shot, traces: safeLen(r.trace_ids), state: r.state, ...(r.fix ? { fix: r.fix } : {}),
+    ...(all ? { reporter: r.reporter || 'someone no longer listed' } : {}) })) };
 }
 
-/** One report in full: its bundle, the traces pinned to it (each with its route), the screenshot's address. */
-export async function bugGet(env, user, id, { origin = null } = {}) {
+/** One report row (with its reporter's name): this user's, or, for the owner (any), anyone's with that id. */
+async function findReport(db, user, id, { any = false, columns = 'b.*' } = {}) {
+  return db.prepare(`SELECT ${columns}, b.user_id AS owner_id, u.name AS reporter FROM bug_reports b LEFT JOIN users u ON u.id = b.user_id
+    WHERE b.id = ?2 AND (b.user_id = ?1 OR ?3 = 1) ORDER BY (b.user_id = ?1) DESC, b.at DESC LIMIT 1`).bind(user, String(id || ''), any ? 1 : 0).first();
+}
+
+/** One report in full: its bundle, the traces pinned to it (each with its route), the screenshot's address, who sent it. */
+export async function bugGet(env, user, id, { origin = null, any = false } = {}) {
   const db = rawDb(env.DB);
-  const r = await db.prepare('SELECT * FROM bug_reports WHERE user_id = ?1 AND id = ?2').bind(user, String(id || '')).first();
+  const r = await findReport(db, user, id, { any });
   if (!r) throw new HttpError(404, 'There is no report with that id.');
   let bundle = {};
   try { bundle = JSON.parse(r.bundle_json || '{}'); } catch { bundle = {}; }
   const traces = ((await db.prepare(`SELECT id, at, kind, route, status, ms, why, error, trace_json FROM debug_traces WHERE user_id = ?3 AND (bug_id = ?1
-      OR id IN (SELECT value FROM json_each(?2))) ORDER BY at`).bind(r.id, r.trace_ids || '[]', user).all().catch(() => ({ results: [] }))).results || [])
+      OR id IN (SELECT value FROM json_each(?2))) ORDER BY at`).bind(r.id, r.trace_ids || '[]', r.owner_id).all().catch(() => ({ results: [] }))).results || [])
     .map(t => { let j = null; try { j = JSON.parse(t.trace_json); } catch { j = null; } return { id: t.id, at: new Date(t.at).toISOString(), kind: t.kind, route: t.route, status: t.status, ms: t.ms, why: t.why, error: t.error, trace: j }; });
   let want = [];
   try { want = JSON.parse(r.trace_ids || '[]'); } catch { want = []; }
   return { id: r.id, at: new Date(r.at).toISOString(), source: r.source, page: r.page, note: r.note, state: r.state, fix: r.fix || null,
+    reporter: { id: r.owner_id, name: r.reporter || 'someone no longer listed' },
     closed_at: r.closed_at ? new Date(r.closed_at).toISOString() : null, bundle, traces, missing_traces: want.filter(x => !traces.some(t => t.id === x)),
     shot: r.shot_data ? { mime: r.shot_mime, url: `${origin || ''}/api/bugs/${encodeURIComponent(r.id)}/shot` } : null };
 }
 
 /** The screenshot's bytes and type, or null. */
-export async function shotOf(env, user, id) {
-  const r = await rawDb(env.DB).prepare('SELECT shot_mime, shot_data FROM bug_reports WHERE user_id = ?1 AND id = ?2').bind(user, String(id || '')).first();
+export async function shotOf(env, user, id, { any = false } = {}) {
+  const r = await findReport(rawDb(env.DB), user, id, { any, columns: 'b.shot_mime, b.shot_data' });
   if (!r || !r.shot_data) return null;
   const bin = atob(r.shot_data), bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -203,15 +220,15 @@ export async function shotOf(env, user, id) {
 }
 
 /** Marks a report fixed (or dropped) with the commit or pull request that fixed it. */
-export async function bugClose(env, user, id, { fix = '', state = 'fixed', now = Date.now() } = {}) {
+export async function bugClose(env, user, id, { fix = '', state = 'fixed', now = Date.now(), any = false } = {}) {
   const st = state === 'dropped' ? 'dropped' : 'fixed';
   const f = String(fix || '').trim().slice(0, 300);
   if (st === 'fixed' && !f) throw new HttpError(400, 'Say what fixed it: the commit or the pull request.');
   const db = rawDb(env.DB);
-  const r = await db.prepare('SELECT id, state FROM bug_reports WHERE user_id = ?1 AND id = ?2').bind(user, String(id || '')).first();
+  const r = await findReport(db, user, id, { any, columns: 'b.id, b.state' });
   if (!r) throw new HttpError(404, 'There is no report with that id.');
-  await db.prepare('UPDATE bug_reports SET state = ?1, fix = ?2, closed_at = ?3 WHERE user_id = ?4 AND id = ?5').bind(st, f || null, now, user, r.id).run();
-  return { id: r.id, state: st, fix: f || null, was: r.state };
+  await db.prepare('UPDATE bug_reports SET state = ?1, fix = ?2, closed_at = ?3 WHERE user_id = ?4 AND id = ?5').bind(st, f || null, now, r.owner_id, r.id).run();
+  return { id: r.id, state: st, fix: f || null, was: r.state, reporter: r.reporter || 'someone no longer listed' };
 }
 
 // ---------------------------------------------------------------- routes
@@ -221,19 +238,21 @@ async function report(request, env, ctx, params, url, user) {
   return json(await saveReport(env, user.id, body));
 }
 async function listRoute(request, env, ctx, params, url, user) {
-  return json(await bugList(env, user.id, { state: url.searchParams.get('state') || 'open', limit: url.searchParams.get('limit') }));
+  const all = url.searchParams.get('all') === '1';
+  if (all && !user.admin) throw new HttpError(403, 'Only the person who runs First Pass sees everyone\'s reports.');
+  return json(await bugList(env, user.id, { state: url.searchParams.get('state') || 'open', limit: url.searchParams.get('limit'), all }));
 }
 async function getRoute(request, env, ctx, params, url, user) {
-  return json(await bugGet(env, user.id, params.id, { origin: url.origin }));
+  return json(await bugGet(env, user.id, params.id, { origin: url.origin, any: !!user.admin }));
 }
 async function shotRoute(request, env, ctx, params, url, user) {
-  const s = await shotOf(env, user.id, params.id);
+  const s = await shotOf(env, user.id, params.id, { any: !!user.admin });
   if (!s) throw new HttpError(404, 'That report has no screenshot.');
   return new Response(s.bytes, { headers: { 'Content-Type': s.mime, 'Cache-Control': 'no-store' } });
 }
 async function closeRoute(request, env, ctx, params, url, user) {
   const body = await readJson(request);
-  return json(await bugClose(env, user.id, params.id, { fix: body.fix, state: body.state }));
+  return json(await bugClose(env, user.id, params.id, { fix: body.fix, state: body.state, any: !!user.admin }));
 }
 
 export const routes = [

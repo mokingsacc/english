@@ -30,9 +30,10 @@ import toolspace from './toolspace.js';
 import settings from './settings.js';
 import panorama from './panorama.js';
 import deleteoption from './deleteoption.js';
+import site from './site.js';
 
 export const COMMANDS = [
-  icd, move, rotate, leg, erase, zoom, pan, u, redo, option, rename, properties, check, compare, exportDxf, layer, regen,
+  icd, move, site, rotate, leg, erase, zoom, pan, u, redo, option, rename, properties, check, compare, exportDxf, layer, regen,
   help, newProject, open, qsave, checkmyself, report, toolspace, settings, panorama, deleteoption,
 ];
 

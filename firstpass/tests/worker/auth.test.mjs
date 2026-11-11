@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup } from './helpers.mjs';
 import { sha256Hex, sameText } from '../../src/worker/http.js';
+import { makeUser, userSql, userByKey, _clearUserCache } from '../../src/worker/store/users.js';
 
 test('the health check needs no key; everything else under /api does', async () => {
   const t = await setup();
@@ -20,7 +21,7 @@ test('a wrong key is refused, a right one names its user', async () => {
   assert.equal((await t.call('GET', '/api/me', { key: 'short' })).status, 401);
   const me = await t.call('GET', '/api/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(me.json, { user: { id: t.alice.id, name: 'Alice' }, connector: true });
+  assert.deepEqual(me.json, { user: { id: t.alice.id, name: 'Alice' }, connector: true, admin: false });
   // The page key is not a connector token and the token is not a page key.
   assert.equal((await t.call('GET', '/api/me', { key: t.alice.token })).status, 401);
   assert.equal((await t.mcp('tools/list', {}, { token: t.alice.key })).status, 404);
@@ -78,4 +79,19 @@ test("one user cannot read or close another's problem report", async () => {
   assert.equal((await t.call('GET', '/api/bugs/report-0001', { key: t.bob.key })).status, 404);
   assert.equal((await t.call('POST', '/api/bugs/report-0001/close', { key: t.bob.key, body: { fix: 'x' } })).status, 404);
   assert.equal((await t.call('GET', '/api/bugs', { key: t.bob.key })).json.open, 0);
+});
+
+test('add-user\'s SQL: hashes only, and --admin marks the owner (everyone else is not)', async () => {
+  const t = await setup();
+  const owner = await makeUser('Owner', { admin: true });
+  const plain = await makeUser('Erin');
+  for (const u of [owner, plain]) {
+    const sql = userSql(u);
+    assert.ok(!sql.includes(u.key) && !sql.includes(u.token), 'no secret in the SQL');
+    t.db.exec(sql);
+  }
+  _clearUserCache();
+  assert.equal((await userByKey(t.DB, owner.key)).admin, true);
+  assert.equal((await userByKey(t.DB, plain.key)).admin, false);
+  assert.equal((await userByKey(t.DB, t.alice.key)).admin, false);
 });

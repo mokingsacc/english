@@ -6,6 +6,7 @@
     "test": "node --test \"tests/{engine,worker,page}/**/*.test.{mjs,js}\"",
     "test:web": "node --test --test-concurrency=1 \"tests/web/**/*.test.mjs\"",
     "dev": "node --disable-warning=ExperimentalWarning scripts/dev-server.mjs",
+    "test:workerd": "node scripts/test-workerd.mjs",
     "build": "node scripts/build.mjs",
     "map": "node scripts/agent-map.mjs"
   },

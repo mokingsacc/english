@@ -73,3 +73,6 @@
 .rd-label { font-weight: 600; }
 .rd-verify { color: var(--c-warn); }
 .rule-detail .btn { align-self: flex-start; margin-top: 2px; }
+.pref-list { flex: none; }
+.pref { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 24px; padding: 1px 6px 1px 8px; border-bottom: 1px solid #2d343e; background: var(--c-row); }
+.pref-sel { height: 21px; max-width: 150px; padding: 0 2px; border: 1px solid var(--c-line); border-radius: 2px; background: var(--c-field); color: var(--c-ink); font: inherit; }

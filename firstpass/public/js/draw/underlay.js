@@ -9,6 +9,9 @@
 // import; when it is missing, or no tile has come at all, the drawing goes on without the photo and the status bar says
 // "Photo not available". The tile maths is pure and tested (tests/page/underlay.test.mjs) against a fake crs; the
 // placement was measured in Chromium against the service's own picture to 0.05 screen pixel (CONTRACT.md, the photo).
+// The project's zone is read on every paint (epsgOf), since her site can move to another zone while the page is open;
+// each tile's corners are kept for the zone they were worked out in, and all of them are dropped when the zone changes.
+// The layers keep the photo in a bitmap of its own (draw/layers.js), so a grip drag does not draw the tiles again.
 
 import { MODEL_BG } from './colors.js';
 
@@ -84,6 +87,8 @@ export function createUnderlay({ tileUrl, epsgOf, onChange = () => {}, onStatus 
   now = () => performance.now(), later = (fn, ms) => setTimeout(fn, ms) }) {
   let crs = null, state = 'loading', fading = false, oks = 0, errs = 0;
   const tiles = new Map();
+  const placed = new Map();   // tile key to its corners in world feet, for the zone placedIn
+  let placedIn = null;
   const status = (s, text, why) => { state = s; onStatus({ state: s, text, why }); };
 
   importCrs().then((m) => {
@@ -131,9 +136,24 @@ export function createUnderlay({ tileUrl, epsgOf, onChange = () => {}, onStatus 
     return null;
   }
 
+  /** A tile's corners in the zone epsg, worked out once for that zone (all are dropped when the zone changes). */
+  function cornersOf(t, epsg) {
+    if (placedIn !== epsg) { placed.clear(); placedIn = epsg; }
+    const key = `${t.z}/${t.x}/${t.y}`;
+    let c = placed.get(key);
+    if (!c) {
+      c = tileWorld(t, crs, epsg);
+      placed.set(key, c);
+      while (placed.size > KEEP) placed.delete(placed.keys().next().value);
+    }
+    return c;
+  }
+
   return {
     state: () => state,
     busy: () => fading,
+    /** The zone the kept tile corners belong to (null before any paint). */
+    zone: () => placedIn,
     paint(ctx, cam, dpr, { on = true, lat = 38.5, veil = MODEL_BG } = {}) {
       fading = false;
       if (!on || !crs) return;
@@ -142,7 +162,7 @@ export function createUnderlay({ tileUrl, epsgOf, onChange = () => {}, onStatus 
       try { list = tilesFor(cam.visible(), crs, epsg, zoomFor(cam.k, lat)); } catch { return; }
       const t0 = now();
       const s = (p) => ({ x: cam.sx(p.x), y: cam.sy(p.y) });
-      const place = (t) => { const c = tileWorld(t, crs, epsg); const m = affineFor(s(c.nw), s(c.ne), s(c.sw)); ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr); };
+      const place = (t) => { const c = cornersOf(t, epsg); const m = affineFor(s(c.nw), s(c.ne), s(c.sw)); ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr); };
       // Tiles are drawn at full strength (where one reaches under the next nothing shows twice), and one veil of the
       // background colour over them all dims the photo to ALPHA so the drawing stays easy to read.
       let drew = 0;

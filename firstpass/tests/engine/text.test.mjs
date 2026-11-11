@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { evaluate, defaultRoundabout, defaultLeg, PARAMS, RULES, CHECKS } from '../../public/js/engine/index.js';
 import { shapes } from './helpers.mjs';
+import { mph1 } from '../../public/js/engine/format.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -87,6 +88,66 @@ test('an entry just over its limit reads as over: the speed is written finely en
     const written = Number(/(\d+(?:\.\d+)?) mph/.exec(lim)[1]);
     assert.ok(Math.max(...speeds) > written, `reads as over the limit: "${it.text}"`);
   }
+});
+
+test('a speed set against a limit or another speed has one decimal, or two when one would read the same as the limit', () => {
+  assert.equal(mph1(25.24), '25.2 mph');
+  assert.equal(mph1(25, 25), '25.0 mph');
+  assert.equal(mph1(25.04, 25), '25.04 mph');
+  assert.equal(mph1(24.96, 25), '24.96 mph');
+  assert.equal(mph1(23.71, 25), '23.7 mph');
+  assert.equal(mph1(10.04, 10), '10.04 mph');
+});
+
+// Every speed in the headline and in the entry, exit and consistency sentences, except a limit ("the limit of 25 mph").
+function comparedSpeeds(e) {
+  const texts = [e.headline.text];
+  for (const id of ['entry-speed', 'exit-speed', 'speed-consistency']) for (const it of e.checks.find((c) => c.id === id).items) texts.push(it.text);
+  return texts.flatMap((t) => [...t.replace(/the limit of [\d.]+ mph/g, '').matchAll(/(\d+(?:\.\d+)?) mph/g)].map((m) => m[1]));
+}
+
+test('the headline and the entry, exit and consistency sentences give every speed to a tenth of a mph', () => {
+  const r = defaultRoundabout();
+  r.legs[0].entryRadius = r.legs[0].entryRadius * 1.6;
+  for (const round of [defaultRoundabout(), r]) {
+    const e = evaluate(round, {});
+    const speeds = comparedSpeeds(e);
+    assert.ok(speeds.length > 10);
+    for (const v of speeds) assert.match(v, /^\d+\.\d{1,2}$/, `"${v} mph" has no decimal`);
+    // The headline's fastest entry is the entry check's value, as written.
+    assert.match(e.headline.text, new RegExp(`The fastest entry is ${mph1(e.checks.find((c) => c.id === 'entry-speed').value).replace('.', '\\.')},`));
+  }
+});
+
+test('a speed difference reads on the same side of its limits as its status', () => {
+  const warnAt = RULES.find((x) => x.id === 'speed.consistency.warn').value;
+  for (const round of Object.values(shapes()).concat([defaultRoundabout()])) {
+    const c = evaluate(round, {}).checks.find((x) => x.id === 'speed-consistency');
+    for (const it of c.items.filter((i) => i.value !== null)) {
+      const written = Math.max(...[...it.text.matchAll(/(?:changes|differs) by (\d+(?:\.\d+)?) mph/g)].map((m) => Number(m[1])));
+      assert.equal(written > warnAt, it.status !== 'pass', it.text);
+    }
+  }
+  // Pushed just past the warning line, the written difference is past it too.
+  const base = evaluate(defaultRoundabout(), {}).checks.find((x) => x.id === 'speed-consistency').value;
+  const c = evaluate(defaultRoundabout(), { 'speed.consistency.warn': base - 0.03 }).checks.find((x) => x.id === 'speed-consistency');
+  const warned = c.items.filter((i) => i.status === 'warn');
+  assert.ok(warned.length);
+  for (const it of warned) assert.ok([...it.text.matchAll(/by (\d+(?:\.\d+)?) mph/g)].some((m) => Number(m[1]) > base - 0.03), it.text);
+});
+
+test('a shape that only warns counts its warnings as the geometry check\'s value, not "0 problems"', () => {
+  const r = defaultRoundabout();
+  for (const l of r.legs) l.entryRadius = l.entryRadius * 2.5;
+  const g = evaluate(r, {}).checks.find((c) => c.id === 'geometry');
+  assert.equal(g.status, 'warn');
+  const warns = g.items.filter((i) => i.status === 'warn').length;
+  assert.ok(warns > 0);
+  assert.equal(g.value, warns);
+  assert.equal(g.unit, warns === 1 ? 'warning' : 'warnings');
+  const ok = evaluate(defaultRoundabout(), {}).checks.find((c) => c.id === 'geometry');
+  assert.equal(ok.status, 'pass');
+  assert.deepEqual([ok.value, ok.unit], [0, 'problems']);
 });
 
 test('no file of the engine, its tests or its demo names an AI model', () => {

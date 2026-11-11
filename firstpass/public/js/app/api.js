@@ -1,11 +1,13 @@
 // The only place the page talks to the server (CONTRACT.md has every route). The key comes from the link (#k=<key>),
 // is kept in localStorage as fp.key (the Report a problem sheet reads it there) and goes in the X-Key header on every
 // call. Every call answers { ok, status, data, error, offline }: error is the server's plain sentence, offline is true
-// when the server could not be reached at all. Nothing here throws.
+// when the server could not be reached at all, or answered ok with something that is not First Pass's JSON (data is
+// then null and nothing is read from it). Nothing here throws.
 //   const api = createApi();  api.hasKey();  await api.listProjects();  await api.postChange(id, body)
 // A new route: one method here that calls call().
 
 const KEY = 'fp.key';
+export const NOT_FIRST_PASS = 'The answer did not come from the First Pass server. A sign-in page on this network may be in the way.';
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -55,6 +57,10 @@ export function createApi({ base = '', timeoutMs = 10000 } = {}) {
     if (raw) return { ok: res.ok, status: res.status, data: res, error: res.ok ? null : await errorOf(res), offline: false };
     let data = null;
     try { data = await res.json(); } catch { data = null; }
+    // An answer that says ok but carries no JSON object did not come from First Pass: a sign-in page on a hotel or site
+    // network, a proxy's notice, or an answer cut off on a weak line. It counts as no server, so a change waits and is
+    // sent again, and nothing is read from it.
+    if (res.ok && (data === null || typeof data !== 'object')) return { ok: false, status: res.status, data: null, offline: true, error: NOT_FIRST_PASS };
     const error = res.ok ? null : (data && data.error) || `The server answered ${res.status}.`;
     // 5xx from a proxy or a dev server that is not there behaves like no server.
     const offline = res.status === 502 || res.status === 503 || res.status === 504;
@@ -73,8 +79,6 @@ export function createApi({ base = '', timeoutMs = 10000 } = {}) {
     poll: (id, since) => call('GET', `/api/projects/${encodeURIComponent(id)}/changes?since=${since}`, undefined, { timeout: 8000 }),
     undo: (id, body) => call('POST', `/api/projects/${encodeURIComponent(id)}/undo`, body),
     selfcheck: () => call('GET', '/api/selfcheck', undefined, { timeout: 15000 }),
-    exportUrl: (id, option) => `/api/projects/${encodeURIComponent(id)}/export/${encodeURIComponent(option)}.dxf`,
-    exportDxf: (id, option) => call('GET', `/api/projects/${encodeURIComponent(id)}/export/${encodeURIComponent(option)}.dxf`, undefined, { raw: true }),
     tileUrl: (z, x, y) => `${base}/tiles/naip/${z}/${x}/${y}`,
   };
 }

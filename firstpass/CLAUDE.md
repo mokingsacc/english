@@ -19,11 +19,19 @@ first. `CONTRACT.md` records each behaviour as built.
 - `FP_EZDXF_PYTHON=<a python with ezdxf> node --test tests/engine/dxf.test.mjs`: the DXF tests plus ezdxf's audit of
   the file (skipped without the variable; keep ezdxf in a virtual environment outside the repo).
 - `npm run build`: bundles `src/worker/index.js` to `public/_worker.js` (esbuild; the file is git-ignored).
+- `npm run test:workerd`: the Worker under the real runtime. Builds, makes a local D1 in `.wrangler/test-workerd`
+  (git-ignored) with the migrations and a test user, starts `wrangler pages dev` on port 8791 (`FP_PORT`), checks
+  health, a keyed project write and read, the connector, the tile rule and that `/` never runs the Worker, then stops
+  it. Not part of `npm test`; needs wrangler 4 (`npx`, or `FP_WRANGLER=<path to wrangler>`). Run it before a deploy
+  when the Worker's entry, routes or bindings changed.
 - `npm run map`: regenerates `docs/agent-map.md`. A test fails when it is stale: run it after adding a file, a route
   or a tool.
 - A new user: `node scripts/add-user.mjs "Name" --origin https://<site>` prints the SQL to run with wrangler and her two
-  links once (`--dev` adds the user to the dev database instead).
-- Deploy: `scripts/deploy.sh` (tests, build, remote migrations, pages deploy). Never deploy from a session unasked.
+  links once (`--dev` adds the user to the dev database instead; `--admin` makes the owner, who sees everyone's problem
+  reports).
+- Deploy: `sh scripts/deploy.sh` on the owner's Mac, one command the first time too: checks the Cloudflare sign-in,
+  tests, build, makes the D1 database (writing its id into `wrangler.toml`) and the Pages project when missing,
+  remote migrations, `pages deploy --branch main`, and prints the address. Never run it from a session.
 
 ## Where things are
 
@@ -40,8 +48,10 @@ with its first comment line. Read it to find a file. The overview:
   writer and `checkDxf`. The page's EXPORT command (`commands/export.js`) builds the file in her browser;
   `src/worker/api/export.js` serves the same text at `GET /api/projects/:id/export/<option>.dxf`.
 - `public/js/draw/underlay.js` the aerial photo under the drawing (tiles placed through `crs.js`).
-- `src/worker/index.js` the router: keyed `/api/*` (header `X-Key`), the connector at `/mcp/<token>`, `/tiles/*`,
-  static files otherwise. Each `src/worker/api/*.js` file exports its `routes`.
+- `src/worker/index.js` the entry (it exports only `default`; workerd refuses other exports, and
+  `tests/worker/bundle.test.mjs` checks the bundle): keyed `/api/*` (header `X-Key`), the connector at `/mcp/<token>`,
+  `/tiles/*`, static files otherwise. `src/worker/routes.js` holds the route table, `KEY_HEADER` and
+  `WORKER_PREFIXES`; each `src/worker/api/*.js` file exports its `routes`.
 - `src/worker/store/` the database side: `ops.js` (the change ops, their checks and exact inverses, pure),
   `change.js` (applyChange, undoChange, the poll, history), `projects.js`, `users.js`.
 - `src/worker/mcp/` the connector: `registry.js` lists the tools, one file each in `mcp/tools/`; `instructions.js`
@@ -78,7 +88,11 @@ copy and the server's), so a geometry problem replays as a test fixture. Traces 
 SQL text (never the values), time and error; they are kept when a call failed, ran slow, or a report asked. The setting
 `debug_capture` (`PUT /api/settings`) turns it all off.
 
-The sheet's Copy for Claude puts a prompt on her clipboard ("In Claude Code: fix this First Pass problem. Report <id>:
-..."). On that prompt, follow `claude/skills/fix-bugs/SKILL.md`: read it with the connector's `bugs {action: "get", id}`,
-say "What I understood: ..." and wait, find the handler from the trace's route in `docs/agent-map.md`, write a failing
+She does not fix problems herself: she sends the sheet's Copy for Claude text (a prompt, "In Claude Code: fix this
+First Pass problem. Report <id>: ...") to the person who runs First Pass, and the owner's Claude Code fixes it with the
+owner's connector or key. The owner is the admin user (`add-user.mjs --admin`): `bugs` and `GET /api/bugs?all=1` show
+every user's reports with the reporter's name; everyone else sees only their own.
+
+On that prompt, follow `claude/skills/fix-bugs/SKILL.md`: read it with the connector's `bugs {action: "get", id}`, say
+"What I understood: ..." and wait, find the handler from the trace's route in `docs/agent-map.md`, write a failing
 test from the bundle's project, fix, `npm test`, then close the report with the link.

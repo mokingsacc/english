@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup } from './helpers.mjs';
+import { makeUser, insertUser } from '../../src/worker/store/users.js';
 import { scrubBundle, cleanUrl, reportOf } from '../../src/worker/debug/bugs.js';
 import { _hooks } from '../../src/worker/debug/trace.js';
 
@@ -50,7 +51,7 @@ test('a report round trip: saved with its traces and the project, listed, read i
   assert.equal(shot.headers.get('content-type'), 'image/png');
 
   const close = await t.call('POST', '/api/bugs/rep-00000001/close', { body: { fix: 'https://github.com/x/y/pull/7' } });
-  assert.deepEqual(close.json, { id: 'rep-00000001', state: 'fixed', fix: 'https://github.com/x/y/pull/7', was: 'open' });
+  assert.deepEqual(close.json, { id: 'rep-00000001', state: 'fixed', fix: 'https://github.com/x/y/pull/7', was: 'open', reporter: 'Alice' });
   assert.equal((await t.call('GET', '/api/bugs')).json.open, 0);
   assert.equal((await t.call('POST', '/api/bugs/rep-00000001/close', { body: {} })).status, 400);
 });
@@ -104,6 +105,52 @@ test('the connector\'s bugs tool: list, get with the screenshot as an image, clo
   assert.match(missing.summary, /no report with that id/);
   const drop = await t.tool('bugs', { action: 'close', id: 'rep-00000007', state: 'dropped', fix: 'Not a bug: the option had no legs selected' });
   assert.equal(drop.data.state, 'dropped');
+});
+
+test('the owner (admin) sees every user\'s reports with the reporter\'s name; everyone else only their own', async () => {
+  const t = await setup();
+  const owner = await makeUser('Owner', { admin: true });
+  await insertUser(t.DB, owner);
+  // Alice reports, with a kept trace; Bob reports too.
+  const traceId = '0af7651916cd43dd8448eb211c80319c';
+  const p = await t.newProject();
+  await t.call('GET', `/api/projects/${p.id}`, { headers: { traceparent: `00-${traceId}-b7ad6b7169203331-01`, 'X-Trace-Keep': '1' } });
+  await t.settle();
+  await t.call('POST', '/api/bugs', { body: { id: 'rep-alice001', note: 'The circle jumped', state: { project_id: p.id }, calls: [{ u: `/api/projects/${p.id}`, id: traceId }], shot: { mime: 'image/png', data: PNG } } });
+  await t.call('POST', '/api/bugs', { key: t.bob.key, body: { id: 'rep-bob00001', note: 'Export did nothing' } });
+
+  // Alice sees only her own, cannot ask for all, and cannot read Bob's.
+  const mine = (await t.call('GET', '/api/bugs')).json;
+  assert.deepEqual(mine.reports.map(r => r.id), ['rep-alice001']);
+  assert.equal(mine.reports[0].reporter, undefined);
+  const refused = await t.call('GET', '/api/bugs?all=1');
+  assert.equal(refused.status, 403);
+  assert.equal(refused.json.error, 'Only the person who runs First Pass sees everyone\'s reports.');
+  assert.equal((await t.call('GET', '/api/bugs/rep-bob00001')).status, 404);
+  assert.equal((await t.call('POST', '/api/bugs/rep-bob00001/close', { body: { fix: 'x' } })).status, 404);
+  assert.equal((await t.tool('bugs', { action: 'get', id: 'rep-bob00001' })).isError, true);
+
+  // The owner: every report with its reporter's name, each read in full (its traces too) and closed.
+  const all = (await t.call('GET', '/api/bugs?all=1', { key: owner.key })).json;
+  assert.equal(all.open, 2);
+  assert.deepEqual(all.reports.map(r => [r.id, r.reporter]).sort(), [['rep-alice001', 'Alice'], ['rep-bob00001', 'Bob']]);
+  assert.deepEqual((await t.call('GET', '/api/bugs', { key: owner.key })).json.reports, [], 'without all=1, the owner\'s own list');
+  const got = (await t.call('GET', '/api/bugs/rep-alice001', { key: owner.key })).json;
+  assert.deepEqual(got.reporter, { id: t.alice.id, name: 'Alice' });
+  assert.deepEqual(got.traces.map(x => x.id), [traceId]);
+  assert.equal(got.bundle.server_project.doc.name, 'Sample roundabout');
+  assert.equal((await t.call('GET', '/api/bugs/rep-alice001/shot', { key: owner.key })).headers.get('content-type'), 'image/png');
+
+  const list = await t.tool('bugs', { action: 'list' }, { token: owner.token });
+  assert.match(list.summary, /^2 open reports from everyone; 2 listed\.$/);
+  const get = await t.tool('bugs', { action: 'get', id: 'rep-bob00001' }, { token: owner.token });
+  assert.equal(get.isError, false, get.summary);
+  assert.match(get.summary, /^Report rep-bob00001 \(open\) from Bob on /);
+  const close = await t.tool('bugs', { action: 'close', id: 'rep-bob00001', fix: 'https://github.com/x/y/pull/9' }, { token: owner.token });
+  assert.equal(close.summary, 'Report rep-bob00001 from Bob is now fixed.');
+  const bobs = (await t.call('GET', '/api/bugs?state=all', { key: t.bob.key })).json.reports;
+  assert.deepEqual(bobs.map(r => [r.id, r.state, r.fix]), [['rep-bob00001', 'fixed', 'https://github.com/x/y/pull/9']]);
+  assert.equal((await t.call('GET', '/api/me', { key: owner.key })).json.admin, true);
 });
 
 test('traces: failures are kept, quick good calls are not, the kill switch turns it all off, and a broken recorder changes nothing', async () => {

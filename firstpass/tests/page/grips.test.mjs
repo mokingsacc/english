@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluate, defaultRoundabout, primPoint } from '../../public/js/engine/index.js';
 import { GRIPS, gripPoints, gripPaths } from '../../public/js/app/grips/index.js';
-import { curbArc, curveGrip, gripPlace, NEAR_END, radiusFromDrag, along, bearingOf } from '../../public/js/app/grips/frame.js';
+import { curbArc, curveGrip, gripPlace, NEAR_END, radiusFromDrag, along, bearingOf, gearedAlong, MAX_PER_PX } from '../../public/js/app/grips/frame.js';
 import { BEYOND_NOSE } from '../../public/js/app/grips/bearing.js';
 import { indexOf, legIdOf, whereBox, roughExtents } from '../../public/js/app/model-index.js';
 
@@ -61,7 +61,7 @@ test('the width grips sit where the engine measures the width and keep the asked
   }
 });
 
-test('the radius grips sit on the built curb curve, clear of the width grip, and keep the asked radius where they are', () => {
+test('the radius grips sit where each curve starts on the road curb, on the built curve, and keep the asked radius there', () => {
   for (const leg of round.legs) {
     const L = legG(leg.id);
     for (const [id, a, b, field] of [['entry-radius', 'T1', 'T2', 'entryRadius'], ['exit-radius', 'T1x', 'T2x', 'exitRadius']]) {
@@ -69,20 +69,18 @@ test('the radius grips sit on the built curb curve, clear of the width grip, and
       const arc = curbArc(result, L[a], L[b]);
       assert.ok(arc, `${leg.id} has its ${id} curve in the curb layer`);
       const [p] = g.points(ctx);
-      const on = [NEAR_END, 0.5, 1 - NEAR_END].map((t) => primPoint(arc, t));
-      assert.ok(on.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-9), `${id} of ${leg.id} is at the middle of its curve or near an end`);
+      assert.deepEqual(p, L[a], `${id} of ${leg.id} is where the curve leaves the road curb`);
       close(Math.hypot(p.x - arc.c.x, p.y - arc.c.y), arc.r, 1e-6);
       close(arc.r, L[`${field}Built`], 1e-6, 'the curve is the built radius');
       const w = L[id === 'entry-radius' ? 'entryWidthPoint' : 'exitWidthPoint'];
-      const chord = Math.hypot(arc.a.x - arc.b.x, arc.a.y - arc.b.y);
-      assert.ok(Math.hypot(p.x - w.x, p.y - w.y) > 0.2 * chord, `${id} of ${leg.id} is clear of the width grip`);
+      assert.ok(Math.hypot(p.x - w.x, p.y - w.y) > 10, `${id} of ${leg.id} is clear of the width grip`);
       const s = g.start(ctx);
       close(g.value(ctx, p, s), leg[field], 1e-6);
-      // Away from the corner the curve rounds is bigger, toward it smaller.
+      // Out along the road curb is bigger, in toward the circle smaller.
+      const u = { x: s.J.x / Math.hypot(s.J.x, s.J.y), y: s.J.y / Math.hypot(s.J.x, s.J.y) };
       const c = curveGrip(result, L[a], L[b]).corner;
-      const away = { x: p.x + (p.x - c.x) * 0.2, y: p.y + (p.y - c.y) * 0.2 };
-      const toward = { x: p.x - (p.x - c.x) * 0.2, y: p.y - (p.y - c.y) * 0.2 };
-      assert.ok(g.value(ctx, away, s) > leg[field] && g.value(ctx, toward, s) < leg[field], `${id} of ${leg.id}`);
+      assert.ok((p.x - c.x) * u.x + (p.y - c.y) * u.y > 0, 'a bigger radius moves the grip away from the corner');
+      assert.ok(g.value(ctx, { x: p.x + 3 * u.x, y: p.y + 3 * u.y }, s) > leg[field] && g.value(ctx, { x: p.x - 3 * u.x, y: p.y - 3 * u.y }, s) < leg[field], `${id} of ${leg.id}`);
     }
   }
   close(radiusFromDrag(50, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 5 }), 100, 1e-12);
@@ -153,6 +151,31 @@ test('each leg grip follows the hand: moved a little, the grip lands near the ha
       }
     }
   }
+});
+
+test('a radius grip asks at most a foot of radius for each screen pixel; zoomed in, it stays under the hand', () => {
+  const ix = indexOf(result);
+  // The first view of a laptop's drawing area: the roundabout framed in about 800 by 420 px.
+  const k = Math.min(800 / (ix.firstView.x1 - ix.firstView.x0), 420 / (ix.firstView.y1 - ix.firstView.y0));
+  for (const leg of round.legs) {
+    for (const [id, field] of [['entry-radius', 'entryRadius'], ['exit-radius', 'exitRadius']]) {
+      const g = grip(id);
+      const ctx = { round, leg, result, k };
+      const s = g.start(ctx);
+      const [p] = g.points(ctx);
+      const n = Math.hypot(s.J.x, s.J.y);
+      const u = { x: s.J.x / n, y: s.J.y / n };
+      const onePx = 1 / k;   // feet of hand for one screen pixel
+      const dv = g.value(ctx, { x: p.x + u.x * onePx, y: p.y + u.y * onePx }, s) - leg[field];
+      assert.ok(dv > 0 && dv <= 1 + 1e-9, `${id} of ${leg.id}: ${dv.toFixed(2)} ft of radius for a pixel at the first view`);
+      // Zoomed in far enough, the value is the one that puts the curve's start under the hand.
+      const near = { ...ctx, k: 40 / n };
+      close(g.value(near, { x: p.x + u.x, y: p.y + u.y }, s), g.value({ round, leg, result }, { x: p.x + u.x, y: p.y + u.y }, s), 1e-9);
+    }
+  }
+  close(gearedAlong(10, { x: 0, y: 0 }, { x: 0, y: 0.5 }, { x: 0, y: 4 }), 18, 1e-12, 'with no screen, the grip follows the hand');
+  close(gearedAlong(10, { x: 0, y: 0 }, { x: 0, y: 0.5 }, { x: 0, y: 4 }, 0.5), 12, 1e-12, 'at half a pixel a foot, a foot of radius a pixel');
+  assert.equal(MAX_PER_PX, 1);
 });
 
 test('the nose and bearing grips sit on the drawn leg; the nose moves the island length by the distance dragged', () => {

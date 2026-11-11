@@ -1,7 +1,7 @@
 // Small routes about the server and the person using it: health (no key), who am I, and the server settings (only
 // debug_capture, the kill switch for request traces).
 //   GET /api/health                          -> {ok: true}                       no key needed
-//   GET /api/me                              -> {user: {id, name}, connector: true|false}
+//   GET /api/me                              -> {user: {id, name}, connector: true|false, admin: true|false}
 //   GET /api/settings                        -> {settings: {debug_capture: true|false}}
 //   PUT /api/settings {debug_capture}        -> {settings}
 import { json, readJson, HttpError } from '../http.js';
@@ -12,7 +12,7 @@ async function health() {
 }
 
 async function me(request, env, ctx, params, url, user) {
-  return json({ user: { id: user.id, name: user.name }, connector: !!user.connector });
+  return json({ user: { id: user.id, name: user.name }, connector: !!user.connector, admin: !!user.admin });
 }
 
 async function readSettings(db) {

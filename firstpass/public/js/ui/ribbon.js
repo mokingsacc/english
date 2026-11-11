@@ -4,11 +4,16 @@
 // contrasting colour ("Roundabout: Option A", "Leg: North leg") and opens it. Every button comes from the commands
 // registry (commands/index.js ribbonEntries); pressing one runs its command, which echoes on the command line.
 // A new tab or panel: one row in TABS (a panel a command names that is not listed is added at the end of its tab).
+// A short window (under SHORT_PX high, as a laptop at 150 per cent scaling) folds the ribbon to its tab row so the drawing
+// keeps its room; a tab then opens its panels over the drawing until she presses a button or clicks elsewhere, and the
+// arrow at the right keeps them open on this browser.
 
 import { h, ico, setText, setClass } from './dom.js';
 import { tipFor } from './tooltip.js';
 import { openMenu } from './menu.js';
 import { prefs } from '../app/prefs.js';
+
+export const SHORT_PX = 700;
 
 export const TABS = [
   { id: 'home', label: 'Home', panels: ['Create', 'Modify', 'Layers', 'View', 'Palettes'] },
@@ -46,13 +51,37 @@ export function createRibbon(app, root, entries) {
     }
   }
   tabsEl.append(h('span', { class: 'rb-spacer' }), minBtn);
+
+  // Folded in a short window unless she pinned the panels open there; minimized by her own choice otherwise.
+  const shortQuery = typeof matchMedia === 'function' ? matchMedia(`(max-height: ${SHORT_PX - 1}px)`) : null;
+  const isShort = () => !!(shortQuery && shortQuery.matches);
+  function fold() {
+    const short = isShort();
+    setClass(root, 'folded', short && !prefs.get('ribbon.shortOpen', false));
+    setClass(root, 'minimized', !short && prefs.get('ribbon.min', false));
+    if (!root.classList.contains('folded')) peek(false);
+    const shut = root.classList.contains('folded') || root.classList.contains('minimized');
+    minBtn.dataset.tip = shut ? 'Show the ribbon' : 'Minimize the ribbon';
+    minBtn.dataset.tipText = shut ? 'Keeps the panels open under the tab names.' : 'Shows only the tab names, to give the drawing more room. Click again to show the panels.';
+  }
   minBtn.addEventListener('click', () => {
-    const min = !root.classList.contains('minimized');
-    setClass(root, 'minimized', min);
-    prefs.set('ribbon.min', min);
+    if (isShort()) prefs.set('ribbon.shortOpen', !prefs.get('ribbon.shortOpen', false));
+    else prefs.set('ribbon.min', !root.classList.contains('minimized'));
+    fold();
     app.layout();
   });
-  if (prefs.get('ribbon.min', false)) root.classList.add('minimized');
+  if (shortQuery && shortQuery.addEventListener) shortQuery.addEventListener('change', () => { fold(); app.layout(); });
+
+  // The panels opened over the drawing from a folded ribbon: they close on a button, a click elsewhere, or Esc.
+  const away = (e) => { if (!root.contains(e.target)) peek(false); };
+  const esc = (e) => { if (e.key === 'Escape') peek(false); };
+  function peek(on) {
+    if (on === root.classList.contains('peek')) return;
+    setClass(root, 'peek', on);
+    const f = on ? 'addEventListener' : 'removeEventListener';
+    document[f]('pointerdown', away, true);
+    document[f]('keydown', esc, true);
+  }
 
   function panel(name, list) {
     const row = h('div', { class: 'rb-panel-body' });
@@ -73,6 +102,7 @@ export function createRibbon(app, root, entries) {
     if (e.report) attrs['data-report-btn'] = '';
     const b = h('button', attrs, ico(e.icon, size === 'large' ? 32 : 16), h('span', { class: 'rb-label', text: e.label }));
     b.addEventListener('click', () => {
+      peek(false);
       if (e.report) { app.echoCommand(e.command); return; }   // report.js opens the sheet from data-report-btn
       app.runCommand(e.command, e.args || []);
     });
@@ -87,12 +117,15 @@ export function createRibbon(app, root, entries) {
 
   function select(id, byHand) {
     if (!panes.has(id)) id = 'home';
+    const again = id === active;
     active = id;
     for (const [k, p] of panes) p.hidden = k !== id;
     for (const [k, b] of tabBtns) { setClass(b, 'active', k === id); b.setAttribute('aria-selected', k === id ? 'true' : 'false'); }
     if (byHand && !id.startsWith('ctx-')) { prefs.set('ribbon.tab', id); beforeCtx = null; }
-    if (byHand && root.classList.contains('minimized')) { root.classList.remove('minimized'); prefs.set('ribbon.min', false); app.layout(); }
+    if (byHand && root.classList.contains('folded')) peek(!(again && root.classList.contains('peek')));
+    else if (byHand && root.classList.contains('minimized')) { prefs.set('ribbon.min', false); fold(); app.layout(); }
   }
+  fold();
   select(active.startsWith('ctx-') ? 'home' : active);
 
   let shownCtx = null;

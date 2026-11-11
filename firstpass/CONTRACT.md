@@ -20,7 +20,8 @@ Woodland: 38.618855, -121.729697, x 6638894.89, y 1987310.58 in zone 2 (from `cr
 roads: bearings N 0.7, E 90.6, S 180.7, W 270.6 (grid bearings; true north there is 359.83). See "The aerial photo on
 the page" for how it was measured. `SAMPLE` (`src/worker/store/projects.js`) and `SAMPLE_SITE`
 (`public/js/app/sample.js`) hold the same values (`tests/page/sample-site.test.mjs`). At most 12 options, 500 projects
-per user.
+per user. `epsg` is one of California's zones, 2225 to 2230; anything else is refused. `POST /api/projects {site:
+{lat, lon}}` places the new project there as `set_site` does (below), unless a `round` with its own centre is given.
 
 ## Changes, undo and redo (11 Nov 2026)
 
@@ -33,6 +34,7 @@ base_seq?, batch_id?})`. Ops (`store/ops.js`):
   `rename_option {option, name}`.
 - `add_leg {option, bearing?, id?, name?, leg?, index?}`, `remove_leg {option, leg}`.
 - `set_rule {rule, value}` (value null puts the standard value back).
+- `set_site {lat, lon, epsg?, option?}`: see "Placing the drawing at a site".
 
 Each op is checked against the engine's params and rules tables and refused in plain words that name the parameter by
 its label and unit. Stored ops are resolved (explicit, each carrying `was`, the value it replaced), so the inverse is
@@ -46,9 +48,14 @@ random rounds). Up to 60 ops in one change.
 - `base_seq`: the seq the sender's copy was at. When later changes touched the same parts, the change is refused
   (409 `{error, conflict: true, seq}`); changes to other parts go through.
 - Undo is a new change with the inverse ops, summary "Undo: <step>", `undo_of` its seq, and the original marked
-  `undone`. Undo without a seq takes the newest change that is neither undone nor an undo. Undoing an undo is a redo
-  ("Redo: <step>") and clears the mark. When a later change touched the same values, undo is refused: "That was
-  changed again since; undo the later change first."
+  `undone`. Undo without a seq takes the newest change that is neither undone nor an undo, by anyone: hers or
+  Claude's. Undoing an undo is a redo ("Redo: <step>") and clears the mark. When a later change touched the same
+  values, undo is refused: "That was changed again since; undo the later change first."
+- The undo answer names the change it took back (11 Nov 2026, from the review: the page's U after Claude's change
+  undoes Claude's, so the page must be able to say so): `POST /api/projects/:id/undo` and the connector's `undo` both
+  carry `undone: {seq, actor, summary}` (actor `user` or `claude`), on a resend too. The connector's text adds ", her
+  change" when it took back hers: "Undo: Her circle (change 1, her change). To put it back, call undo with seq N."
+  (`tests/worker/polling.test.mjs`).
 - Two writers at once: the changes table's key (project, seq) is the lock; the loser retries (up to 4 times).
 
 ## The poll (11 Nov 2026)
@@ -66,6 +73,10 @@ sends it as the `X-Key` header. The connector's address is `https://<site>/mcp/<
 both and prints them once. A missing or wrong key answers 401: "This needs your First Pass link, the one with #k= in
 it. Open First Pass from that link again."
 
+The owner (11 Nov 2026, migration 0002): `users.admin`, 0 unless `add-user.mjs --admin` made the user. The person who
+runs First Pass is the admin; it only widens what the problem reports show (see "Problem reports and traces").
+`GET /api/me` answers `{user, connector, admin}`.
+
 Other page links: `#p=<project id>&o=<option id>` opens an option; `&do=export-dxf` runs EXPORT once the option is
 open, so the DXF downloads (the connector's export_link gives this link; see "The DXF export"). The page then drops
 `do=` from the address, so a reload does not download again.
@@ -77,14 +88,28 @@ from the edge. `routes.test.mjs` fails when a route the router handles is outsid
 JSON with `Cache-Control: no-store`; errors are `{error: "<plain sentence>"}` (500s never show the database's words).
 The full list with handlers is in `docs/agent-map.md`.
 
+The route table lives in `src/worker/routes.js` (`KEY_HEADER`, `WORKER_PREFIXES`, `ROUTES`, `routeTable`, `findRoute`)
+and the entry `src/worker/index.js` exports only `default` (11 Nov 2026, from the review: workerd refuses a Pages
+entry module with other exports). `tests/worker/bundle.test.mjs` builds the bundle as `scripts/build.mjs` does and
+checks that `default` is its only export and `node:async_hooks` its only import, then calls `/api/health` on it. When
+the Worker hands a request to the static files (a path outside `_routes.json` that reached it anyway) the answer
+carries `X-FP-Via: worker`, so a test can tell the edge's files from the Worker's.
+
 ## The connector (11 Nov 2026)
 
 MCP over HTTP, JSON-RPC, stateless, at `/mcp/<token>`. Tools: `get_project`, `get_option`, `change_option`,
-`add_option`, `compare_options`, `sweep`, `undo`, `export_link`, `bugs`. Each result is a short summary sentence then
+`add_option`, `compare_options`, `sweep`, `undo`, `set_site`, `export_link`, `bugs`. Each result is a short summary sentence then
 the data as compact JSON. The tools that change the drawing take `reason`, which becomes the step name she sees;
 `change_option` answers the headline before and after. `sweep` changes nothing (at most 25 values). `undo` without a
 seq undoes Claude's own newest change. Instructions stay under 2,000 characters and tools/list under 12,000 (tests).
 Changes made through the connector have actor `claude` and reach the page through the poll.
+
+- `export_link` (11 Nov 2026, from the review): "Open this in the browser where First Pass is open: <link> . It opens
+  <option> and downloads it as a DXF for Civil 3D.", data `{link, project, option, export_ready: true}`; the link is
+  `#p=<id>&o=<option>&do=export-dxf` (see "Keys, users and links").
+- `set_site {lat, lon, epsg?, option?, reason, project?}` (11 Nov 2026): the `set_site` op as one change Claude can
+  undo: "Placed the drawing at 34.0522, -118.2437 in California zone 5 (EPSG 2229); its coordinates were in zone 2.
+  Say "undo" to put it back." Data: the site, the epsg and every option's new centre (`tests/worker/site.test.mjs`).
 
 `get_option`'s legs (`mcp/common.js legsView`, 11 Nov 2026): each leg's R1 to R5 and V1 to V5, and `as_built` when the
 engine built the leg other than asked: `entryRadius`, `exitRadius`, `entryWidth`, `exitWidth`, `splitterLength` as
@@ -97,8 +122,24 @@ by more than 0.05 ft are listed; a leg built as asked has no `as_built` (`tests/
 `GET /tiles/naip/:z/:x/:y` (no key; `.jpg` on y allowed) gives a 256 px JPEG of the Web Mercator tile from the USGS
 NAIP Plus image service (public domain). Zoom 12 to 20 only (400 otherwise). Tiles are kept 30 days in the Cache API
 (`X-Tile-Cache: hit|miss`, `Cache-Control: public, max-age=2592000, immutable`). When the service fails, answers something other
-than an image, or takes over 8 s: 502 with a plain sentence and `no-store`. The route does not depend on the engine's
+than an image, or takes over 20 s: 502 with a plain sentence and `no-store`. The route does not depend on the engine's
 coordinate code.
+
+The tile rule (11 Nov 2026, from the review: an open tile proxy anyone could use costs the owner's Worker requests):
+the checks run in this order, before any fetch.
+
+1. A bad address is 400.
+2. Only First Pass's own page: when the browser sends `Sec-Fetch-Site` it must be `same-origin`; without it, an
+   `Origin` or `Referer` on the same host as the request. Anything else is 403 "Aerial photos are served to First
+   Pass's own page only."
+3. Only over California: the tile must overlap the box lat 32.4 to 42.1, lon -124.6 to -114.0, worked out at each
+   zoom from the box's corner tiles. Anything else is 404 "Aerial photos are served over California only."
+4. The cache, then the service with a 20 s limit (the service sometimes takes over 8 s; the page retries after 2, 6 and
+   20 s).
+
+Tests: `tests/worker/tiles.test.mjs` (403 for no header, `cross-site`, `same-site`, `none`, another site's Origin or
+Referer and Origin `null`; the California box at every zoom from 12 to 20, never asking the service outside it; the
+20 s limit).
 
 ## The map conversion (11 Nov 2026)
 
@@ -132,11 +173,12 @@ the oldest version with drawing units ($INSUNITS) and light polylines with true 
 use opens without converting. CRLF line ends, group codes right-aligned in 3 columns, every table with its standard
 entries, both block records and layouts, handles and owners on every object, `$HANDSEED` past the last handle.
 
-- Units and header: `$INSUNITS` 2 (feet), `$MEASUREMENT` 0, `$LUNITS` 2 with 3 places, `$EXTMIN`/`$EXTMAX` and
-  `$LIMMIN`/`$LIMMAX` the drawing's extents, the active view zoomed to them. R2000 has no code for US survey feet, so
-  the file says feet; the numbers are US survey feet as the note says. Open the file directly, or insert it at scale 1:
-  inserting it into a drawing whose units are set to US survey feet would scale it by 0.999998 (about 13 ft at state
-  plane distances from the origin).
+- Units and header: `$MEASUREMENT` 0, `$LUNITS` 2 with 3 places, `$EXTMIN`/`$EXTMAX` and `$LIMMIN`/`$LIMMAX` the
+  drawing's extents, the active view zoomed to them. `$INSUNITS` (11 Nov 2026, from the review): `units: 'survey'`, the
+  default, marks the drawing in US survey feet (21), the unit of the state plane grid, so it inserts at scale 1 into a
+  drawing set to US survey feet; `units: 'international'` marks it in feet (2), for a drawing set to feet, and the note
+  says so. The numbers are the same either way. (Before, the file always said feet, and inserting it into a drawing
+  set to US survey feet scaled it by 0.999998, about 13 ft at state plane distances from the origin.)
 - Coordinates are state plane feet exactly as the engine gives them (no shift, no scale), each written as the shortest
   decimal that reads back to the same double.
 - Layers (CAD colour index): FP-LANDTAKE 6, FP-SIGHT 200, FP-INSCRIBED 9, FP-APRON 30, FP-ISLAND 4, FP-SPLITTER 3,
@@ -162,6 +204,8 @@ entries, both block records and layouts, handles and owners on every object, `$H
   It asks which file type only when the registry has more than one.
 - The server: `GET /api/projects/:id/export/<option>.dxf` (`src/worker/api/export.js`) answers the same text with
   `Content-Type: application/dxf`, `Content-Disposition: attachment; filename="<project>-<option>.dxf"`, `no-store`.
+  `?units=survey` (the default) or `?units=international` is passed to the writer; anything else is 400 "Units are
+  survey (US survey feet, the usual for California state plane drawings) or international (international feet)."
   404 "Ask for an option's drawing as <option id>.dxf, such as A.dxf." or "There is no option X in this project."; 422
   for a shape that cannot be built; 401 without a key; another user's project is 404. The server's date is UTC, the
   page's her own. Built in the same JS engine the text is byte for byte the page's; between a browser and the server
@@ -211,8 +255,24 @@ Measured on the dev server in Chromium (1440 by 900, pixel ratio 2), 11 Nov 2026
 ## Self check (11 Nov 2026)
 
 `GET /api/selfcheck` answers `{ok, lines: [{id, ok, text}]}`, one plain line each for: the database, users, the
-engine (evaluates the default roundabout), aerial tiles (fetches one known tile) and the connector (whether this
-user has a connector link). Each failing line says what to do.
+engine (evaluates the default roundabout), aerial tiles and the connector (whether this user has a connector link).
+Each failing line says what to do, in her words (11 Nov 2026, from the review): no file names, commands or error
+text, which go only into the request trace, kept as failed (`why: 'error'`) though the answer is 200.
+
+- Database: "The database answers. You have N projects." or "The database is not set up. Tell the person who runs
+  First Pass."
+- Users: "N people have a key, and yours works." or "No one has a key yet. ..." or "The list of people with keys could
+  not be read. ..." (each ending "Tell the person who runs First Pass.").
+- Engine: "The maths engine works out the default roundabout: N checks in X ms." or "The maths engine could not work
+  out the default roundabout. Use Report a problem so it can be fixed."
+- Tiles: the sample site's zoom 16 tile, through the same cache as the page's tiles (`cachedTile`, 6 s limit), so a
+  check costs the service nothing once the tile is cached: "Aerial photos load (USGS NAIP)." or "The aerial photo
+  service did not answer just now. The drawing works without photos; try again later."
+- Connector: "Your Claude connector link is set up." or "You have no Claude connector link yet. Ask the person who
+  runs First Pass for one, then add it in Claude under Settings, Connectors."
+
+Tests: `tests/worker/selfcheck.test.mjs` (the raw error is in the kept trace and in no line; no line names a file or
+a command; a second check takes the tile from the cache).
 
 ## Problem reports and traces (11 Nov 2026)
 
@@ -229,9 +289,123 @@ screenshot, Save, Copy for Claude. Reports that cannot be sent wait in localStor
   dropped, `#k=` and `/mcp/<token>` cut out of every string. The same id twice answers `duplicate: true`.
 - `GET /api/bugs`, `GET /api/bugs/:id`, `GET /api/bugs/:id/shot`, `POST /api/bugs/:id/close {fix, state?}`; the
   connector's `bugs {action: list | get | close}` does the same (get attaches the screenshot as an image).
+- Who sees which (11 Nov 2026, from the review: she reports, the owner's Claude Code fixes): everyone sees only their
+  own reports. The admin (see "Keys, users and links") sees everyone's: `GET /api/bugs?all=1` (403 "Only the person
+  who runs First Pass sees everyone's reports." for anyone else) lists them with `reporter` (the name); get, shot and
+  close take any report's id; get answers `reporter: {id, name}` and close `reporter` (the name); the traces in a
+  report are the reporter's. The
+  connector's `bugs` for the admin lists everyone's ("N open reports from everyone; M listed."), and get and close
+  name the reporter ("Report X from Bob is now fixed.").
 - Traces: every `/api` and `/mcp` call gets an `X-Trace-Id`. A trace (route, SQL text without values, times, error) is
   kept 7 days when the call failed, took over 3 s, or the sheet asked (`X-Trace-Keep: 1`, only for a valid key); a
   report pins the ones it names.
 - `PUT /api/settings {debug_capture: false}` turns traces off (no `X-Trace-Id`; report.js then stops sending
   traceparent for an hour). The setting is for the whole server.
 - Fixing: `claude/skills/fix-bugs/SKILL.md`.
+
+## Placing the drawing at a site (11 Nov 2026)
+
+From the review: there was no way to put the drawing at her own site; every project sat at the sample's crossing.
+
+The op `set_site {lat, lon, epsg?, option?}` (one definition, `placeSite` in `public/js/app/ops.js`, which the
+server's `store/ops.js` imports, so the page and the server place it the same way):
+
+- The site is a latitude and longitude in degrees as Google Maps copies them. The zone is `crs.js zoneFor(lat, lon)`
+  unless `epsg` is given, and must be 2225 to 2230. `doc.site` becomes `{lat, lon}` to 6 decimals and `doc.epsg` the zone.
+- Every option's centre moves by one shift, so the option named (default the first; the page sends the one on screen)
+  lands exactly on the site (`fromLatLon(zone, lat, lon)`, to 0.01 ft). The offsets between options are kept; bearings,
+  sizes and legs are not touched. Bearings are grid bearings, so after a move to another zone she turns the legs to
+  her roads as usual.
+- A place outside California is refused, from a polygon of the state with a small margin (`CALIFORNIA` in ops.js),
+  checked before any conversion: "36.1699, -115.1398 is outside California. First Pass draws on California's state
+  plane grid, so give a place in California, such as 34.0522, -118.2437." Other refusals: no numbers ("Give the site
+  as a latitude and a longitude in degrees, such as ..."), the numbers swapped ("A latitude is between -90 and 90
+  degrees. Give the latitude first, then the longitude, such as ..."), another zone ("The zone must be one of
+  California's state plane zones, EPSG 2225 to 2230 (zones 1 to 6).") and an unknown option.
+- Stored resolved with `was: {site, epsg, centers}`, so undo puts back the site, the zone and every centre exactly. The
+  step name: "Placed the drawing at 34.0522, -118.2437 in California zone 5 (EPSG 2229), was zone 2". The same site
+  again is "Nothing changed". It touches `site` and each option's centre, so once a later change moved a centre or
+  added an option, its undo is refused (409, "That was changed again since; undo the later change first.").
+- The page: SITE (alias LOCATE; ribbon Home, Modify, Site) asks "Enter the site as latitude, longitude", reads decimal
+  degrees, hemisphere letters or degrees, minutes and seconds (a lone number asks "Enter the longitude"), asks again
+  with the reason when it is refused, applies the op for the option on screen, zooms to the roundabout and the command
+  line gives the step name with the zone. NEW asks the same after the name; Enter keeps the sample site.
+- The connector: `set_site` (see "The connector"). The instructions say to use it with the place she gives.
+- Tests: `tests/worker/site.test.mjs` (Los Angeles is zone 5 and San Francisco zone 3, offsets and bearings kept,
+  undo step by step, refusals for Las Vegas, Reno, Tijuana, Portland, New York, a bad epsg, swapped numbers), and
+  `tests/page/ops.test.mjs` and `commands.test.mjs` (the page and the server agree; SITE, LOCATE and NEW).
+
+## The entry and exit construction (11 Nov 2026, after four engine passes)
+
+As built in `public/js/engine/roundabout/`. Per leg, entry side; the exit mirrors it with the exit radius and width:
+
+- The outer curb runs parallel to the leg's axis at `splitterWidth/2 + entryWidth`. The entry curb curve is tangent to
+  it and to the inscribed circle, so a wider entry moves the outer curb out and raises the entry speed.
+- The splitter island's entry edge is its body line (at `splitterWidth/2`) down to where the curve starts, then the arc
+  concentric with the curb curve (curb radius plus entry width) to the inscribed circle. The entry width, measured
+  square to the curb from where the island meets the circle, is exact by construction.
+- Upstream, the lane flares from the approach width at the island's nose to the entry width, no steeper than 1 in
+  `geom.noseTaper`. The island is built longer than asked when it needs to be, and the geometry check says so.
+- When one leg's entry curve and the next leg's exit curve overlap on the circle, both radii are shortened by one
+  factor until they meet; the built radii are reported (the connector's `as_built`) and the geometry check warns in
+  words.
+- Levers checked: entry width, entry radius, right offset and circulating width raise R1; left offset and a bigger
+  circle lower it; approach width barely matters.
+
+Rules added with it (`rules.js`, method values, not from a manual):
+
+- `geom.noseMargin` 10 ft: the least distance a splitter island runs on past where the farther of its entry and exit
+  curb curves begins.
+- `geom.noseTaper` 6 ft per ft: the least taper length beyond that point for each foot an outer curb or the island's
+  edge shifts sideways.
+- `fp.station.sag` 0.038 ft: the largest sag of a fastest path between two of its points on a curve just clear of the
+  central island; it spaces the points out on larger circles.
+
+`converged` (each movement's `solver: {iterations, converged, stopReason, gradNorm, gradTol}` in `evaluate`'s result):
+true when the fastest path's last pass stopped on one of its own stopping tests: the gradient test (`gradient`), the
+bending energy no longer falling (`objective`), or no descent left in floating point (`no descent`) with the projected
+gradient within 100 times its tolerance, where the solve has reached rounding. False after running out of iterations
+or any other stop. It says the path is solved as tightly as the stopping rules ask, not that the speeds are right
+(`tests/engine/paths.test.mjs`).
+
+## Speeds and counts in the check text (11 Nov 2026)
+
+From the review: "enters at 25 mph, above the limit of 25 mph" when the speed was 25.2.
+
+- Wherever a speed is set against a limit or another speed it has one decimal (`format.js mph1`): the headline's
+  fastest entry and largest difference, the entry speed check (V1 and V5), the exit speed check, and both sentences
+  of the speed consistency check (the speeds and their difference). When one decimal would read the same as the number
+  it is compared with while the two differ, two decimals: "25.04 mph, above the limit of 25 mph". Limits and figures
+  that are not compared stay whole (`mph`).
+- The geometry check's value and unit count what it found: "1 warning" or "2 warnings" when it only warns, "1 problem"
+  or "N problems" when it fails.
+- Tests: `tests/engine/text.test.mjs` (every compared speed has a decimal; a difference reads on the same side of its
+  limit as its status; the warning count).
+
+## Running under workerd, and the deploy (11 Nov 2026)
+
+`npm run test:workerd` (`scripts/test-workerd.mjs`; not part of `npm test`, since it needs wrangler 4 from npx or
+`FP_WRANGLER`): builds, makes a fresh local D1 in `.wrangler/test-workerd` (git-ignored) with the migrations and one
+test owner (`d1 execute --local` with `add-user`'s SQL; the key and token are never printed), starts `wrangler pages
+dev` on port 8791 (`FP_PORT`) with no directory and no `--d1`, and checks: `/api/health`; `/api/me` with the key (so
+DB is bound); the sample made, changed and read back; the connector's initialize, tools/list and a tools/call of
+`get_project`; a tile outside California 404 and one asked by another site 403; `/` served as the page without
+`X-FP-Via` (the Worker did not run) while an unknown `/api` path gets the Worker's JSON 404. Then it stops the server.
+Run on 11 Nov 2026 with wrangler 4.160.1: 6 of 6 pass.
+
+What the run showed about the D1 binding: `pages dev` reads `wrangler.toml` from the folder it runs in; from
+`firstpass/` it binds `env.DB (firstpass)` from `[[d1_databases]]` with or without a directory argument, so no
+`--d1` is needed there (run from another folder there is no config, which is where `--d1` was needed). `wrangler
+pages deploy` reads the same file (it has `pages_build_output_dir`) and sends its bindings, compatibility date and
+flags with the Worker, so production binds DB with no dashboard setting, as long as `database_id` is the real one.
+
+`scripts/deploy.sh` (from the review: it must work the first time from one command on the owner's Mac). Never run from
+a session. In order: Node 22.13 or newer, `npm ci` when the build tools are missing; the Cloudflare sign-in
+(`wrangler whoami --json`; not signed in: "Wrangler is not signed in to Cloudflare, or Cloudflare could not be
+reached. Sign in with: npx wrangler@4 login"; more than one account: it lists them and asks for
+`CLOUDFLARE_ACCOUNT_ID`); the project and database names from `wrangler.toml` (the project name must be lowercase
+letters, digits and dashes and must not hold the Mac's user name, since it becomes `<name>.pages.dev`); `npm test`
+and the build, before anything changes in Cloudflare; the D1 database made if none has that name (location western
+North America) and its id written over the placeholder in `wrangler.toml` (an id that differs from the account's
+stops it); the Pages project made if missing, production branch `main`; the remote migrations; `pages deploy
+--branch main`; and the production address, read back from the project's domains.

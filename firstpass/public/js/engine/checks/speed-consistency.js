@@ -2,7 +2,7 @@
 // the leg's main path is a left turn), and against the speed of the left turn circulating across the entry
 // (the conflicting V4). Large differences make crashes between entering and circulating cars more likely.
 
-import { mph, theLeg, sentence } from '../format.js';
+import { mph, mph1, theLeg, sentence } from '../format.js';
 
 export default {
   id: 'speed-consistency',
@@ -15,6 +15,8 @@ export default {
     const items = [];
     const flagged = [];
     let worst = null;
+    // A difference is written finely enough to read on the right side of the nearer of the two limits.
+    const diff = (d) => mph1(d, Math.abs(d - warnAt) <= Math.abs(d - failAt) ? warnAt : failAt);
     for (const L of ctx.legs) {
       const v1 = L.V.V1;
       const parts = [];
@@ -22,13 +24,13 @@ export default {
       if (v1 !== null && L.Vcirc !== null) {
         const d = Math.abs(v1 - L.Vcirc);
         leg = Math.max(leg ?? 0, d);
-        parts.push(`the speed changes by ${mph(d)} from entry (${mph(v1)}) to the circulating curve (${mph(L.Vcirc)})`);
+        parts.push(`the speed changes by ${diff(d)} from entry (${mph1(v1)}) to the circulating curve (${mph1(L.Vcirc)})`);
       }
       if (v1 !== null && L.Vconf !== null) {
         const d = Math.abs(v1 - L.Vconf);
         leg = Math.max(leg ?? 0, d);
         const who = L.conflictingKind === 'left' ? 'left turn' : 'through traffic';
-        parts.push(`the entry differs by ${mph(d)} from the ${who} from ${theLeg(L.upstreamName)} circulating across it (${mph(L.Vconf)})`);
+        parts.push(`the entry differs by ${diff(d)} from the ${who} from ${theLeg(L.upstreamName)} circulating across it (${mph1(L.Vconf)})`);
       }
       if (leg === null) {
         items.push({ leg: L.id, status: 'info', value: null, text: sentence(`${theLeg(L.name)} has no pair of speeds to compare.`) });

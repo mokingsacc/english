@@ -69,3 +69,18 @@ test('refusals in plain words: no such option, a file ending it does not make, a
   assert.equal(r.status, 422);
   assert.match(r.json.error, /^This option cannot be built, so there is no drawing to export\. /);
 });
+
+test('units: survey feet by default, international feet when asked, anything else refused in plain words', async () => {
+  const t = await setup();
+  const p = await t.newProject();
+  const plain = await t.call('GET', `/api/projects/${p.id}/export/A.dxf`);
+  const survey = await t.call('GET', `/api/projects/${p.id}/export/A.dxf?units=survey`);
+  assert.equal(survey.status, 200);
+  assert.equal(survey.text, plain.text);
+  const intl = await t.call('GET', `/api/projects/${p.id}/export/A.dxf?units=international`);
+  assert.equal(intl.status, 200);
+  assert.equal(intl.headers.get('content-type'), 'application/dxf');
+  const bad = await t.call('GET', `/api/projects/${p.id}/export/A.dxf?units=metres`);
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /^Units are survey .* or international/);
+});

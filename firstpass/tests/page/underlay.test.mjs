@@ -112,6 +112,37 @@ test('with a converter, loaded tiles are drawn with their transform and fade in'
   assert.equal(u.busy(), false);
 });
 
+test('the zone is read on every paint, and tile corners worked out for another zone are not used again', async () => {
+  // A converter whose state plane shifts with the zone, so a tile placed in zone 2 lands elsewhere in zone 3.
+  const zoned = {
+    toLatLon: (epsg, x, y) => fakeCrs.toLatLon(epsg, x - (epsg - 2226) * 1000, y),
+    fromLatLon: (epsg, lat, lon) => { const p = fakeCrs.fromLatLon(epsg, lat, lon); return { x: p.x + (epsg - 2226) * 1000, y: p.y }; },
+  };
+  let epsg = 2226;
+  const images = [];
+  const makeImage = () => { const img = { set src(v) { this._src = v; images.push(this); } }; return img; };
+  const u = createUnderlay({ tileUrl: (z, x, y) => `${z}/${x}/${y}`, epsgOf: () => epsg, importCrs: async () => zoned, makeImage, now: () => 1e9 });
+  await new Promise((r) => setTimeout(r, 0));
+  const transforms = [];
+  const ctx = { save() {}, restore() {}, setTransform: (...m) => transforms.push(m), drawImage() {}, set globalAlpha(v) { void v; }, fillRect() {} };
+  const at = (x0) => createCamera({ cx: x0, cy: Y0, k: 1, w: 300, h: 200 });
+  u.paint(ctx, at(X0), 1, { lat: LAT0 });
+  for (const img of images) img.onload();
+  transforms.length = 0;
+  u.paint(ctx, at(X0), 1, { lat: LAT0 });
+  assert.equal(u.zone(), 2226);
+  const inZone2 = transforms.find((m) => m.length === 6 && m[0] !== 1);
+  // Her site moves to zone 3: the same place on the ground is 1000 ft further east there, and so is the tile.
+  epsg = 2227;
+  transforms.length = 0;
+  u.paint(ctx, at(X0 + 1000), 1, { lat: LAT0 });
+  assert.equal(u.zone(), 2227, 'the new zone is read');
+  const inZone3 = transforms.find((m) => m.length === 6 && m[0] !== 1);
+  assert.ok(inZone2 && inZone3);
+  close(inZone3[4], inZone2[4], 1e-6, 'the tile sits on the same screen spot, placed in the new zone');
+  close(inZone3[5], inZone2[5], 1e-6);
+});
+
 // A fake clock and timers, images that load or fail when told, and a canvas that logs what is drawn.
 function rig() {
   let t = 1000;

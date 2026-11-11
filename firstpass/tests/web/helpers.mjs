@@ -90,10 +90,10 @@ function staticFile(pathname) {
 const EXPECTED = [/\/js\/engine\/crs\.js/, /\/tiles\/naip\//];
 
 /** A page on the project (fresh browser storage), with console errors collected. */
-export async function openPage(server, project, { width = 1440, height = 900, dsf = 1, key = server.key, browser = null } = {}) {
+export async function openPage(server, project, { width = 1440, height = 900, dsf = 1, key = server.key, browser = null, touch = false } = {}) {
   const { chromium } = playwright();
   const b = browser || await chromium.launch();
-  const context = await b.newContext({ viewport: { width, height }, deviceScaleFactor: dsf });
+  const context = await b.newContext({ viewport: { width, height }, deviceScaleFactor: dsf, hasTouch: touch });
   const page = await context.newPage();
   const errors = [];
   page.on('console', (m) => {

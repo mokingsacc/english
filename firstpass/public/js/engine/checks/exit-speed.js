@@ -1,7 +1,7 @@
 // Exit speed (for information): the fastest speed of cars leaving by each leg (V3), which matters for people
 // crossing the exit.
 
-import { mph, theLeg, sentence } from '../format.js';
+import { mph1, theLeg, sentence } from '../format.js';
 
 export default {
   id: 'exit-speed',
@@ -22,7 +22,7 @@ export default {
       if (worst === null || L.exitSpeed > worst) worst = L.exitSpeed;
       items.push({
         leg: L.id, status: 'info', value: L.exitSpeed,
-        text: sentence(`Cars leave by ${theLeg(L.name)} at up to ${mph(L.exitSpeed)}, on the path from ${theLeg(nameOf.get(m.from))}.`),
+        text: sentence(`Cars leave by ${theLeg(L.name)} at up to ${mph1(L.exitSpeed)}, on the path from ${theLeg(nameOf.get(m.from))}.`),
       });
     }
     return {

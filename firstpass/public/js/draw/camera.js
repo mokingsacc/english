@@ -92,6 +92,12 @@ export function wheelFactor(deltaY, deltaMode = 0) {
   return Math.exp(-clamp(px, -600, 600) * 0.00223);
 }
 
+/** A trackpad pinch's zoom factor for one event (the wheel with Ctrl, in small pixel steps): the browser gives
+ * deltaY as 100 times the log of the pinch's scale, so this follows the fingers. */
+export function pinchFactor(deltaY) {
+  return Math.exp(-clamp(deltaY, -50, 50) * 0.01);
+}
+
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
 }

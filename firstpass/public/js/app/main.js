@@ -243,11 +243,13 @@ export function boot() {
     onChange: () => { photoV++; app.request('view'); },
     onStatus: (s) => store.set({ photo: { state: s.state, text: s.text, why: s.why } }, 'photo'),
   });
+  // The photo for the layers (draw/layers.js keeps it in its own bitmap): on when the Photo display layer is on, placed
+  // in the project's zone at its site's latitude, both read again on every paint (her site can move to another zone).
+  const siteLat = () => { const p = store.get().project; return p && p.site && Number.isFinite(p.site.lat) ? p.site.lat : 38.5; };
   app.underlayFace = {
-    paint: (c, cam, dpr) => {
-      const p = store.get().project;
-      underlay.paint(c, cam, dpr, { on: !!store.get().display.photo, lat: p && p.site ? p.site.lat : 38.5 });
-    },
+    on: () => !!store.get().display.photo,
+    key: () => `${photoV}|${store.get().project ? store.get().project.epsg : ''}|${siteLat()}`,
+    paint: (c, cam, dpr) => underlay.paint(c, cam, dpr, { on: !!store.get().display.photo, lat: siteLat() }),
     busy: () => underlay.busy(),
   };
 
@@ -332,6 +334,13 @@ export function boot() {
       if (why === 'load') { frames.forget(); views.length = 0; restoreView(project); writeHash(); evaluator.warm(project.options[0].round, project.rules); }
     },
   });
+
+  // Her input keeps the poll at its quick pace; the window's focus asks the server at once (sync.js). Moves are counted
+  // at most once a second, so a drag does no more work than before.
+  for (const t of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(t, () => sync.active(), { capture: true, passive: true });
+  let lastMove = 0;
+  window.addEventListener('pointermove', (e) => { if (e.timeStamp - lastMove > 1000) { lastMove = e.timeStamp; sync.active(); } }, { capture: true, passive: true });
+  window.addEventListener('focus', () => sync.wake());
 
   function restoreView(project) {
     layers.size(camera);

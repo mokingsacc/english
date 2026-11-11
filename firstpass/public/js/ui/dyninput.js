@@ -1,13 +1,18 @@
 // Dynamic input: the small box by the cursor while a grip is dragged, showing the value being changed (its label from
 // the parameters table) in a field she can type into. Enter takes the typed value, Tab moves to the next field (the
-// centre grip has easting and northing), Esc puts the value back. It also carries the problem sentence when the shape
-// cannot be built.
+// centre grip has easting and northing), Esc puts the value back. A radius shows as it is built; when the radius asked
+// for and the one built differ, a line under the field says both ("asked 250.00 ft, built 132.00 ft"). The box stays
+// inside the drawing: near an edge it goes to the other side of the cursor (its size is measured when it opens and when
+// the note shows or goes, never on every move).
 import { h, setText } from './dom.js';
 
 export function createDynInput(app, host) {
   const box = h('div', { class: 'dyn', hidden: true, role: 'group', 'aria-label': 'Dynamic input' });
   host.append(box);
-  let fields = [], active = 0, typed = false, spec = null;
+  let fields = [], active = 0, typed = false, spec = null, noteEl = null;
+  let bw = 0, bh = 0;   // the box's size, measured when it opens and when the note shows or goes
+  const measure = () => { bw = box.offsetWidth; bh = box.offsetHeight; };
+  const EDGE = 8;
 
   function open(s) {
     spec = s;
@@ -20,9 +25,11 @@ export function createDynInput(app, host) {
       box.append(row);
       return { input, f };
     });
-    box.append(h('div', { class: 'dyn-hint', text: 'Type a value, then Enter. Tab for the next field, Esc to put it back.' }));
+    noteEl = h('div', { class: 'dyn-note', hidden: true, role: 'status' });
+    box.append(noteEl, h('div', { class: 'dyn-hint', text: 'Type a value, then Enter. Tab for the next field, Esc to put it back.' }));
     active = 0; typed = false;
     box.hidden = false;
+    measure();
   }
 
   function key(e) {
@@ -52,13 +59,25 @@ export function createDynInput(app, host) {
       input.value += ch;
       return true;
     },
-    /** Move the box beside the cursor and show the values (not while she is typing into it). */
-    place(sx, sy, values) {
+    /** Move the box beside the cursor and show the values and the note, { values, note } (not while she is typing into
+     * it); null keeps what is shown. */
+    place(sx, sy, shown) {
       if (box.hidden) return;
-      box.style.transform = `translate(${Math.round(sx + 20)}px, ${Math.round(sy + 22)}px)`;
-      if (!typed) fields.forEach(({ input }, i) => { if (values[i] !== undefined && input.value !== values[i]) input.value = values[i]; });
+      if (shown && !typed) {
+        fields.forEach(({ input }, i) => { if (shown.values[i] !== undefined && input.value !== shown.values[i]) input.value = shown.values[i]; });
+        if (noteEl) {
+          setText(noteEl, shown.note || '');
+          if (noteEl.hidden !== !shown.note) { noteEl.hidden = !shown.note; measure(); }
+        }
+      }
+      const W = app.camera.w, H = app.camera.h;
+      let x = sx + 20, y = sy + 22;
+      if (x + bw > W - EDGE) x = sx - 20 - bw;
+      if (y + bh > H - EDGE) y = sy - 22 - bh;
+      x = Math.max(EDGE, Math.min(W - bw - EDGE, x));
+      y = Math.max(EDGE, Math.min(H - bh - EDGE, y));
+      box.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     },
     typing: () => typed,
-    setLabel(t) { void setText; void t; },
   };
 }

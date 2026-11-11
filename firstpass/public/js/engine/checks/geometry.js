@@ -3,6 +3,9 @@
 
 import { num, whole, theLeg, sentence } from '../format.js';
 
+// The check's value reads as what it counts: "1 problem", "2 problems", or, when it only warns, "1 warning".
+const count = (n, word) => ({ value: n, unit: n === 1 ? word : `${word}s` });
+
 export default {
   id: 'geometry',
   title: 'The shape can be built',
@@ -12,7 +15,7 @@ export default {
   run(ctx) {
     if (!ctx.ok) {
       return {
-        status: 'fail', value: ctx.problems.length, unit: 'problems', limit: 0,
+        status: 'fail', ...count(ctx.problems.length, 'problem'), limit: 0,
         items: ctx.problems.map((text) => ({ leg: null, status: 'fail', value: null, text })),
         explain: 'The roundabout cannot be built as it is set out, so nothing else can be checked yet.',
         fix: 'Change the settings named in each problem. Each one says which leg or value is the cause.',
@@ -36,8 +39,7 @@ export default {
     const n = ctx.movements.length;
     return {
       status,
-      value: failedMoves.length,
-      unit: 'problems',
+      ...(status === 'warn' ? count(ctx.warnings.length, 'warning') : count(failedMoves.length, 'problem')),
       limit: 0,
       items,
       explain: failedMoves.length

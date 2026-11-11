@@ -1,13 +1,16 @@
 // Check myself: one plain line each, green or red with what to do when red, for the data service, the Claude connector,
 // the maths engine (a self-test on the page), the DXF export, the aerial photos, and the speed measured on this
-// machine. The server's lines come from GET /api/selfcheck. A new line: one function that answers { id, ok, title,
-// text } and one entry in runSelfCheck.
+// machine. Every line is in her words: no commands, file names or codes. Speed is judged on the frames she sees (90
+// percent within about 34 ms), not on how long the maths takes, since that runs beside the page. The server's lines
+// come from GET /api/selfcheck. A new line: one function that answers { id, ok, title, text } and one entry in
+// runSelfCheck.
 import { evaluate, defaultRoundabout, CHECKS, speedFromRadius, stoppingSightDistance, resolveRules } from '../engine/index.js';
 import { toDxf, checkDxf } from '../engine/export/dxf.js';
 import { buildExport } from '../commands/export.js';
 import { percentiles } from './evaluator.js';
 
-const NO_KEY = 'This page has no key, so it works on its own and saves nothing. Open First Pass from your link (the one with #k= in it).';
+const NO_KEY = 'This page has no key, so it works on its own and saves nothing. Open First Pass from the link you were given.';
+export const FRAME_OK_MS = 34;   // 90 percent of frames within this: the drawing keeps up with the hand
 
 /** The engine's self-test: formula values that never change, and the default roundabout built, checked and symmetric. */
 export function engineSelfTest() {
@@ -40,7 +43,7 @@ export async function runSelfCheck(app) {
 
   // 1. The data service.
   if (!has) lines.push({ id: 'data', ok: false, title: 'Data service', text: NO_KEY });
-  else if (down) lines.push({ id: 'data', ok: false, title: 'Data service', text: 'The First Pass server cannot be reached, so changes are not being saved. Check the internet connection; if it is fine, the server needs starting (npm run dev on the dev machine).' });
+  else if (down) lines.push({ id: 'data', ok: false, title: 'Data service', text: 'The First Pass server cannot be reached, so changes are not being saved. Check the internet connection. If it is working, tell the person who looks after First Pass.' });
   else if (!sc.ok) lines.push({ id: 'data', ok: false, title: 'Data service', text: `The server answered with a problem: ${sc.error}` });
   else {
     const db = server('database'), us = server('users');
@@ -96,7 +99,7 @@ function exportLine(app) {
   return {
     id: 'export', ok: true, title: 'DXF export',
     text: `The DXF export works on this page: the default roundabout made a well formed drawing (${n.LINE} lines, ${n.ARC} arcs, ${n.LWPOLYLINE} outlines and paths, ${n.TEXT} labels) in ${t.ms.toFixed(1)} ms.`
-      + (here.ok ? ` EXPORT saves ${opt.name} as ${here.file}.` : ` ${opt ? opt.name : 'The option on screen'} cannot be saved yet: ${here.error}`),
+      + (here.ok ? ` ${opt.name} can be saved as a drawing too.` : ` ${opt ? opt.name : 'The option on screen'} cannot be saved yet: ${here.error}`),
   };
 }
 
@@ -108,21 +111,34 @@ function speedLine(app) {
   for (let i = 0; i < 15; i++) { const t0 = performance.now(); evaluate(round, rules); times.push(performance.now() - t0); }
   const ev = percentiles(times);
   const m = app.meter.summary();
+  const beside = app.evaluator.async();
   // A drag frame paints the whole model again, so the drawing is timed painting it from scratch, not from the quick frames
   // that only lay the cursor over a kept picture.
   const bench = app.layers.bench ? app.layers.bench(15) : [];
   const draws = percentiles(bench.length ? bench : app.layers.stats.draws.slice(-120));
-  const drawMs = draws ? draws.p50 : 0;
-  // With the worker, a drag frame draws the last answer while the next one is worked out beside the page, so each of
-  // the two has the whole frame; without it they share one frame.
-  const beside = app.evaluator.async();
-  const ok = (beside ? Math.max(ev.p50, drawMs) < 16 : ev.p50 + drawMs < 16) && (!m.frames || m.frames.p90 < 34);
-  const frames = m.frames && m.frames.n > 10 ? ` While you moved the drawing, frames came every ${m.frames.p50} ms (90 percent within ${m.frames.p90} ms, 99 percent within ${m.frames.p99} ms).` : ' Move or zoom the drawing for a few seconds, then run this again to measure the frames too.';
-  const how = beside
-    ? `Working out the drawing takes ${ev.p50.toFixed(1)} ms, done beside the page while you drag, and drawing it takes ${draws ? drawMs.toFixed(1) : '-'} ms, each against a budget of 16 ms a frame.`
-    : `Working out the drawing takes ${ev.p50.toFixed(1)} ms and drawing it ${draws ? drawMs.toFixed(1) : '-'} ms, ${(ev.p50 + drawMs).toFixed(1)} ms a frame against a budget of 16 ms.`;
+  return speedVerdict({ frames: m.frames && m.frames.n > 10 ? m.frames : null, draw: draws, evaluate: ev, beside });
+}
+
+/**
+ * The speed line from what was measured: judged on the frames she saw while moving the drawing (90 percent within
+ * FRAME_OK_MS); before she has moved it, on a frame's own work timed here (drawing from scratch, plus the maths when it
+ * cannot run beside the page). Pure, for tests.
+ */
+export function speedVerdict({ frames = null, draw = null, evaluate: ev = null, beside = true }) {
+  const mathsWords = ev ? ` Working out the shape takes ${ev.p50.toFixed(1)} ms${beside ? ', beside the page, so it does not hold up the drawing' : ''}.` : '';
+  if (frames) {
+    const ok = frames.p90 < FRAME_OK_MS;
+    return {
+      id: 'speed', ok, title: 'Speed on this machine',
+      text: `While you moved the drawing, 90 percent of frames came within ${Number(frames.p90).toFixed(1)} ms, and half within ${Number(frames.p50).toFixed(1)} ms. The drawing keeps up with your hand when 90 percent come within ${FRAME_OK_MS} ms.${mathsWords}`
+        + (ok ? '' : ' That is slower than it should be: close other heavy tabs or programs, or use Report a problem with these numbers.'),
+    };
+  }
+  const work = (draw ? draw.p90 : 0) + (beside || !ev ? 0 : ev.p90);
+  const ok = work < FRAME_OK_MS;
   return {
     id: 'speed', ok, title: 'Speed on this machine',
-    text: `${how}${frames}${ok ? '' : ' That is slower than it should be: close other heavy tabs, or use Report a problem with these numbers.'}`,
+    text: `Drawing a frame takes about ${work.toFixed(1)} ms here, and the drawing keeps up with your hand when a frame takes under ${FRAME_OK_MS} ms.${mathsWords} Move or zoom the drawing for a few seconds, then run this again to measure the frames you see.`
+      + (ok ? '' : ' That is slower than it should be: close other heavy tabs or programs, or use Report a problem with these numbers.'),
   };
 }

@@ -11,10 +11,15 @@
 //   add_leg       {option, bearing?, id?, name?, leg?: {fields}, index?}
 //   remove_leg    {option, leg}                 leg id or index
 //   set_rule      {rule, value}                 value null puts the standard value back
+//   set_site      {lat, lon, epsg?, option?}    places the drawing at a place in California: the site and its zone, and
+//                                              every option's centre moved by one shift so the option named (the first
+//                                              when none is) lands there; resolved as {site, epsg, centers, was}
 import { LEG_PARAMS, ROUND_PARAMS, LEG_COUNT, paramFor, legField, defaultRoundabout, defaultLeg, validate, ruleById } from '../engine.js';
 import { fmt, isObj } from '../http.js';
+// The site placement is the page's own (public/js/app/ops.js), so a site change shown at once on the page is the one kept.
+import { placeSite, siteWords, OpRefused } from '../../../public/js/app/ops.js';
 
-export const OPS = ['set', 'add_option', 'remove_option', 'rename_option', 'add_leg', 'remove_leg', 'set_rule'];
+export const OPS = ['set', 'add_option', 'remove_option', 'rename_option', 'add_leg', 'remove_leg', 'set_rule', 'set_site'];
 export const LIMITS = { options: 12, opsPerChange: 60, nameMax: 60, legNameMax: 40 };
 export const CHANGED_AGAIN = 'That was changed again since; undo the later change first.';
 
@@ -265,8 +270,21 @@ function resolveSetRule(doc, raw) {
   return same(was, value) ? [] : [{ op: 'set_rule', rule: rule.id, value, was }];
 }
 
+/** Where the drawing is now: its site, zone and every option's centre (a set_site op's `was`). */
+const placeOf = doc => ({ site: doc.site ?? null, epsg: doc.epsg, centers: Object.fromEntries(doc.options.map(o => [o.id, { x: o.round.center.x, y: o.round.center.y }])) });
+
+function resolveSetSite(doc, raw) {
+  let p;
+  try { p = placeSite(doc, { lat: raw.lat, lon: raw.lon, epsg: raw.epsg ?? null, option: raw.option ?? null }); } catch (e) {
+    if (e instanceof OpRefused) throw new OpError(e.message);
+    throw e;
+  }
+  const was = placeOf(doc);
+  return same(was, p) ? [] : [{ op: 'set_site', site: p.site, epsg: p.epsg, centers: p.centers, was }];
+}
+
 const RESOLVE = { set: resolveSet, add_option: resolveAddOption, remove_option: resolveRemoveOption, rename_option: resolveRenameOption,
-  add_leg: resolveAddLeg, remove_leg: resolveRemoveLeg, set_rule: resolveSetRule };
+  add_leg: resolveAddLeg, remove_leg: resolveRemoveLeg, set_rule: resolveSetRule, set_site: resolveSetSite };
 
 /** One raw op resolved against doc: a list of resolved ops ([] when it changes nothing). Throws OpError. */
 export function resolveOp(doc, raw) {
@@ -315,6 +333,13 @@ const APPLY = {
     if (j < 0 || !same(legs[j], op.was) || legs.length <= LEG_COUNT.min) throw conflict();
     legs.splice(j, 1);
   },
+  set_site(doc, op) {
+    // Every option must still be where it was, and no option added or removed since, or the shift would split them up.
+    if (!same(placeOf(doc), op.was)) throw conflict();
+    doc.site = op.site == null ? null : { lat: op.site.lat, lon: op.site.lon };
+    doc.epsg = op.epsg;
+    for (const o of doc.options) o.round.center = { x: op.centers[o.id].x, y: op.centers[o.id].y };
+  },
   set_rule(doc, op) {
     if (!same(doc.rules[op.rule], op.was)) throw conflict();
     const rules = { ...doc.rules };
@@ -340,6 +365,7 @@ export function invertOp(op) {
     case 'add_leg': return { op: 'remove_leg', option: op.option, leg: op.leg.id, index: op.index, was: op.leg };
     case 'remove_leg': return { op: 'add_leg', option: op.option, leg: op.was, index: op.index };
     case 'set_rule': return { op: 'set_rule', rule: op.rule, value: op.was, was: op.value };
+    case 'set_site': return { op: 'set_site', site: op.was.site, epsg: op.was.epsg, centers: op.was.centers, was: { site: op.site, epsg: op.epsg, centers: op.centers } };
     default: throw new Error(`no inverse for ${op && op.op}`);
   }
 }
@@ -381,6 +407,7 @@ export function touchKeys(op) {
     case 'add_leg': return [`${op.option}/legs.${op.leg.id}`];
     case 'remove_leg': return [`${op.option}/legs.${op.leg}`];
     case 'set_rule': return [`rules/${op.rule}`];
+    case 'set_site': return ['site', ...Object.keys(op.centers).map(id => `${id}/center`)];
     default: return ['*'];
   }
 }
@@ -413,6 +440,7 @@ function opWords(doc, op) {
     case 'rename_option': return `Renamed ${op.was} to "${op.name}"`;
     case 'add_leg': return `Added ${legWords(op.leg.name)} to ${optName(op.option)}`;
     case 'remove_leg': return `Removed ${legWords(op.was.name)} from ${optName(op.option)}`;
+    case 'set_site': return op.site ? siteWords(op, op.was && op.was.epsg) : 'Took the drawing off its site';
     case 'set_rule': {
       const r = ruleById(op.rule);
       const label = r ? r.label : op.rule;

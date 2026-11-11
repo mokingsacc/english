@@ -4,7 +4,7 @@
 // the download step.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExport, localDate } from '../../public/js/commands/export.js';
+import { buildExport, localDate, savedLine } from '../../public/js/commands/export.js';
 import exportCommand from '../../public/js/commands/export.js';
 import { sampleProject } from '../../public/js/app/sample.js';
 import { evaluate } from '../../public/js/engine/evaluate.js';
@@ -34,7 +34,18 @@ test('buildExport: the writer\'s text for the option on screen, its name, and th
   assert.equal(r.mime, 'application/dxf');
   const want = toDxf(evaluate(opt.round, p.rules || {}), { name: p.name, epsg: p.epsg, option: { id: opt.id, name: opt.name }, date: localDate() });
   assert.equal(r.text, want);
+  assert.equal(r.units, 'survey', 'US survey feet unless Settings says otherwise');
+  assert.match(r.text, /\$INSUNITS\r\n 70\r\n21\r\n/);
   assert.deepEqual(checkDxf(r.text).problems, []);
+  const intl = buildExport(fakeApp(p), undefined, { units: 'international' });
+  assert.equal(intl.text, toDxf(evaluate(opt.round, p.rules || {}), { name: p.name, epsg: p.epsg, option: { id: opt.id, name: opt.name }, date: localDate(), units: 'international' }));
+  assert.match(intl.text, /\$INSUNITS\r\n 70\r\n2\r\n/);
+});
+
+test('the saved line names the units, the zone and how to insert the file', () => {
+  assert.equal(savedLine('A.dxf', 2229), 'Saved A.dxf in US survey feet, California zone 5 (EPSG 2229). Insert it at 0,0 with scale 1.');
+  assert.equal(savedLine('A.dxf', 2226, 'international'), 'Saved A.dxf with its units set to feet, California zone 2 (EPSG 2226). Insert it at 0,0 with scale 1.');
+  assert.equal(savedLine('A.dxf', 3310), 'Saved A.dxf in US survey feet, EPSG 3310. Insert it at 0,0 with scale 1.');
 });
 
 test('buildExport refuses in plain words: nothing on screen, or a shape that cannot be built', () => {
@@ -69,6 +80,6 @@ test('EXPORT echoes the file it saved, with the option and the zone, and asks no
   assert.equal(asked, false);
   assert.deepEqual(saved, ['Sample-roundabout-A.dxf']);
   assert.equal(echoes.length, 1);
-  assert.match(echoes[0][0], /^Saved Sample-roundabout-A\.dxf: Option A, CCS83 Zone 2, US survey feet\.$/);
+  assert.equal(echoes[0][0], 'Saved Sample-roundabout-A.dxf in US survey feet, California zone 2 (EPSG 2226). Insert it at 0,0 with scale 1.');
   assert.equal(echoes[0][1], 'done');
 });

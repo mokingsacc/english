@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { evaluate } from '../../public/js/engine/evaluate.js';
 import { defaultRoundabout, defaultLeg } from '../../public/js/engine/roundabout/model.js';
-import { toDxf, checkDxf, DXF_LAYERS, num, dxfText } from '../../public/js/engine/export/dxf.js';
+import { toDxf, checkDxf, DXF_LAYERS, DXF_UNITS, num, dxfText } from '../../public/js/engine/export/dxf.js';
 import { EXPORTS, exportById, exportForFile, exportFileName } from '../../public/js/engine/export/index.js';
 
 const TOL = 1e-6;
@@ -241,7 +241,7 @@ for (const [shapeName, res] of Object.entries(built)) {
     const text = toDxf(res, OPTS);
     const d = parse(text);
     assert.equal(d.header.$ACADVER[1], 'AC1015');
-    assert.equal(d.header.$INSUNITS[70], '2', 'drawing units are feet');
+    assert.equal(d.header.$INSUNITS[70], '21', 'drawing units are US survey feet, the state plane grid\'s own');
     assert.equal(d.header.$MEASUREMENT[70], '0');
     assert.equal(d.header.$LUNITS[70], '2');
     assert.deepEqual(Object.keys(d.sections), ['HEADER', 'CLASSES', 'TABLES', 'BLOCKS', 'ENTITIES', 'OBJECTS']);
@@ -301,6 +301,24 @@ test('the same input gives the same bytes; only the date line changes with the d
   assert.deepEqual(diff.map((x) => x[1]), ['Made 5 Jan 2027. Layers start with FP. A first look for testing ideas: check it before you build on it.']);
   const d = toDxf(res, { ...OPTS, date: new Date(Date.UTC(2026, 10, 11, 23, 30)) });
   assert.equal(d, a, 'a Date gives its UTC day');
+});
+
+test('the drawing units: US survey feet unless international feet are asked for, with the same numbers either way', () => {
+  const res = built.sample;
+  const survey = toDxf(res, OPTS), intl = toDxf(res, { ...OPTS, units: 'international' });
+  assert.equal(parse(survey).header.$INSUNITS[70], '21');
+  assert.equal(parse(toDxf(res, { ...OPTS, units: 'survey' })).header.$INSUNITS[70], '21');
+  assert.equal(parse(toDxf(res, { ...OPTS, units: 'cubits' })).header.$INSUNITS[70], '21', 'anything else is the default');
+  assert.equal(parse(intl).header.$INSUNITS[70], '2');
+  assert.deepEqual(DXF_UNITS.survey.insunits, 21);
+  // Only the units code and the note's line about them differ.
+  const a = survey.split('\r\n'), b = intl.split('\r\n');
+  assert.equal(a.length, b.length);
+  const diff = a.map((l, i) => (l === b[i] ? null : [l, b[i]])).filter(Boolean);
+  assert.equal(diff.length, 2, JSON.stringify(diff));
+  assert.deepEqual(diff[0], ['21', '2']);
+  assert.match(diff[1][1], /The drawing units are set to international feet, for a drawing set to feet\.$/);
+  assert.deepEqual(checkDxf(intl).problems, []);
 });
 
 test('a shape that cannot be built is refused in plain words, and nothing is written', () => {
@@ -363,10 +381,14 @@ test('outside check: ezdxf loads the file, its audit finds nothing, and the enti
   const script = [
     'import sys, ezdxf', 'from ezdxf import recover',
     'doc = ezdxf.readfile(sys.argv[1]); a = doc.audit(); d2, a2 = recover.readfile(sys.argv[1])',
-    'print(len(a.errors), len(a.fixes), len(a2.errors), len(a2.fixes), len(doc.modelspace()), doc.dxfversion)',
+    'print(len(a.errors), len(a.fixes), len(a2.errors), len(a2.fixes), len(doc.modelspace()), doc.dxfversion, doc.header["$INSUNITS"])',
   ].join('\n');
   const out = execFileSync(process.env.FP_EZDXF_PYTHON, ['-I', '-c', script, file], { encoding: 'utf8' }).trim().split(/\s+/);
+  // Marked in international feet it is just as clean.
+  fs.writeFileSync(file, toDxf(built.sample, { ...OPTS, units: 'international' }));
+  const intl = execFileSync(process.env.FP_EZDXF_PYTHON, ['-I', '-c', script, file], { encoding: 'utf8' }).trim().split(/\s+/);
   fs.rmSync(dir, { recursive: true, force: true });
   const ents = parse(toDxf(built.sample, OPTS)).entities.length;
-  assert.deepEqual(out, ['0', '0', '0', '0', String(ents), 'AC1015']);
+  assert.deepEqual(out, ['0', '0', '0', '0', String(ents), 'AC1015', '21']);
+  assert.deepEqual(intl, ['0', '0', '0', '0', String(ents), 'AC1015', '2']);
 });

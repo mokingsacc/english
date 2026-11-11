@@ -120,18 +120,42 @@ const hits = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] +
 
 // Each label tries four places round its arc's middle point and is left out when none is clear of the labels already
 // placed and of the leg names, and when another label already stands for a point this close (the same curve on two paths).
-// Zoomed out (the circle smaller than OVERVIEW_PX across) only the fastest of each of R1 to R5 is labelled.
+// Zoomed out (the circle smaller than OVERVIEW_PX across) each of R1 to R5 is labelled once, from the movement the checks
+// read it from (the legs' summaries in evaluate.js: R1 to R3 from a leg's through movement, R4 from its left turn, R5
+// from its right turn), on the leg where its speed is highest: so R1 on the drawing is the speed the Entry speed check
+// gives. Speeds have one decimal, as the Checks window shows them.
 const OVERVIEW_PX = 240;
+const NAMES = ['R1', 'R2', 'R3', 'R4', 'R5'];
+const CHECKS_READ = { R1: ['main', 'V1'], R2: ['main', 'V2'], R3: ['main', 'V3'], R4: ['left', 'V4'], R5: ['right', 'V5'] };
+
+/** The arcs the zoomed-out drawing labels: for each of R1 to R5, the one the checks use where its speed is highest. */
+export function overviewArcs(res) {
+  const out = [];
+  for (const name of NAMES) {
+    const [which, vk] = CHECKS_READ[name];
+    let best = null, bestV = -Infinity;
+    for (const L of res.legs || []) {
+      const v = L.V ? L.V[vk] : null;
+      if (v == null || !(v > bestV) || !L[which]) continue;
+      const m = res.movements.find((q) => q.id === L[which]);
+      const a = m && m.ok && m.arcs ? m.arcs[name] : null;
+      if (!a || !a.mid) continue;
+      best = a; bestV = v;
+    }
+    if (best) out.push({ name, a: best });
+  }
+  return out;
+}
+
 function paintSpeedLabels(ctx, cam, res, taken) {
   const anchors = [];
-  const moves = res.movements.filter((m) => m.ok).sort((a, b) => (ORDER[a.kind] ?? 3) - (ORDER[b.kind] ?? 3));
-  let arcs = [];
-  for (const m of moves) for (const name of ['R1', 'R2', 'R3', 'R4', 'R5']) if (m.arcs[name] && m.arcs[name].mid) arcs.push({ name, a: m.arcs[name] });
+  let arcs;
   const across = 2 * res.geometry.radii.inscribed * Math.abs(cam.sx(1) - cam.sx(0));
-  if (across < OVERVIEW_PX) {
-    const top = new Map();
-    for (const it of arcs) { const t = top.get(it.name); if (!t || (it.a.speed || 0) > (t.a.speed || 0)) top.set(it.name, it); }
-    arcs = [...top.values()];
+  if (across < OVERVIEW_PX) arcs = overviewArcs(res);
+  else {
+    arcs = [];
+    const moves = res.movements.filter((m) => m.ok).sort((a, b) => (ORDER[a.kind] ?? 3) - (ORDER[b.kind] ?? 3));
+    for (const m of moves) for (const name of NAMES) if (m.arcs[name] && m.arcs[name].mid) arcs.push({ name, a: m.arcs[name] });
   }
   ctx.font = FONT;
   ctx.textBaseline = 'middle';
@@ -140,7 +164,7 @@ function paintSpeedLabels(ctx, cam, res, taken) {
     if (x < 0 || y < 0 || x > cam.w || y > cam.h) continue;
     if (anchors.some((q) => Math.abs(q[0] - x) < 40 && Math.abs(q[1] - y) < 20)) continue;
     const r = a.r === Infinity ? 'straight' : `${Math.round(a.r)} ft`;
-    const v = a.speed == null ? '' : `, ${Math.round(a.speed)} mph`;
+    const v = a.speed == null ? '' : `, ${a.speed.toFixed(1)} mph`;
     const text = `${name} ${r}${v}`;
     const w = ctx.measureText(text).width + 4;
     const spots = [[x + 5, y - 8], [x - 5 - w, y - 8], [x + 5, y + 8], [x - 5 - w, y + 8]];

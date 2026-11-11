@@ -1,10 +1,14 @@
 // Bundles the Worker (src/worker/index.js, with the engine files it imports from public/js/engine/) into
 // public/_worker.js for Cloudflare Pages' advanced mode. `npm run build`. The output is not committed (.gitignore).
+// It first brings index.html's modulepreload list up to date (scripts/module-graph.mjs).
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { writeIndex, moduleGraph } from './module-graph.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+console.log(`${writeIndex() ? 'wrote' : 'kept'} the modulepreload list in public/index.html (${moduleGraph().length} modules)`);
 
 let esbuild;
 try { esbuild = await import('esbuild'); } catch {

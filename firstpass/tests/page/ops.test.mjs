@@ -3,10 +3,11 @@
 // shown at once on the page is the change the server keeps. Also the sample project matches the server's.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { op, applyOps, OpRefused, nextOptionId, freeBearing, sameDrawing, describe, MAX_OPTIONS } from '../../public/js/app/ops.js';
+import { op, applyOps, OpRefused, nextOptionId, freeBearing, sameDrawing, describe, MAX_OPTIONS, inCalifornia, placeSite } from '../../public/js/app/ops.js';
+import { fromLatLon } from '../../public/js/engine/crs.js';
 import { sampleProject, SAMPLE_SITE, zoneText } from '../../public/js/app/sample.js';
 import { paramFor, ruleById, RULES } from '../../public/js/engine/index.js';
-import { resolveAndApply, canonicalDoc, LIMITS } from '../../src/worker/store/ops.js';
+import { resolveAndApply, canonicalDoc, LIMITS, summarize } from '../../src/worker/store/ops.js';
 import { SAMPLE } from '../../src/worker/store/projects.js';
 
 const project = () => ({ ...sampleProject(), id: 'p_test', seq: 3 });
@@ -54,6 +55,10 @@ test('page and server give the same project for the same changes', () => {
     [op.addOption('A', 'B'), op.removeOption('A')],
     [op.setRule(rule.id, rule.min), op.setRule(rule.id, null)],
     [op.setRule(rule.id, rule.max)],
+    [op.setSite(34.0522, -118.2437)],
+    [op.addOption('A', 'B'), op.set('B', 'center.x', p.options[0].round.center.x + 300), op.setSite(37.7749, -122.4194, null, 'B')],
+    [op.setSite(37.7749, -122.4194, 2226)],
+    [op.setSite(34.0522, -118.2437), op.setSite(37.7749, -122.4194)],
   ];
   for (const ops of sequences) assert.deepEqual(pageApply(p, ops), serverApply(p, ops), JSON.stringify(ops));
 });
@@ -71,6 +76,10 @@ test('page and server refuse the same changes, and the page says why in plain wo
     [op.renameOption('A', '   ')],
     [op.removeLeg('A', 'nope')],
     [op.setRule('no-such-rule', 1)],
+    [op.setSite(36.1699, -115.1398)],
+    [op.setSite(34.0522, -118.2437, 4326)],
+    [op.setSite(-118.2437, 34.0522)],
+    [op.setSite(34.0522, -118.2437, null, 'Q')],
   ];
   for (const ops of refused) {
     assert.throws(() => applyOps(p, ops), OpRefused, JSON.stringify(ops));
@@ -126,4 +135,31 @@ test('the page sample is the server sample', () => {
   const p = sampleProject();
   assert.deepEqual(p.options[0].round.center, SAMPLE.center);
   assert.equal(zoneText(2226), 'CCS83 Zone 2, US survey feet');
+});
+
+test('a site in California places the drawing in its zone on the page as on the server: Los Angeles zone 5, San Francisco zone 3', () => {
+  const p = project();
+  const la = applyOps(p, [op.setSite(34.0522, -118.2437)]);
+  assert.equal(la.epsg, 2229);
+  assert.deepEqual(la.site, { lat: 34.0522, lon: -118.2437 });
+  const want = fromLatLon(2229, 34.0522, -118.2437);
+  assert.ok(Math.abs(la.options[0].round.center.x - want.x) < 0.006 && Math.abs(la.options[0].round.center.y - want.y) < 0.006);
+  assert.deepEqual(la.options[0].round.legs, p.options[0].round.legs, 'legs and bearings stay');
+  const sf = applyOps(la, [op.setSite(37.7749, -122.4194)]);
+  assert.equal(sf.epsg, 2227);
+  assert.ok(!sameDrawing(p, la) && !sameDrawing(la, sf));
+  assert.ok(!sameDrawing(la, applyOps(la, [op.setSite(34.0522, -118.2437, 2228)])), 'a zone alone is a change too');
+  // The page names it in the words the server keeps.
+  assert.equal(describe(p, [op.setSite(34.0522, -118.2437)]), summarize(canonicalDoc(p), resolveAndApply(canonicalDoc(p), [op.setSite(34.0522, -118.2437)]).ops));
+  assert.equal(describe(p, [op.setSite(34.0522, -118.2437)]), 'Placed the drawing at 34.0522, -118.2437 in California zone 5 (EPSG 2229), was zone 2');
+  assert.throws(() => applyOps(p, [op.setSite(36.1699, -115.1398)]), /: 36\.1699, -115\.1398 is outside California\./);
+});
+
+test('California\'s outline takes its cities and its edges, and leaves out its neighbours', () => {
+  const inside = [[34.0522, -118.2437], [37.7749, -122.4194], [32.7157, -117.1611], [40.8, -124.16], [41.756, -124.2], [41.49, -120.54],
+    [38.94, -119.98], [39.33, -120.18], [33.61, -114.596], [34.85, -114.61], [36.46, -116.87], [34.45, -120.47], [32.9, -118.5], [32.68, -115.5]];
+  const outside = [[36.1699, -115.1398], [39.5296, -119.8138], [32.5149, -117.0382], [42.05, -124.28], [45.5, -122.6], [33.45, -112.07], [40.71, -74.0], [35, -125]];
+  for (const [lat, lon] of inside) assert.ok(inCalifornia(lat, lon), `${lat}, ${lon}`);
+  for (const [lat, lon] of outside) assert.ok(!inCalifornia(lat, lon), `${lat}, ${lon}`);
+  assert.throws(() => placeSite(project(), { lat: 34, lon: -118, epsg: 2231 }), /EPSG 2225 to 2230/);
 });

@@ -1,10 +1,21 @@
-// Settings, the Toolspace's second tab: every design limit from the engine's rules table (label, value, unit, where it
-// comes from), grouped, editable in place for this project through the set_rule op. Rows marked with the yellow
+// Settings, the Toolspace's second tab: at the top, two choices kept on this computer (what scrolling on the drawing
+// does, and the units the DXF is marked in); then every design limit from the engine's rules table (label, value, unit,
+// where it comes from), grouped, editable in place for this project through the set_rule op. Rows marked with the yellow
 // triangle are still to be checked against NCHRP Research Report 1043. A value changed for this project shows in bold
 // with Standard to put it back. The pane at the bottom shows the chosen row's source. New rules appear by themselves;
-// a new group is one row in GROUPS.
+// a new group is one row in GROUPS; a new choice on this computer is one row in CHOICES.
 import { RULES } from '../engine/index.js';
 import { h, ico, setText, setClass, keyed } from './dom.js';
+import { prefs } from '../app/prefs.js';
+
+export const CHOICES = [
+  { key: 'scroll', label: 'Scrolling on the drawing', def: 'auto',
+    tip: 'Auto zooms with a mouse wheel and pans with two fingers on a trackpad. Choose Zoom or Pan if it guesses wrong. A pinch, or Ctrl with the wheel, always zooms.',
+    options: [['auto', 'Auto'], ['zoom', 'Zoom'], ['pan', 'Pan']] },
+  { key: 'dxf.units', label: 'DXF units', def: 'survey',
+    tip: 'The units the exported drawing is marked in. Pick the units your CAD drawing is set to, so it inserts at scale 1. The coordinates are the same either way.',
+    options: [['survey', 'US survey feet'], ['international', 'International feet']] },
+];
 
 const GROUPS = [['fp.', 'Fastest paths'], ['speed.', 'Speeds'], ['sight.ssd.', 'Stopping sight distance'], ['sight.isd.', 'Intersection sight distance'], ['geom.', 'Drawing'], ['units.', 'Units']];
 const groupOf = (id) => (GROUPS.find(([p]) => id.startsWith(p)) || [null, 'Other'])[1];
@@ -12,7 +23,16 @@ const groupOf = (id) => (GROUPS.find(([p]) => id.startsWith(p)) || [null, 'Other
 export function createSettings(app, body) {
   const list = h('div', { class: 'rules', role: 'grid', 'aria-label': 'Design limits' });
   const detail = h('div', { class: 'rule-detail' });
-  body.append(h('div', { class: 'rules-head' }, h('span', { text: 'Design limits for this project' })), list, detail);
+  const mine = h('div', { class: 'pref-list' }, h('div', { class: 'rule-group', text: 'On this computer' }));
+  for (const c of CHOICES) {
+    const sel = h('select', { class: 'pref-sel', 'aria-label': c.label, 'data-pref': c.key });
+    for (const [v, t] of c.options) sel.append(h('option', { value: v, text: t }));
+    sel.value = c.options.some(([v]) => v === prefs.get(c.key, c.def)) ? prefs.get(c.key, c.def) : c.def;
+    sel.addEventListener('change', () => { prefs.set(c.key, sel.value); app.echo(`${c.label}: ${sel.selectedOptions[0].textContent}.`, 'note'); });
+    sel.addEventListener('keydown', (e) => e.stopPropagation());
+    mine.append(h('label', { class: 'pref', 'data-tip': c.label, 'data-tip-text': c.tip }, h('span', { class: 'rule-label', text: c.label }), sel));
+  }
+  body.append(mine, h('div', { class: 'rules-head' }, h('span', { text: 'Design limits for this project' })), list, detail);
   let chosen = null;
 
   const items = [];

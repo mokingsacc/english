@@ -1,8 +1,13 @@
-// The page's drawing maths: the camera (screen and world, zoom about the cursor, fit), hit testing on true lines and
-// arcs, selection windows (window takes what is inside, crossing what it touches) and the speed colours.
+// The page's drawing maths: the camera (screen and world, zoom about the cursor, fit), a mouse wheel told from a
+// trackpad and a pinch's rate, hit testing on true lines and arcs, selection windows (window takes what is inside,
+// crossing what it touches), the speed colours, and the zoomed-out R labels agreeing with the checks.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCamera, boxOf, wheelFactor, MIN_K, MAX_K } from '../../public/js/draw/camera.js';
+import { createCamera, boxOf, wheelFactor, pinchFactor, MIN_K, MAX_K } from '../../public/js/draw/camera.js';
+import { wheelKind } from '../../public/js/ui/viewport.js';
+import { overviewArcs } from '../../public/js/draw/paint-model.js';
+import { evaluate } from '../../public/js/engine/index.js';
+import { sampleProject } from '../../public/js/app/sample.js';
 import { distToSegment, distToArc, arcSweep, nearest, selectionWindow, windowSelect, primBox } from '../../public/js/draw/hit.js';
 import { speedBucket, SPEED_BUCKETS, speedColor, DISPLAY, defaultDisplay } from '../../public/js/draw/colors.js';
 
@@ -116,4 +121,46 @@ test('speed colours run blue to red in buckets, and the display layers are named
   assert.equal(new Set(DISPLAY.map((d) => d.kw.toUpperCase())).size, keys.length);
   const def = defaultDisplay();
   for (const k of keys) assert.equal(typeof def[k], 'boolean');
+});
+
+test('a mouse wheel zooms and a trackpad pans, told from the events; one gesture keeps its kind', () => {
+  const memo = { kind: null, at: 0 };
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 100 }, memo, 0), 'zoom', 'a wheel notch in pixels');
+  assert.equal(wheelKind({ deltaMode: 1, deltaX: 0, deltaY: 3 }, memo, 1000), 'zoom', 'a wheel in lines');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0.5, deltaY: 4.25 }, memo, 2000), 'pan', 'small steps from two fingers');
+  // The same flick gathering speed is still the trackpad, even when one step is large.
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 140 }, memo, 2100), 'pan');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: 120 }, memo, 2300), 'pan');
+  // After a pause the next notch is a wheel again; a sideways step is never a wheel.
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 0, deltaY: -100 }, memo, 4000), 'zoom');
+  assert.equal(wheelKind({ deltaMode: 0, deltaX: 30, deltaY: 100 }, memo, 6000), 'pan');
+});
+
+test('a pinch zooms as far as the fingers spread; a wheel notch about 1.25', () => {
+  close(pinchFactor(-100 * Math.log(1.1)), 1.1, 1e-9, 'spreading by a tenth zooms in by a tenth');
+  close(pinchFactor(100 * Math.log(1.1)), 1 / 1.1, 1e-9);
+  assert.ok(pinchFactor(3) < 1 && pinchFactor(3) > 0.95, 'one small pinch step is a small zoom');
+  close(1 / wheelFactor(100), 1.25, 0.01);
+});
+
+test('zoomed out, R1 is labelled from the movement the Entry speed check reads, not the fastest left turn', () => {
+  const p = sampleProject();
+  const res = evaluate(p.options[0].round, p.rules);
+  const arcs = overviewArcs(res);
+  assert.deepEqual(arcs.map((a) => a.name), ['R1', 'R2', 'R3', 'R4', 'R5']);
+  const r1 = arcs.find((a) => a.name === 'R1').a;
+  const maxV1 = Math.max(...res.legs.map((L) => L.V.V1));
+  close(r1.speed, maxV1, 1e-9, 'R1 on the drawing is the fastest leg\'s V1');
+  const entry = res.checks.find((c) => c.id === 'entry-speed');
+  const fastestV5 = Math.max(...res.legs.map((L) => L.V.V5 ?? -Infinity));
+  if (maxV1 >= fastestV5) close(entry.value, r1.speed, 1e-9, 'and the Entry speed check gives the same speed');
+  // The fastest R1 over every movement can be another one (a left turn's): that is not the one labelled.
+  const any = Math.max(...res.movements.filter((m) => m.ok && m.arcs.R1).map((m) => m.arcs.R1.speed));
+  assert.ok(any >= r1.speed);
+  for (const { name, a } of arcs) {
+    const [which, vk] = { R1: ['main', 'V1'], R2: ['main', 'V2'], R3: ['main', 'V3'], R4: ['left', 'V4'], R5: ['right', 'V5'] }[name];
+    const L = res.legs.find((l) => res.movements.find((m) => m.id === l[which] && m.arcs[name] === a));
+    assert.ok(L, `${name} comes from a leg's ${which} movement`);
+    close(a.speed, Math.max(...res.legs.map((l) => l.V[vk] ?? -Infinity)), 1e-9, `${name} is the highest ${vk}`);
+  }
 });

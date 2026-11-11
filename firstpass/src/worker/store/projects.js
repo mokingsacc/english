@@ -3,6 +3,7 @@
 import { HttpError, newId, isObj } from '../http.js';
 import { defaultRoundabout } from '../engine.js';
 import { canonicalDoc, cleanRound, OpError, LIMITS } from './ops.js';
+import { placeSite, OpRefused, CA_ZONES } from '../../../public/js/app/ops.js';
 
 export const DEFAULT_EPSG = 2226;   // CCS83 zone 2, US survey feet (docs/design.md, Data model)
 export const PROJECTS_MAX = 500;
@@ -56,21 +57,22 @@ export async function latestRow(db, userId) {
   return db.prepare('SELECT id, user_id, doc, seq, created_at, updated_at FROM projects WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 1').bind(userId).first();
 }
 
-/** The document of a new project from a request body {name?, epsg?, site?, round?, sample?}. Throws OpError. */
+/**
+ * The document of a new project from a request body {name?, epsg?, site?, round?, sample?}. Throws OpError.
+ * A site without a round places the sample (or the default roundabout) there, in the site's zone (or epsg's), as the
+ * set_site op does; a site with a round keeps the round's centre as given.
+ */
 export function newDoc(body = {}) {
   const sample = body.sample === true;
   let name = body.name ?? (sample ? SAMPLE.name : 'Untitled project');
   if (typeof name !== 'string' || !name.trim() || name.trim().length > LIMITS.nameMax) throw new OpError(`A project name is 1 to ${LIMITS.nameMax} characters.`);
   name = name.trim().replace(/\s+/g, ' ');
-  const epsg = body.epsg ?? (sample ? SAMPLE.epsg : DEFAULT_EPSG);
-  if (!Number.isInteger(epsg) || epsg < 1000 || epsg > 99999) throw new OpError('epsg is the number of the coordinate system, such as 2226 for California zone 2 in US survey feet.');
-  let site = body.site ?? (sample ? SAMPLE.site : null);
-  if (site !== null) {
-    if (!isObj(site) || !Number.isFinite(site.lat) || !Number.isFinite(site.lon) || Math.abs(site.lat) > 90 || Math.abs(site.lon) > 180) {
-      throw new OpError('site is {lat, lon} in degrees.');
-    }
-    site = { lat: site.lat, lon: site.lon };
-  }
+  const zoneOk = v => Number.isInteger(v) && CA_ZONES.includes(v);
+  if (body.epsg != null && !zoneOk(body.epsg)) throw new OpError('epsg is a California state plane zone in US survey feet, 2225 to 2230 (zones 1 to 6), such as 2226 for zone 2.');
+  const place = body.site == null ? null : isObj(body.site) ? body.site : { lat: NaN, lon: NaN };
+  const placed = place ? placed0(place, body.epsg) : null;
+  const epsg = placed ? placed.epsg : body.epsg ?? (sample ? SAMPLE.epsg : DEFAULT_EPSG);
+  const site = placed ? placed.site : sample ? { ...SAMPLE.site } : null;
   let round;
   if (body.round != null) round = cleanRound(body.round, 'That roundabout');
   else {
@@ -80,7 +82,20 @@ export function newDoc(body = {}) {
       for (const leg of round.legs) if (SAMPLE.bearings[leg.id] !== undefined) leg.bearing = SAMPLE.bearings[leg.id];
     }
   }
+  if (placed && body.round == null) round.center = { ...placed.center };
   return canonicalDoc({ name, epsg, site, rules: {}, options: [{ id: 'A', name: 'Option A', kind: 'roundabout', round }] });
+}
+
+/** A site checked and placed as set_site places it: {site, epsg, center}. Throws OpError in plain words. */
+function placed0(place, epsg) {
+  const probe = { options: [{ id: 'A', round: { center: { x: 0, y: 0 } } }] };
+  try {
+    const p = placeSite(probe, { lat: place.lat, lon: place.lon, epsg: epsg ?? null });
+    return { site: p.site, epsg: p.epsg, center: p.centers.A };
+  } catch (e) {
+    if (e instanceof OpRefused) throw new OpError(e.message);
+    throw e;
+  }
 }
 
 /** Creates a project for this user. Returns its row. */

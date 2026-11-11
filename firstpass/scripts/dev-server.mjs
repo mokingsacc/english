@@ -63,18 +63,20 @@ function memoryCache(max = 2000) {
   };
 }
 
-/** The dev user (made once, its secrets kept in .dev/dev-user.json) and a sample project when it has none. */
+/** The dev user (made once, its secrets kept in .dev/dev-user.json; the owner) and a sample project when it has none. */
 async function seed(d1) {
   const file = path.join(DEV, 'dev-user.json');
   let saved = null;
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = null; }
   if (!saved || !d1.row('SELECT id FROM users WHERE id = ?', saved.id)) {
-    const u = await makeUser('Dev');
+    const u = await makeUser('Dev', { admin: true });
     await insertUser(d1.DB, u);
     saved = { id: u.id, key: u.key, token: u.token };
     fs.writeFileSync(file, JSON.stringify(saved, null, 2), { mode: 0o600 });
     console.log('Made the dev user.');
   }
+  // The dev user is the owner (admin: sees every user's problem reports), also in a dev database made before that column.
+  d1.run('UPDATE users SET admin = 1 WHERE id = ?', saved.id);
   if (!d1.row('SELECT id FROM projects WHERE user_id = ?', saved.id)) {
     await createProject(d1.DB, saved.id, { sample: true });
     console.log('Made the sample project.');

@@ -14,7 +14,7 @@ import {
 } from './sight.js';
 import { runChecks } from './checks/index.js';
 import { translatePrim } from './geom.js';
-import { whole, num, mph, theLeg } from './format.js';
+import { whole, num, mph1, theLeg } from './format.js';
 
 // Scratch arrays shared by every call. They carry nothing from one call to the next that can change an
 // answer: every value is written before it is read.
@@ -291,8 +291,8 @@ function headline(legs, landTake, checks, problems) {
     parts.push(`The shape cannot be built. ${problems[0]}`);
   } else {
     const nameOf = (id) => (legs.find((l) => l.id === id) || {}).name || id;
-    if (entry) parts.push(`The fastest entry is ${mph(entry.value)}, on ${theLeg(nameOf(entry.leg))}.`);
-    if (drop) parts.push(`The largest speed difference is ${mph(drop.value)}, on ${theLeg(nameOf(drop.leg))}.`);
+    if (entry) parts.push(`The fastest entry is ${mph1(entry.value)}, on ${theLeg(nameOf(entry.leg))}.`);
+    if (drop) parts.push(`The largest speed difference is ${mph1(drop.value)}, on ${theLeg(nameOf(drop.leg))}.`);
     if (landTake) parts.push(`The roundabout takes ${whole(landTake.sqft)} square feet of land (${num(landTake.acres, 2)} acres).`);
   }
   parts.push(countSentence(fails, warns));

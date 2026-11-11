@@ -1,12 +1,14 @@
 ---
 name: "fix-bugs"
-description: "Fix a First Pass problem report: read the report with its traces, screenshot and project, say in plain words what you understood and wait for a yes, reproduce it as a failing test, fix it, run the tests, and close the report with the commit or pull request link. Use when someone pastes \"In Claude Code: fix this First Pass problem. Report ...\" (the sheet's Copy for Claude), or says \"fix the open First Pass bugs\"."
+description: "Fix a First Pass problem report in the owner's Claude Code: read the report with its traces, screenshot and project, say in plain words what you understood and wait for a yes, reproduce it as a failing test, fix it, run the tests, and close the report with the commit or pull request link. Use when the owner pastes \"In Claude Code: fix this First Pass problem. Report ...\" (the sheet's Copy for Claude, which she sends to the owner), or says \"fix the open First Pass bugs\"."
 ---
 
 # Fix a First Pass problem report
 
-She reports a problem from the page (the Report a problem button): a line of words and/or a screenshot. The report is
-saved in the `bug_reports` table with everything needed, so there is nothing to hunt for: her words, the page address
+She reports a problem from the page (the Report a problem button): a line of words and/or a screenshot. She does not
+fix it: she sends the Copy for Claude text to the person who runs First Pass (the owner), and the owner's Claude Code
+fixes it, with the owner's connector or key. The owner is the admin user (`add-user.mjs --admin`), who sees every
+user's reports; anyone else sees only their own. The report is saved in the `bug_reports` table with everything needed, so there is nothing to hunt for: her words, the page address
 (the key cut out), what was open (`state`: project, option, selection), the last calls with their trace ids,
 breadcrumbs (taps, page changes, console errors), versions, the request traces, and two copies of the project: the
 page's own (`bundle.project`, which may hold a drag that was not saved yet) and the server's (`bundle.server_project`:
@@ -15,12 +17,14 @@ doc, seq and the last 10 changes). When the two are the same, `bundle.project` i
 ## When the Copy for Claude prompt arrives
 
 1. **Read it in full**: the connector's `bugs {action: "get", id}`. Look at the screenshot (the image block).
+   `reporter` names who sent it. A report the owner cannot reach is someone else's and the connector is not the
+   owner's: say so and stop.
 2. **Say what you understood before changing anything**, in two or three plain lines: "What I understood: <the problem
    in her words and yours>, on <page>, option <x>. I will <the change>." Then wait for a yes or a correction.
 3. Then do the steps below for that one report.
 
-`bugs {action: "list"}` gives the open reports (newest first) when asked to "fix the open bugs"; take them oldest first,
-one at a time, the same way.
+`bugs {action: "list"}` gives the open reports (newest first, everyone's for the owner, each with its reporter) when
+asked to "fix the open bugs"; take them oldest first, one at a time, the same way.
 
 ## For each report
 
@@ -47,13 +51,16 @@ End with one plain line per report: what was wrong, the fix, and the link.
 
 ## No connector in this session
 
-The same over HTTP with her key (in the environment as `FP_KEY`, never printed) and the site address as `FP_URL`:
+The same over HTTP with the owner's key (in the environment as `FP_KEY`, never printed) and the site address as
+`FP_URL`. `?all=1` lists everyone's reports (the owner only; anyone else gets 403); get, shot and close take any
+report's id for the owner:
 
 ```
-curl -sS -H "X-Key: $FP_KEY" "$FP_URL/api/bugs"
+curl -sS -H "X-Key: $FP_KEY" "$FP_URL/api/bugs?all=1"
 curl -sS -H "X-Key: $FP_KEY" "$FP_URL/api/bugs/<id>"
 curl -sS -H "X-Key: $FP_KEY" "$FP_URL/api/bugs/<id>/shot" -o shot.png     (then read the file)
 curl -sS -H "X-Key: $FP_KEY" -H 'Content-Type: application/json' -d '{"fix":"<link>"}' "$FP_URL/api/bugs/<id>/close"
 ```
 
-On the dev server (`npm run dev`), `FP_URL` is `http://localhost:8788` and the key is in `.dev/dev-user.json`.
+On the dev server (`npm run dev`), `FP_URL` is `http://localhost:8788` and the key is in `.dev/dev-user.json` (the
+Dev user is the owner there, so it sees every dev user's reports).

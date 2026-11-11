@@ -19,7 +19,7 @@
 .tb-help:hover { background: var(--c-hover); }
 
 /* ---- ribbon */
-.ribbon { background: var(--c-ribbon); border-bottom: 1px solid #1f252d; user-select: none; }
+.ribbon { position: relative; z-index: 15; background: var(--c-ribbon); border-bottom: 1px solid #1f252d; user-select: none; }
 .rb-tabs { display: flex; align-items: flex-end; height: 26px; padding: 0 6px; background: var(--c-frame); gap: 1px; }
 .rb-tab { height: 23px; padding: 0 13px; border: 1px solid transparent; border-bottom: 0; border-radius: 2px 2px 0 0; background: transparent; color: var(--c-ink); white-space: nowrap; }
 .rb-tab:hover { background: #38414e; }
@@ -29,8 +29,10 @@
 .rb-spacer { flex: 1; }
 .rb-min { width: 24px; height: 22px; margin-bottom: 1px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 2px; }
 .rb-min:hover { background: var(--c-hover); }
-.ribbon.minimized .rb-min .ico { transform: rotate(180deg); }
-.ribbon.minimized .rb-body { display: none; }
+.ribbon.minimized .rb-min .ico, .ribbon.folded .rb-min .ico { transform: rotate(180deg); }
+.ribbon.minimized .rb-body, .ribbon.folded .rb-body { display: none; }
+/* A short window: the folded ribbon's panels open over the drawing from a tab. */
+.ribbon.folded.peek .rb-body { display: block; position: absolute; left: 0; right: 0; top: 100%; background: var(--c-ribbon); border-bottom: 1px solid #1f252d; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45); }
 .rb-body { height: 96px; overflow: hidden; }
 .rb-pane { display: flex; height: 100%; padding: 2px 2px 0; }
 .rb-panel { display: flex; flex-direction: column; border-right: 1px solid #2a313b; box-shadow: 1px 0 0 #49525f; margin-right: 1px; }

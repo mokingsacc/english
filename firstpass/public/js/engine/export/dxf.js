@@ -2,7 +2,11 @@
 // Pure: no DOM, no Node APIs, no clock unless no date is given, so the page builds the file in her browser (it needs no
 // server) and the Worker builds the same text for GET /api/projects/:id/export/<option>.dxf.
 //
-//   toDxf(result, { name, epsg, option, date? }) -> string        checkDxf(text) -> { ok, problems, counts, layers }
+//   toDxf(result, { name, epsg, option, date?, units? }) -> string        checkDxf(text) -> { ok, problems, counts, layers }
+//
+// units: 'survey' (the default) marks the drawing in US survey feet ($INSUNITS 21), the unit of California's state plane
+// grid, so it inserts at scale 1 into a drawing set to US survey feet; 'international' marks it in feet ($INSUNITS 2), for
+// a drawing set to feet. The numbers are the same either way: state plane coordinates exactly as the engine gives them.
 //
 // Why R2000: it is the oldest version that carries what this drawing needs (the drawing units in feet, $INSUNITS, and
 // light polylines whose bulges are true arcs), every program built on that CAD engine since 2000 opens it without a
@@ -47,6 +51,12 @@ export const LABEL_HEIGHT = 2;    // ft: the radius and speed labels
 export const NOTE_HEIGHT = 3;     // ft: the note
 const JOIN = 1e-6;                // ft: chain primitives closer than this are joined
 const ZONES = { 2225: 1, 2226: 2, 2227: 3, 2228: 4, 2229: 5, 2230: 6 };
+/** The units a drawing can be marked in: the $INSUNITS code and the words for it. */
+export const DXF_UNITS = {
+  survey: { insunits: 21, words: 'US survey feet' },
+  international: { insunits: 2, words: 'international feet' },
+};
+export const unitsOf = (units) => DXF_UNITS[units] || DXF_UNITS.survey;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TAU = 2 * Math.PI;
 
@@ -149,7 +159,7 @@ export function pathLabels(result) {
 }
 
 /** Every entity of the drawing, in the order written: [{ kind: 'LINE'|'ARC'|'LWPOLYLINE'|'TEXT', layer, ... }]. */
-export function dxfEntities(result, { name = 'First Pass project', epsg = 2226, option = null, date } = {}) {
+export function dxfEntities(result, { name = 'First Pass project', epsg = 2226, option = null, date, units = 'survey' } = {}) {
   if (!result || typeof result !== 'object') throw refuse('There is no worked-out roundabout to export.');
   if (!result.ok || !result.geometry) {
     const why = (result.problems && result.problems[0]) || 'the shape cannot be built';
@@ -190,7 +200,7 @@ export function dxfEntities(result, { name = 'First Pass project', epsg = 2226, 
   const optName = opt.name || (opt.id ? `Option ${opt.id}` : 'the option');
   const lines = [
     `First Pass roundabout sketch: ${optName} of ${name}.`,
-    `Coordinates: ${zoneWords(epsg)}, exactly as First Pass gives them, with no shift or scale.`,
+    `Coordinates: ${zoneWords(epsg)}, exactly as First Pass gives them, with no shift or scale.${units === 'international' ? ' The drawing units are set to international feet, for a drawing set to feet.' : ''}`,
     `Made ${dateText(date)}. Layers start with FP. A first look for testing ideas: check it before you build on it.`,
   ];
   const lead = NOTE_HEIGHT * 1.7;
@@ -270,7 +280,7 @@ export function toDxf(result, opts = {}) {
   put(9, '$ANGDIR'); put(70, 0);
   put(9, '$TILEMODE'); put(70, 1);
   put(9, '$MEASUREMENT'); put(70, 0);
-  put(9, '$INSUNITS'); put(70, 2);
+  put(9, '$INSUNITS'); put(70, unitsOf(opts.units).insunits);
   put(9, '$HANDSEED'); put(5, seed);
   put(0, 'ENDSEC');
 

@@ -19,8 +19,10 @@ export function sampleProject() {
   };
 }
 
-// California state plane zones (CCS83, US survey feet), for the status bar.
+// California state plane zones (CCS83, US survey feet), for the status bar and the export's line.
 const ZONES = { 2225: 1, 2226: 2, 2227: 3, 2228: 4, 2229: 5, 2230: 6 };
+/** The zone's number (1 to 6) of a California state plane EPSG code, or null. */
+export const zoneNumber = (epsg) => ZONES[epsg] || null;
 export function zoneText(epsg) {
   const z = ZONES[epsg];
   return z ? `CCS83 Zone ${z}, US survey feet` : `EPSG ${epsg}`;

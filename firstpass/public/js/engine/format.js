@@ -17,8 +17,21 @@ export function num(v, places = 1) {
   return String(r);
 }
 
+/** A speed in whole miles per hour (limits and figures that are not compared). */
 export function mph(v) {
   return `${whole(v)} mph`;
+}
+
+/**
+ * A speed set against a limit or another speed, to one decimal: "25.2 mph". When one decimal would read the same as the
+ * number it is set against while the two differ, two decimals: "25.04 mph, above the limit of 25 mph".
+ */
+export function mph1(v, against = null) {
+  if (!Number.isFinite(v)) return String(v);
+  let s = v.toFixed(1);
+  if (against !== null && Number.isFinite(against) && Math.round(v * 100) !== Math.round(against * 100)
+    && Number(s) === Math.round(against * 10) / 10) s = v.toFixed(2);
+  return `${s} mph`;
 }
 
 export function ft(v) {

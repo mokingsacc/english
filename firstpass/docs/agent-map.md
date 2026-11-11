@@ -38,6 +38,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - `compare_options` src/worker/mcp/tools/compare_options.js
 - `sweep` src/worker/mcp/tools/sweep.js
 - `undo` src/worker/mcp/tools/undo.js
+- `set_site` src/worker/mcp/tools/set_site.js
 - `export_link` src/worker/mcp/tools/export_link.js
 - `bugs` src/worker/mcp/tools/bugs.js
 
@@ -47,7 +48,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - src/worker/api/changes.js: Change routes: the page's changes, the 1.5 s poll, and undo. Every write goes through store/change.js.
 - src/worker/api/export.js: GET /api/projects/:id/export/:file: one option of a project as a drawing file to save, built from the stored project by
 - src/worker/api/projects.js: Project routes: list and create her projects, and read one with its recent history (the export is api/export.js).
-- src/worker/api/selfcheck.js: GET /api/selfcheck: the server checks itself and answers in plain words, one line each: the database answers, a user
+- src/worker/api/selfcheck.js: GET /api/selfcheck: the server checks itself and answers in her words, one line each: the database answers, people
 - src/worker/api/tiles.js: Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y from the USGS NAIP Plus image service (public
 - src/worker/debug/bugs.js: Problem reports (ported from practice-hub's debug/bugs.js). The page's Report a problem sheet (public/js/shared/
 - src/worker/debug/trace.js: Request traces for problem reports (ported from practice-hub's debug/trace.js, simplified: no cron, no AI calls).
@@ -62,14 +63,16 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - src/worker/mcp/schema.js: The connector's description of a parameter path, built from the engine's parameters table, so a new parameter there
 - src/worker/mcp/server.js: The connector for Claude (MCP over Streamable HTTP, tools only, stateless: each request is one JSON-RPC POST answered
 - src/worker/mcp/tools/add_option.js: Connector tool add_option: a new option beside the others, as a copy of one (from) or the standard roundabout, as one
-- src/worker/mcp/tools/bugs.js: Connector tool bugs: her problem reports, for Claude Code's fix loop (claude/skills/fix-bugs/SKILL.md). One tool for
+- src/worker/mcp/tools/bugs.js: Connector tool bugs: problem reports, for the owner's Claude Code fix loop (claude/skills/fix-bugs/SKILL.md). One tool
 - src/worker/mcp/tools/change_option.js: Connector tool change_option: sets one or more parameters of an option as one change (one step in her history, with
 - src/worker/mcp/tools/compare_options.js: Connector tool compare_options: the options side by side, headline numbers and each check's status, in a table.
-- src/worker/mcp/tools/export_link.js: Connector tool export_link: a link that opens First Pass on one option and saves it as a DXF in her browser (the
+- src/worker/mcp/tools/export_link.js: Connector tool export_link: a link that opens First Pass on one option and downloads it as a DXF in her browser (the
 - src/worker/mcp/tools/get_option.js: Connector tool get_option: one option in full: its parameters, the headline, every check with its words, and each
 - src/worker/mcp/tools/get_project.js: Connector tool get_project: the project at a glance (options with headline numbers, project settings that differ from
+- src/worker/mcp/tools/set_site.js: Connector tool set_site: places the drawing at a place in California, as one change she can undo (the set_site op,
 - src/worker/mcp/tools/sweep.js: Connector tool sweep: one parameter of an option stepped over a range on a copy, with the headline numbers at each
 - src/worker/mcp/tools/undo.js: Connector tool undo: undoes Claude's own newest change (or the change with the seq given, hers too), as a new change,
+- src/worker/routes.js: The Worker's route table: every route module's routes, compiled once, plus the names the router and the tests share
 - src/worker/store/change.js: applyChange: the one gate for every change to a project, from the page or from Claude (ported in pattern from
 - src/worker/store/ops.js: The change ops (docs/design.md, Server): each op is resolved against the project, applied, and inverted. Pure, no
 - src/worker/store/projects.js: Projects in D1, always scoped to their owner: create (the only write outside the change log, since a new project has
@@ -85,9 +88,9 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/app/frame.js: One animation frame of the page: work out the roundabout on screen (the draft while a grip is dragged), keep the last
 - public/js/app/grips/bearing.js: Grip: out along a leg, past its splitter island nose as drawn. Dragging it turns the leg (its bearing, clockwise from
 - public/js/app/grips/center.js: Grip: the centre of the roundabout as drawn. Dragging it moves the whole roundabout (centre easting and northing).
-- public/js/app/grips/entry-radius.js: Grip: a point on a leg's entry curb curve as built (its middle, or near its road end when the width grip sits at
+- public/js/app/grips/entry-radius.js: Grip: where a leg's entry curb curve starts, on the approach curb line (the curve as built runs from T1 there to T2 on the
 - public/js/app/grips/entry-width.js: Grip: the entry width where the engine measures it, at entryWidthPoint on the outer curb, square to that curb from Se
-- public/js/app/grips/exit-radius.js: Grip: a point on a leg's exit curb curve as built (its middle, or near its road end when the width grip sits at
+- public/js/app/grips/exit-radius.js: Grip: where a leg's exit curb curve starts, on the departure curb line (the curve as built runs from T1x there to T2x on the
 - public/js/app/grips/exit-width.js: Grip: the exit width where the engine measures it, at exitWidthPoint on the outer curb, square to that curb from Sx
 - public/js/app/grips/frame.js: Shared maths for the grips. Every grip takes its place from evaluate's output (named points and the curb chain), never
 - public/js/app/grips/index.js: The grips registry. Each grip is one file that default-exports { id, on: 'round' | 'leg', path, points(g),
@@ -100,7 +103,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/app/sample.js: The first-run sample project, used when the page has no key or no server: the server's own sample (a rural four-way
 - public/js/app/selfcheck.js: Check myself: one plain line each, green or red with what to do when red, for the data service, the Claude connector,
 - public/js/app/store.js: The page's one store: the project, the current option, the selection, the draft roundabout while a grip is dragged,
-- public/js/app/sync.js: Changes, undo and the 1.5 s poll. change(ops) applies the ops on the page at once (app/ops.js) and sends them to
+- public/js/app/sync.js: Changes, undo and the poll. change(ops) applies the ops on the page at once (app/ops.js) and sends them to
 - public/js/commands/check.js: CHECK: opens the Checks tab of the Panorama window: every check, its value and limit, and what to do.
 - public/js/commands/checkmyself.js: CHECKMYSELF: the page checks itself and the server, one plain line each, green or red with what to do.
 - public/js/commands/compare.js: COMPARE: opens the Compare tab of the Panorama window: the options side by side, the best value in each row marked.
@@ -113,7 +116,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/commands/layer.js: LAYER (LA): the display layers. On its own it opens the Layers palette; with a layer named after it ("LA P") it turns
 - public/js/commands/leg.js: LEG: adds a leg at a typed bearing or toward a picked point (the default is the middle of the widest gap).
 - public/js/commands/move.js: MOVE (M): moves the whole roundabout from a base point to a second point, or by a typed displacement (east,north).
-- public/js/commands/new.js: NEW: starts a new project with the sample roundabout on its site, and opens it.
+- public/js/commands/new.js: NEW: starts a new project with the sample roundabout and opens it. After the name it asks for the site as latitude,
 - public/js/commands/open.js: OPEN: lists her projects and opens the one she picks.
 - public/js/commands/option.js: OPTION: copies the option on screen to the next letter (Option A to Option B) and shows the copy.
 - public/js/commands/pan.js: PAN (P): real-time pan. The cursor becomes a hand; drag to move the drawing; Esc or Enter ends it.
@@ -128,6 +131,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/commands/rotate.js: ROTATE (RO): turns a leg to a new bearing (typed, or picked as the direction from the centre), or by an angle.
 - public/js/commands/runner.js: Runs commands the AutoCAD way. A line she enters is split into words (a space ends a word as Enter does): the first
 - public/js/commands/settings.js: SETTINGS: opens the Settings tab of the Toolspace: every design limit, where it comes from, editable for this project.
+- public/js/commands/site.js: SITE (LOCATE): places the roundabout at a place in California from its latitude and longitude, pasted as Google Maps
 - public/js/commands/toolspace.js: TOOLSPACE (TS): shows or hides the Toolspace palette (Prospector and Settings) on the left.
 - public/js/commands/u.js: U: undoes the newest change (hers or Claude's), as one step. Ctrl+Z does the same.
 - public/js/commands/zoom.js: ZOOM (Z): a window picked in the drawing, a scale factor ("2x"), or the options Extents, Window, Object and Previous.
@@ -164,6 +168,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/engine/roundabout/speeds.js: Fastest path speeds (NCHRP Report 672 section 6.7.1, Equations 6-1 to 6-4).
 - public/js/engine/rules.js: Design limits and constants. Every number the engine uses to judge or build a design lives here,
 - public/js/engine/sight.js: Sight distance.
+- public/js/shared/report-prompt.js: The line Report a problem's Copy for Claude puts on her clipboard (report-sheet.js), kept pure so it can be tested. It
 - public/js/shared/report-sheet.js: Report a problem: the sheet, loaded only when opened (ported from practice-hub). One text box, Add a screenshot, and
 - public/js/shared/report.js: Report a problem, loaded by the page (ported from practice-hub; report-sheet.js explains). Kept small: breadcrumbs, the
 - public/js/ui/checks-view.js: The Checks tab of the Panorama window: one row per check with its status icon, title, value, limit, the plain-word
@@ -180,23 +185,26 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/ui/properties.js: The Properties palette: a dropdown naming the selection ("Roundabout", "Leg (1)", "No selection"), then category rows
 - public/js/ui/prospector.js: Prospector, the Toolspace's tree: the project, its Options, each option with its Roundabout, Legs, Fastest paths and
 - public/js/ui/ribbon.js: The ribbon: tabs Home, Roundabout, Analyze, Output, Manage, each with panels titled in a strip along their bottom
-- public/js/ui/settings.js: Settings, the Toolspace's second tab: every design limit from the engine's rules table (label, value, unit, where it
+- public/js/ui/settings.js: Settings, the Toolspace's second tab: at the top, two choices kept on this computer (what scrolling on the drawing
 - public/js/ui/statusbar.js: The status bar along the very bottom: the cursor's northing and easting in feet (two decimals, live), the drawing
 - public/js/ui/titlebar.js: The title bar: the application button with our own FP mark (its menu: New, Open, Save, Export, Check myself, Report a
 - public/js/ui/tooltip.js: Tooltips in two stages, as CAD ribbons show them: rest on a button and its name, its command and one line come up;
-- public/js/ui/viewport.js: The drawing area's mouse, as in the CAD original: the wheel zooms about the cursor; a middle drag pans and a double
+- public/js/ui/viewport.js: The drawing area's mouse, trackpad and touch, as in the CAD original: a mouse wheel zooms about the cursor; a middle
 
 ## Scripts (scripts)
 
 - scripts/add-user.mjs: Makes a First Pass user: prints the SQL that adds them (hashes only) with the wrangler command to run it, and the two
 - scripts/agent-map.mjs: The map for agents (ported from practice-hub): writes docs/agent-map.md between its markers, generated from the code so
 - scripts/build.mjs: Bundles the Worker (src/worker/index.js, with the engine files it imports from public/js/engine/) into
-- scripts/deploy.sh: Deploys First Pass to Cloudflare Pages by hand: tests, build, the database migrations, then the site with its Worker.
+- scripts/deploy.sh: Deploys First Pass to Cloudflare Pages in one command from the owner's Mac: checks the Cloudflare sign-in, runs the
 - scripts/dev-server.mjs: The dev server on plain Node (no wrangler): static files from public/ first, and /api, /mcp, /tiles through the real
 - scripts/engine-demo.mjs: Engine demo: evaluates a roundabout, prints the headline, the per-leg radii and speeds and the time one
+- scripts/module-graph.mjs: The page's modulepreload list: every module the page loads, found by following the imports from the scripts that
+- scripts/test-workerd.mjs: The Worker under real workerd: builds, starts `wrangler pages dev` on a local D1 (migrations applied, one test user)
 
 ## Database migrations (migrations)
 
 - migrations/0001_init.sql: 0001_init.sql: First Pass's tables (docs/design.md, Server). Applied with `wrangler d1 migrations apply` at deploy
+- migrations/0002_admin.sql: 0002_admin.sql: the owner flag. admin = 1 marks the person who runs First Pass: they see every user's problem reports
 
 <!-- agent-map:end -->

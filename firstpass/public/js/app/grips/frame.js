@@ -4,7 +4,7 @@
 // Where a grip's value follows the hand, the rate is read from the engine too (gripRate): the shape is worked out once
 // with the value nudged and the grip found again, so a moved hand gives the value that puts the grip under it.
 //   legGeom(result, id)  curbArc(result, a, b)  curveGrip(result, onRoad, onCircle, avoid?)  gripRate(grip, g, field)
-//   valueAlong(v0, p0, J, P)  along(L, d)  bearingOf(C, P)
+//   valueAlong(v0, p0, J, P)  gearedAlong(v0, p0, J, P, k)  along(L, d)  bearingOf(C, P)
 import { evaluate, primPoint, primTangent } from '../../engine/index.js';
 
 export { along } from '../model-index.js';   // a point d feet beyond a leg's nose, out along the leg
@@ -79,6 +79,21 @@ export function gripRate(grip, g, field, h = 1) {
 /** The value that moves a grip from p0 to the hand at P, along its rate J (the part of the hand's motion along J). */
 export function valueAlong(v0, p0, J, P) {
   return v0 + ((P.x - p0.x) * J.x + (P.y - p0.y) * J.y) / (J.x * J.x + J.y * J.y);
+}
+
+/** At most this much value for each screen pixel the hand moves (a radius: one foot a pixel). */
+export const MAX_PER_PX = 1;
+
+/**
+ * As valueAlong, but never more than MAX_PER_PX of value for each screen pixel of the hand's motion at k px per ft: where
+ * the shape moves slowly under the hand (a curve's end moves about half a foot for each foot of radius) the grip stays
+ * under the hand only when zoomed in far enough; zoomed out, the value is geared down and the grip trails the hand.
+ * With no k the grip always follows the hand.
+ */
+export function gearedAlong(v0, p0, J, P, k) {
+  const n = Math.hypot(J.x, J.y);
+  const perFt = k > 0 ? Math.min(1 / n, MAX_PER_PX * k) : 1 / n;   // value for each foot the hand moves along J
+  return v0 + (((P.x - p0.x) * J.x + (P.y - p0.y) * J.y) / n) * perFt;
 }
 
 /** Where a ray from q in direction d first meets the circle (C, R) going forward; null when it misses. */

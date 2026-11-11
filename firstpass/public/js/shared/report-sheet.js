@@ -1,7 +1,8 @@
 // Report a problem: the sheet, loaded only when opened (ported from practice-hub). One text box, Add a screenshot, and
-// Copy for Claude: a short ready prompt goes on the clipboard at once (the report's id, her words, the page, and how to
-// read it in full with the First Pass connector's bugs tool and this repo's fix-bugs skill), and the report is saved in
-// the background:
+// Copy for Claude: a short ready prompt goes on the clipboard at once (report-prompt.js: the report's id and her words;
+// Claude Code with the First Pass code reads it in full and follows the fix-bugs skill, any other Claude tells her to
+// send it to the person who looks after First Pass), and the report is saved in the background; once it is, the sheet
+// says "Saved. The person who looks after First Pass can read it.":
 //   1. the last few read-only GETs are asked again with X-Trace-Keep: 1, so the server keeps their traces;
 //   2. POST /api/bugs with an id made here (a resend is the same report): her words, the page and fpState() (with the
 //      full current project), the last 10 calls (address, status, time, trace id, an error's first 2 KB), the last 30
@@ -9,11 +10,15 @@
 //   3. no connection or a failure: it waits in this browser (fp.bugq) and goes on the next load.
 // The page keeps her key in localStorage 'fp.key' (from the link's #k=); it goes only in the X-Key header.
 import { crumbs } from './report.js';
+import { claudePrompt } from './report-prompt.js';
+
+export { claudePrompt };
 
 const QUEUE = 'fp.bugq', KEY = 'fp.key';
 const SHOT = { side: 1600, maxBytes: 700_000 };
 const RETRACE_OK = /^\/api\/(projects(\/[^/?]+)?|me|settings)$/;
-const SKILL = 'firstpass/claude/skills/fix-bugs/SKILL.md';
+export const SAVED = 'Saved. The person who looks after First Pass can read it.';
+export const WAITING = 'Not sent yet. It waits in this browser and goes when the server answers.';
 const ls = (k, v) => { try { return v === undefined ? localStorage.getItem(k) : v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { return null; } };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -111,14 +116,6 @@ export async function flushQueue(f = fetch) {
 }
 addEventListener('online', () => { flushQueue(); });
 
-const one = (t, n) => String(t == null ? '' : t).replace(/\s+/g, ' ').trim().slice(0, n);
-/** The prompt Copy for Claude puts on the clipboard (pure). */
-export function claudePrompt({ id, note = '', page = '', state = null } = {}) {
-  const words = one(note, 600);
-  const open = Object.entries(state || {}).filter(([k, v]) => k !== 'hash' && v != null && v !== '' && typeof v !== 'object').slice(0, 6).map(([k, v]) => `${k}: ${one(v, 60)}`).join(', ');
-  return `In Claude Code: fix this First Pass problem. Report ${id}: ${words ? `"${words}"` : '(a screenshot, no words)'}. Page: ${one(page, 200) || 'not known'}${open ? ` (${open})` : ''}. `
-    + `Read it in full (traces, screenshot and the project) with the First Pass connector's bugs tool {action: "get", id: "${id}"}, follow ${SKILL}, then tell me what you understood before changing anything.`;
-}
 export async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* the fallback below */ }
   try {
@@ -177,11 +174,17 @@ export function openSheet() {
     const pending = shrinking, state = fpState(), list = crumbs.slice(), id = newId();
     const text = claudePrompt({ id, note, page: pageNow(), state });
     const copied = await copyText(text);   // inside the click, where browsers allow it
-    (async () => { try { if (pending) await pending; } catch (err) { /* saved without the picture */ } submit(buildReport({ note, shot, state, list, id })); })();
-    $('form').innerHTML = `<h2>${copied ? 'Copied. Paste it into Claude.' : 'Copy this into Claude'}</h2>
-      <p>${copied ? 'The report is saved on the server too; Claude reads it in full from there.' : 'Your browser would not copy it. Select the text and copy it.'}</p>
+    $('form').innerHTML = `<h2>${copied ? 'Copied for Claude.' : 'Copy this for Claude'}</h2>
+      <p class="rp-saved" data-rp-saved role="status">Saving the report...</p>
+      <p>${copied ? 'Paste it into Claude. Claude working in the First Pass code fixes it; any other Claude will ask you to send it on.' : 'Your browser would not copy it. Select the text and copy it.'}</p>
       <textarea readonly aria-label="The prompt for Claude">${esc(text)}</textarea>
       <div class="rp-row"><button type="button" class="rp-btn go" data-rp-done>Done</button></div>`;
+    const savedEl = $('[data-rp-saved]');
+    (async () => {
+      try { if (pending) await pending; } catch (err) { /* saved without the picture */ }
+      const ok = await submit(buildReport({ note, shot, state, list, id }));
+      if (savedEl) savedEl.textContent = ok ? SAVED : WAITING;
+    })();
     $('[data-rp-done]').addEventListener('click', () => { dlg.close(); dlg.remove(); dlg = null; });
   });
   dlg.showModal();

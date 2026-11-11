@@ -1,8 +1,9 @@
-// The workspace in a real browser against the real routes: it opens clean, typing goes to the command line without a
-// click (ICD 110, then U), the wheel zooms about the cursor, Esc clears, pulling an entry curve grip out works out the
+// The workspace in a real browser against the real routes: it opens clean, a short window folds the ribbon and a narrow
+// one keeps Check myself on screen, typing goes to the command line without a click (ICD 110, then U), the wheel zooms about the cursor, Esc clears, pulling an entry curve grip out works out the
 // checks live until Entry speed fails and commits one change on release, turning a leg shows the corner warning under
 // its check and on the tree, OPTION and COMPARE, Properties editing, window and crossing selection, a change made
-// through the connector arriving in the history, EXPORT's plain answer, and the frame budget while dragging.
+// through the connector arriving in the history, a sign-in page answering a save and a poll, EXPORT's plain answer,
+// and the frame budget while dragging.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, openPage, playwright, settle, pointOn, gripAt, history, state, canvasBox, until } from './helpers.mjs';
@@ -46,6 +47,36 @@ test('the page opens with the drawing, every part in place, and no errors', { sk
   } finally { await close(); }
 });
 
+test('a short window folds the ribbon to its tabs and keeps the drawing large; a narrow one keeps Check myself on screen', { skip }, async () => {
+  const short = await fresh({ width: 1280, height: 633 });
+  try {
+    const { page } = short;
+    assert.match(await page.locator('#ribbon').getAttribute('class'), /\bfolded\b/);
+    const h0 = await page.evaluate(() => window.fpPage.camera.h);
+    assert.ok(h0 > 300, `the drawing is ${h0} px high`);
+    const fits = await page.evaluate(() => {
+      const c = window.fpPage.camera, G = window.fpPage.info().shown.geometry, R = G.radii.inscribed;
+      return [c.sx(G.center.x - R), c.sy(G.center.y + R), c.sx(G.center.x + R), c.sy(G.center.y - R)].every((v, i) => v > 0 && v < (i % 2 ? c.h : c.w));
+    });
+    assert.ok(fits, 'the first view shows the whole circle');
+    // A tab opens its panels over the drawing; a button runs and closes them.
+    await page.locator('.rb-tab[data-tab="roundabout"]').click();
+    assert.ok(await page.locator('.rb-pane[data-tab="roundabout"] .rb-btn').first().isVisible());
+    assert.equal(await page.evaluate(() => window.fpPage.camera.h), h0, 'the drawing did not move down');
+    await page.locator('.rb-pane[data-tab="roundabout"] .rb-btn[data-cmd="ICD"]').click();
+    assert.doesNotMatch(await page.locator('#ribbon').getAttribute('class'), /\bpeek\b/);
+    assert.match(await page.locator('.cl-prompt').textContent(), /^ICD /);
+    assert.deepEqual(short.errors, []);
+  } finally { await short.close(); }
+  const narrow = await fresh({ width: 768, height: 950 });
+  try {
+    const r = await narrow.page.evaluate(() => { const b = document.querySelector('.sb-self').getBoundingClientRect(); return { left: b.left, right: b.right, w: innerWidth, scroll: document.documentElement.scrollWidth }; });
+    assert.ok(r.left >= 0 && r.right <= r.w, `Check myself is at ${r.left} to ${r.right} of ${r.w}`);
+    assert.equal(r.scroll, r.w, 'no sideways scroll');
+    assert.match(await narrow.page.locator('#ribbon').getAttribute('class'), /^ribbon$/, 'a tall window keeps the ribbon open');
+  } finally { await narrow.close(); }
+});
+
 test('typing ICD 110 with no click sets the diameter on the page and the server, and U undoes it', { skip }, async () => {
   const { page, close, project } = await fresh();
   try {
@@ -65,7 +96,7 @@ test('typing ICD 110 with no click sets the diameter on the page and the server,
     await page.keyboard.press('Enter');
     await until(page, async (p) => icdOf(await state(p)) === before, 'undo puts it back');
     await until(page, async () => (await serverProject(project.id)).options[0].round.icd === before, 'the server has it back');
-    assert.match((await history(page, 1))[0], /^Undo: /);
+    assert.match((await history(page, 1))[0], /^Undid your change: /);
   } finally { await close(); }
 });
 
@@ -147,7 +178,8 @@ test('pulling an entry curve grip out works the checks out live, turns Entry spe
     assert.ok(st.project.options[0].round.legs.find((l) => l.id === 'N').entryRadius > r0, 'the entry curb radius got bigger');
     assert.ok((await entryRed()) > 0, 'Entry speed stays red once the change is made');
     await until(page, async () => (await serverProject(project.id)).seq === seq0 + 1, 'one change reached the server');
-    assert.match((await history(page, 1))[0], /^\*\* STRETCH \*\* /);
+    // The change's line, then one line for each other curb radius the drag made smaller in its corner.
+    assert.ok((await history(page, 4)).some((l) => /^\*\* STRETCH \*\* /.test(l)), (await history(page, 4)).join(' | '));
   } finally { await close(); }
 });
 
@@ -264,16 +296,40 @@ test('a change made through the connector arrives on the page and in the history
   } finally { await close(); }
 });
 
+test('a save and a poll answered by a sign-in page (200, HTML) wait and carry on: the change is saved and Claude\'s next one arrives', { skip }, async () => {
+  const { page, close, project } = await fresh();
+  try {
+    const html = { status: 200, contentType: 'text/html', body: '<!doctype html><title>Sign in to this network</title><p>Accept the terms to go on.</p>' };
+    let saves = 0, polls = 0;
+    await page.route(/\/api\/projects\/[^/?]+\/changes$/, (route) => (route.request().method() === 'POST' && saves++ === 0 ? route.fulfill(html) : route.continue()));
+    await page.mouse.move(700, 400);
+    await page.keyboard.type('ICD 115');
+    await page.keyboard.press('Enter');
+    await until(page, async (p) => (await state(p)).net.state === 'offline', 'the status bar says the change waits');
+    assert.match((await state(page)).net.text, /^Offline: 1 change not saved yet\. A sign-in page on this network may be in the way\.$/);
+    await until(page, async () => (await serverProject(project.id)).options[0].round.icd === 115, 'the change reaches the server on the next try', 8000);
+    await until(page, async (p) => (await state(p)).net.state === 'saved', 'all changes saved');
+    // A poll answered the same way: the poll carries on, and a change made through the connector still arrives.
+    await page.route(/\/api\/projects\/[^/?]+\/changes\?since=/, (route) => (polls++ === 0 ? route.fulfill(html) : route.continue()));
+    await until(page, async () => polls > 0, 'a poll was answered by the sign-in page', 6000);
+    const r = await server.tool('change_option', { project: project.id, option: 'A', changes: [{ path: 'icd', value: 118 }], reason: 'Tried a slightly larger circle' });
+    assert.ok(r.result && !r.result.isError, JSON.stringify(r).slice(0, 300));
+    await until(page, async (p) => icdOf(await state(p)) === 118, 'Claude\'s change arrives after the broken poll', 8000);
+    assert.ok(polls > 1, 'the poll asked again');
+    assert.equal((await state(page)).net.state, 'saved');
+  } finally { await close(); }
+});
+
 test('EXPORT answers in plain words: the DXF file it saved, or why it could not', { skip }, async () => {
   const { page, close } = await fresh();
   try {
     await page.mouse.move(700, 400);
     await page.keyboard.type('EXPORT');
     await page.keyboard.press('Enter');
-    // The export is being built in another part: either answer is plain words on one line.
+    // Either answer is plain words on one line: the file, its units and zone, and how to insert it; or why not.
     await until(page, async (p) => /^(Saved|Not exported)/.test((await history(p, 1))[0]), 'export answers');
     const line = (await history(page, 1))[0];
-    assert.match(line, /^(Saved \S+\.dxf: .+\.|Not exported: .+\.)$/);
+    assert.match(line, /^(Saved \S+\.dxf in US survey feet, California zone \d \(EPSG \d{4}\)\. Insert it at 0,0 with scale 1\.|Not exported: .+\.)$/);
   } finally { await close(); }
 });
 

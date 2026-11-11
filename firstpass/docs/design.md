@@ -182,18 +182,22 @@ CLAUDE.md first). Same shape: keyed `/api/*`, the connector at `/mcp/<token>`, s
 `public/_routes.json` lists only `/api/*`, `/mcp/*` and `/tiles/*`, so static files are served straight from the edge
 and never invoke the Worker (faster, and free on the plan). A worker test keeps that list in step with the router.
 
-- D1 tables: `users` (id, name, key_hash, mcp_token_hash), `projects`, `changes` (seq, project, batch_id, actor
+- D1 tables: `users` (id, name, key_hash, mcp_token_hash, admin: the person who runs First Pass, who sees everyone's
+  problem reports), `projects`, `changes` (seq, project, batch_id, actor
   `user|claude`, summary, ops, inverse, undone), `settings`, `bug_reports`, `debug_traces`.
 - Every write goes through `store/change.js applyChange(project, { ops, actor, summary })`: validates with the
   engine's params table, applies, stores the ops and their inverse, bumps `seq`. Ops: `set { option, path, value }`,
-  `add_option { from? }`, `remove_option`, `rename_option`, `add_leg`, `remove_leg`, `set_rule`. Undo = apply inverse.
+  `add_option { from? }`, `remove_option`, `rename_option`, `add_leg`, `remove_leg`, `set_rule`,
+  `set_site { lat, lon, epsg? }` (her real site in California: the zone follows the place, every option moves by one
+  shift so the one on screen lands there). Undo = apply inverse; undo without a seq takes the newest change by anyone
+  and the answer names it (`undone: {seq, actor, summary}`).
 - Routes: `GET/POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/changes`,
   `GET /api/projects/:id/changes?since=seq`, `POST /api/projects/:id/undo`, `GET /api/projects/:id/export/:option.dxf`,
   `GET /api/selfcheck`, the bug routes as in practice-hub, `GET /tiles/naip/:z/:x/:y` (see Public data).
 - Connector tools (few and coarse): `get_project`, `get_option` (parameters, checks, headline), `change_option`
   ({ option, changes: [{ path, value }], reason }, returns the new checks), `add_option`, `compare_options`, `sweep`
-  ({ option, path, from, to, step }, a table of headline numbers, changes nothing), `undo`, `export_link`,
-  `bugs` (list, get, close). Tool results are compact text plus JSON. The Worker holds no AI key.
+  ({ option, path, from, to, step }, a table of headline numbers, changes nothing), `undo`, `set_site`, `export_link`,
+  `bugs` (list, get, close; the owner sees everyone's). Tool results are compact text plus JSON. The Worker holds no AI key.
 - Debugging, ported from practice-hub: `public/js/shared/report.js` and `report-sheet.js` (button, breadcrumbs,
   traceparent, screenshot, Copy for Claude, offline queue), `debug/bugs.js`, `debug/trace.js`, the fix tools, a
   `fix-bugs` skill under `firstpass/claude/skills/`. Each report bundle also carries the full project JSON, so a
@@ -204,7 +208,8 @@ and never invoke the Worker (faster, and free on the plan). A worker test keeps 
 - Aerial photos: USGS NAIP Plus ImageServer (public domain, about 0.3 m pixels, checked 11 Nov 2026):
   `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage?bbox=..&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image`.
   The Worker serves standard XYZ tiles at `/tiles/naip/z/x/y` by calling that with the tile's Web Mercator box and
-  caching the answer (Cache API, 30 days), zoom 12 to 20.
+  caching the answer (Cache API, 30 days), zoom 12 to 20. The tile rule: only to First Pass's own page (same origin,
+  else 403) and only over California (a box at each zoom, else 404), with a 20 s limit on the service.
 - `public/js/engine/crs.js`: WGS84 to and from CCS83 zones 1 to 6 (Lambert conformal conic, GRS80, US survey feet),
   written out, tested against proj4 (dev dependency only). Zone picked from the site with a manual override.
   Exports: `toLatLon(epsg, x, y) -> { lat, lon }`, `fromLatLon(epsg, lat, lon) -> { x, y }`,
@@ -287,23 +292,19 @@ Per leg, entry side (the exit mirrors it with the exit radius and exit width):
   than roughly 70 degrees do not fit. Real designs join such curbs directly; the engine does not yet.
 - Islands grow long with wide entries (a 20 ft entry gives a 126 ft island) because of the 1 in 6 flare.
 - A 10 ft approach lane leaves no room for the fastest path at the nose.
-- The entry speed text can read "enters at 25 mph, above the limit of 25 mph" when the speed is 25.2: show one decimal
-  when the rounded values are equal.
 - Stopping sight factor: the engine uses 1.075 (AASHTO); NCHRP 672 prints 1.087. Both are marked verify. Check
   against NCHRP 1043 and the Caltrans HDM table before she relies on it.
 - Six legs take about 20 ms per evaluate (the budget is set for four legs; the page evaluates in a worker).
-- CONTRACT.md needs a dated section for the construction above, the new rules and the meaning of `converged`.
 - The data model's example values near the top of this file are the first defaults; the engine's parameter table holds
   the current ones.
 
 ## Open items on the server (11 Nov 2026, from its builder's report)
 
-- The DXF export route answers 501 until part 4 writes it.
 - No limit yet on how often the connector can change a drawing. Projects cannot be deleted or renamed (options can).
   No key rotation. No page or route shows her the connector link. No `_headers` file or content security policy.
-- Tests run on Node with a database fake; nothing has run under the real Workers runtime yet. Do one such run before
-  the first deploy (Cache API and AsyncLocalStorage are the likely differences).
-- `wrangler.toml` holds a placeholder database id, and the deploy script has never been run.
-- The sample site's state plane coordinates were worked out by hand; check them against `crs.js` when it exists.
+- `npm run test:workerd` runs the Worker under the real runtime (`wrangler pages dev`) and passes (11 Nov 2026). It
+  does not fetch a real photo tile there, so the Cache API is exercised only by the tests' fake of it; check one tile on the live site after the first deploy.
+- `wrangler.toml` holds a placeholder database id until the first deploy: `scripts/deploy.sh` makes the database and
+  writes the id. The deploy script has never been run.
 - The first `evaluate` after a cold start took 74 ms on the server (later runs 12 to 19 ms there).
 - Settings are server-wide, and a removed key can keep working for up to 60 s (the user cache). Fine for one user.

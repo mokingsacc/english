@@ -37,7 +37,7 @@ test('tools/list: one file per tool, listed by the registry, small, and change_o
   const t = await setup();
   const r = await t.mcp('tools/list');
   const tools = r.json.result.tools;
-  assert.deepEqual(tools.map(x => x.name), ['get_project', 'get_option', 'change_option', 'add_option', 'compare_options', 'sweep', 'undo', 'export_link', 'bugs']);
+  assert.deepEqual(tools.map(x => x.name), ['get_project', 'get_option', 'change_option', 'add_option', 'compare_options', 'sweep', 'undo', 'set_site', 'export_link', 'bugs']);
   assert.deepEqual(tools, LIST);
   assert.ok(JSON.stringify(tools).length < LIST_MAX, `${JSON.stringify(tools).length} characters`);
   assert.deepEqual(fs.readdirSync(TOOLS_DIR).sort(), TOOLS.map(x => `${x.name}.js`).sort());
@@ -63,7 +63,7 @@ test('get_project and get_option: a summary first, then compact JSON', async () 
   const gp = await t.tool('get_project', {});
   assert.equal(gp.isError, false);
   assert.equal(gp.content.length, 2);
-  assert.match(gp.summary, /^Project "Sample roundabout" \(p_\w+\), change 0, 1 option\.\nOption A \(A\): The fastest entry is \d+ mph/);
+  assert.match(gp.summary, /^Project "Sample roundabout" \(p_\w+\), change 0, 1 option\.\nOption A \(A\): The fastest entry is \d+\.\d mph, on/);
   assert.equal(gp.data.project.id, p.id);
   assert.equal(gp.data.options[0].headline.fails, 0);
   assert.ok(!gp.content[1].text.includes('\n'), 'the JSON is compact');

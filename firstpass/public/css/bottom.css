@@ -101,26 +101,40 @@
 .dyn-in { width: 76px; height: 20px !important; text-align: right; background: #151a20 !important; border-color: #7c8999 !important; }
 .dyn-unit { color: var(--c-ink-dim); font-size: 11.5px; }
 .dyn-hint { color: var(--c-ink-faint); font-size: 10.5px; max-width: 220px; white-space: normal; }
+.dyn-note { color: #ffe08a; font-size: 11.5px; white-space: nowrap; }
+.dyn-note[hidden] { display: none; }
 
 /* ---- Status bar */
 .statusbar { display: flex; align-items: center; gap: 2px; height: 28px; padding: 0 6px; background: var(--c-frame); border-top: 1px solid #1a2027; white-space: nowrap; user-select: none; overflow: hidden; }
 .sb-coords { flex: none; min-width: 268px; padding: 0 8px; font-variant-numeric: tabular-nums; color: var(--c-ink); }
 .sb-model { flex: none; height: 22px; padding: 0 8px; border: 1px solid #56616f; border-radius: 2px; background: #3a4350; font-weight: 600; letter-spacing: 0.03em; }
-.sb-toggles { display: flex; gap: 1px; margin-left: 4px; }
+.sb-toggles { flex: none; display: flex; gap: 1px; margin-left: 4px; }
 .sb-tog { width: 26px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; display: grid; place-items: center; opacity: 0.55; }
 .sb-tog:hover { background: var(--c-hover); opacity: 1; }
 .sb-tog:not([aria-pressed]) { opacity: 1; }
 .sb-tog.on { opacity: 1; background: #2b4a6f; border-color: #3f6fa5; }
 .sb-sep { width: 1px; height: 18px; margin: 0 6px; background: var(--c-line); }
-.sb-zone { color: var(--c-ink-dim); padding: 0 6px; }
+.sb-zone { color: var(--c-ink-dim); padding: 0 6px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sb-photo { color: var(--c-ink-faint); padding: 0 6px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.sb-fill { flex: 1; }
-.sb-net { display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--c-ink-dim); overflow: hidden; min-width: 0; }
+.sb-fill { flex: 1 1 0; min-width: 0; }
+.sb-net { flex: 0 1 auto; display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--c-ink-dim); overflow: hidden; min-width: 24px; }
 .sb-net .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c-ink-faint); }
 .sb-net[data-state="saved"] .dot { background: var(--c-pass); }
 .sb-net[data-state="saving"] .dot { background: var(--c-info); }
 .sb-net[data-state="offline"] .dot, .sb-net[data-state="local"] .dot { background: var(--c-warn); }
 .sb-net[data-state="offline"], .sb-net[data-state="local"] { color: #ffe08a; }
 .sb-net-text { overflow: hidden; text-overflow: ellipsis; }
-.sb-self { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 2px; background: transparent; }
+.sb-self { flex: none; display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 2px; background: transparent; }
 .sb-self:hover { background: var(--c-hover); border-color: #5b6778; }
+/* A narrow window (an iPad upright): the coordinates and the zone give way first, so Check myself always shows. */
+@media (max-width: 1100px) {
+  .sb-coords { flex: 0 1 268px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sb-photo { display: none; }
+}
+@media (max-width: 860px) {
+  .sb-zone, .sb-model, .sb-sep { display: none; }
+}
+/* A short window: two lines of command history, so the drawing keeps its room. */
+@media (max-height: 699px) {
+  .cl-history { height: 36px; }
+}
