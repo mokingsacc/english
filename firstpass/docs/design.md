@@ -207,6 +207,10 @@ and never invoke the Worker (faster, and free on the plan). A worker test keeps 
   caching the answer (Cache API, 30 days), zoom 12 to 20.
 - `public/js/engine/crs.js`: WGS84 to and from CCS83 zones 1 to 6 (Lambert conformal conic, GRS80, US survey feet),
   written out, tested against proj4 (dev dependency only). Zone picked from the site with a manual override.
+  Exports: `toLatLon(epsg, x, y) -> { lat, lon }`, `fromLatLon(epsg, lat, lon) -> { x, y }`,
+  `zoneFor(lat, lon) -> epsg`. The page places each photo tile by sending its corners through `fromLatLon` and
+  drawing the tile with the affine transform those corners give (a tile is small enough that this is exact to well
+  under a pixel).
 - Her own data (a later part of phase 1): a base drawing (DXF) or a photo she adds is read in her browser and kept in
   IndexedDB. It is never uploaded.
 
@@ -259,3 +263,18 @@ and the page never shows Autodesk's name, logo or product names as its own.
 4. DXF export, state plane conversion tests, Check myself.
 5. Truck turns (swept path), her own base drawing or photo.
 6. One fresh-eyes review; fixes; deploy.
+
+## Open items (11 Nov 2026, after the first engine review)
+
+- Entry and exit width: the engine builds the curb `splitterWidth/2 + entryWidth` from the leg's axis, so the width
+  as an engineer measures it (NCHRP 672: square to the right curb, from where the left edge meets the inscribed
+  circle) comes out wider than asked (19.3 ft and 23.8 ft for a nominal 16 ft). To fix: solve the curb offset so the
+  measured width equals the parameter.
+- Corners that do not fit: when one leg's entry curve and the next leg's exit curve overlap on the circle, the engine
+  answers ok:false. With the defaults there is no slack, so turning any leg breaks the drawing. To fix: shorten both
+  radii by one common factor until they just meet, report the built radii, and give a warning in plain words; only
+  answer ok:false when even the smallest allowed radius does not fit.
+- Stopping sight factor: the engine uses 1.075 (AASHTO); NCHRP 672 prints 1.087. Both are marked verify. Check
+  against NCHRP 1043 and the Caltrans HDM table before she relies on it.
+- Six legs take about 18 ms per evaluate (the budget is set for four legs).
+- `movement.solver.converged` reads false on a path whose gradient is 1e-9: check what the flag means.
