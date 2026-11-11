@@ -1,9 +1,10 @@
 // The aerial photo underlay's tile maths against a fake coordinate converter: tile numbers and corners, the zoom for a
-// scale, which tiles cover a view, the affine transform that puts a tile on its corners, and the quiet fallback line
-// "Photo not available" when crs.js is missing.
+// scale, which tiles cover a view, the affine transform that puts a tile on its corners, the quiet fallback line
+// "Photo not available" when crs.js is missing, a tile drawn exactly on its square with its edges under the next one, a
+// failed tile asked for again, and a coarser tile standing in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tileXY, tileLatLon, zoomFor, tilesFor, tileWorld, affineFor, createUnderlay, ZMIN, ZMAX, TILE } from '../../public/js/draw/underlay.js';
+import { tileXY, tileLatLon, zoomFor, tilesFor, tileWorld, affineFor, createUnderlay, ancestorOf, drawSquare, RETRY_MS, ZMIN, ZMAX, TILE } from '../../public/js/draw/underlay.js';
 import { createCamera } from '../../public/js/draw/camera.js';
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, msg || `${a} is not within ${tol} of ${b}`);
@@ -90,17 +91,130 @@ test('with a converter, loaded tiles are drawn with their transform and fade in'
   assert.equal(u.state(), 'on');
   const cam = createCamera({ cx: X0, cy: Y0, k: 1, w: 600, h: 400 });
   const log = [];
-  const ctx = { save() {}, restore() {}, setTransform: (...m) => log.push(['t', ...m]), drawImage: (img) => log.push(['img', img._src]), set globalAlpha(v) { log.push(['alpha', v]); } };
+  const ctx = { save() {}, restore() {}, setTransform: (...m) => log.push(['t', ...m]), drawImage: (img, ...r) => { if (r[6] === TILE && r[7] === TILE) log.push(['img', img._src]); }, set globalAlpha(v) { log.push(['alpha', v]); }, fillRect: (...r) => log.push(['veil', ...r]) };
   u.paint(ctx, cam, 2, { lat: LAT0 });
   assert.ok(images.length > 0);
   assert.ok(images.every((i) => /^\/tiles\/naip\/\d+\/\d+\/\d+$/.test(i._src)));
   assert.equal(log.filter((l) => l[0] === 'img').length, 0, 'nothing drawn before a tile loads');
+  assert.equal(log.filter((l) => l[0] === 'veil').length, 0, 'and no veil');
   images[0].onload();
   assert.ok(changed >= 2);
   log.length = 0;
   u.paint(ctx, cam, 2, { lat: LAT0 });
   assert.equal(log.filter((l) => l[0] === 'img').length, 1);
+  // The tile itself is drawn at full strength; one veil of the background over everything dims it.
+  const veil = log.findIndex((l) => l[0] === 'veil');
+  assert.ok(veil > log.findIndex((l) => l[0] === 'img'));
+  assert.deepEqual(log[veil].slice(1), [0, 0, 600, 400]);
+  assert.equal(log.slice(0, veil).filter((l) => l[0] === 'alpha').at(-1)[1], 1 - 0.6);
   assert.equal(u.busy(), true, 'a tile that just arrived is still fading in');
   u.paint(ctx, cam, 2, { on: false });
   assert.equal(u.busy(), false);
+});
+
+// A fake clock and timers, images that load or fail when told, and a canvas that logs what is drawn.
+function rig() {
+  let t = 1000;
+  const timers = [], images = [];
+  const makeImage = () => { const img = { set src(v) { this._src = v; images.push(this); } }; return img; };
+  const seen = [];
+  let changed = 0;
+  const u = createUnderlay({ tileUrl: (z, x, y) => `${z}/${x}/${y}`, epsgOf: () => 2226, onChange: () => changed++, onStatus: (s) => seen.push(s), importCrs: async () => fakeCrs,
+    makeImage, now: () => t, later: (fn, ms) => timers.push({ fn, at: t + ms }) });
+  const log = [];
+  // drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh): the tile's own square is logged as [src, sx, sy, sw]; the thin
+  // edge strips under the next tile are left out.
+  const ctx = { save() {}, restore() {}, setTransform() {}, drawImage: (img, ...r) => { if (r[6] === TILE && r[7] === TILE) log.push([img._src, r[0], r[1], r[2]]); }, set globalAlpha(v) { log.push(['alpha', v]); }, fillRect: () => log.push(['veil']) };
+  return { u, images, timers, seen, log, ctx, tick: (ms) => { t += ms; for (const x of timers.splice(0)) if (x.at <= t) x.fn(); else timers.push(x); }, changed: () => changed };
+}
+
+test('a tile the service did not give is asked for again after 2, 6 and 20 s, then left', async () => {
+  const r = rig();
+  await new Promise((ok) => setTimeout(ok, 0));
+  const cam = createCamera({ cx: X0, cy: Y0, k: 2, w: 200, h: 200 });
+  r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+  const first = r.images[0]._src;
+  const asks = () => r.images.filter((i) => i._src === first);
+  for (let n = 0; n < RETRY_MS.length; n++) {
+    asks().at(-1).onerror();
+    assert.equal(r.timers.length >= 1, true, 'a repaint is asked for when the wait is over');
+    r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+    assert.equal(asks().length, n + 1, 'not asked again before the wait');
+    r.tick(RETRY_MS[n]);
+    r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+    assert.equal(asks().length, n + 2, `asked again after ${RETRY_MS[n]} ms`);
+  }
+  asks().at(-1).onerror();
+  r.tick(60000);
+  r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+  assert.equal(asks().length, RETRY_MS.length + 1, 'three tries after the first, no more');
+});
+
+test('the photo comes back on when a tile arrives after the service failed', async () => {
+  const r = rig();
+  await new Promise((ok) => setTimeout(ok, 0));
+  const cam = createCamera({ cx: X0, cy: Y0, k: 2, w: 600, h: 400 });
+  r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+  assert.ok(r.images.length >= 3);
+  for (const i of r.images.slice(0, 3)) i.onerror();
+  assert.equal(r.u.state(), 'off');
+  assert.equal(r.seen.at(-1).text, 'Photo not available');
+  r.tick(RETRY_MS[0]);
+  r.u.paint(r.ctx, cam, 1, { lat: LAT0 });
+  r.images.at(-1).onload();
+  assert.equal(r.u.state(), 'on');
+});
+
+test('the part of a coarser tile in memory stands in for a tile still loading', async () => {
+  // ancestorOf: the tile two levels up and the quarter-sized square inside it.
+  assert.deepEqual(ancestorOf({ z: 18, x: 4 * 100 + 3, y: 4 * 200 + 1 }, 2), { key: '16/100/200', sx: 3 * 64, sy: 1 * 64, size: 64 });
+  assert.deepEqual(ancestorOf({ z: 18, x: 801, y: 400 }, 1), { key: '17/400/200', sx: 128, sy: 0, size: 128 });
+  const r = rig();
+  await new Promise((ok) => setTimeout(ok, 0));
+  const coarse = createCamera({ cx: X0, cy: Y0, k: 0.5, w: 100, h: 100 });
+  r.u.paint(r.ctx, coarse, 1, { lat: LAT0 });
+  for (const i of r.images) i.onload();
+  r.tick(1000);
+  const zc = zoomFor(0.5, LAT0);
+  const fine = createCamera({ cx: X0, cy: Y0, k: 4, w: 100, h: 100 });
+  const zf = zoomFor(4, LAT0);
+  assert.ok(zf - zc >= 1 && zf - zc <= 4, `${zc} to ${zf}`);
+  r.log.length = 0;
+  r.u.paint(r.ctx, fine, 1, { lat: LAT0 });
+  const drawn = r.log.filter((l) => l[0] !== 'alpha' && l[0] !== 'veil');
+  assert.ok(drawn.length >= 1, 'something is drawn before the fine tiles come');
+  for (const d of drawn) {
+    assert.equal(Number(d[0].split('/')[0]), zc, 'from the coarse tiles');
+    assert.equal(d[3], TILE / 2 ** (zf - zc), 'a part of the image');
+  }
+  assert.equal(r.log.at(-1)[0], 'veil', 'dimmed like any tile');
+  // A fine tile that just arrived fades in over its stand-in.
+  for (const i of r.images.filter((i) => i._src.startsWith(`${zf}/`))) i.onload();
+  r.log.length = 0;
+  r.u.paint(r.ctx, fine, 1, { lat: LAT0 });
+  const both = r.log.filter((l) => l[0] !== 'alpha' && l[0] !== 'veil');
+  assert.ok(both.some((d) => d[0].startsWith(`${zc}/`)) && both.some((d) => d[0].startsWith(`${zf}/`) && d[3] === TILE));
+  assert.equal(r.u.busy(), true);
+  // Once faded in, only the fine tiles are drawn.
+  r.tick(1000);
+  r.log.length = 0;
+  r.u.paint(r.ctx, fine, 1, { lat: LAT0 });
+  const after = r.log.filter((l) => l[0] !== 'alpha' && l[0] !== 'veil');
+  assert.ok(after.length >= 1 && after.every((d) => d[0].startsWith(`${zf}/`) && d.slice(1).join() === `0,0,${TILE}`));
+  assert.equal(r.u.busy(), false);
+});
+
+test('a tile is drawn exactly on its square, its last column and row reaching under the next tile', () => {
+  const calls = [];
+  drawSquare({ drawImage: (img, ...r) => calls.push(r) }, {}, 0, 0, TILE);
+  assert.deepEqual(calls[0], [0, 0, TILE, TILE, 0, 0, TILE, TILE], 'the picture itself is not stretched');
+  assert.deepEqual(calls[1].slice(0, 6), [TILE - 1, 0, 1, TILE, TILE, 0]);
+  assert.deepEqual(calls[2].slice(0, 7), [0, TILE - 1, TILE, 1, 0, TILE, TILE]);
+  assert.deepEqual(calls[3].slice(0, 6), [TILE - 1, TILE - 1, 1, 1, TILE, TILE]);
+  for (const c of calls.slice(1)) assert.ok(Math.min(c[6], c[7]) > 0 && Math.min(c[6], c[7]) < 1, 'less than a pixel');
+  // A stand-in's quarter: the same, in its own pixels.
+  calls.length = 0;
+  drawSquare({ drawImage: (img, ...r) => calls.push(r) }, {}, 64, 128, 64);
+  assert.deepEqual(calls[0], [64, 128, 64, 64, 0, 0, TILE, TILE]);
+  assert.deepEqual(calls[1].slice(0, 6), [64 + 64 - 0.25, 128, 0.25, 64, TILE, 0]);
 });

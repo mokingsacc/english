@@ -7,6 +7,8 @@ import { createChecksView } from './checks-view.js';
 import { createCompareView } from './compare-view.js';
 
 export const PANO_TABS = [{ id: 'checks', label: 'Checks' }, { id: 'compare', label: 'Compare' }];
+// Column heads (22 px), three rows (23 px each) and the tab strip (25 px).
+export const FIRST_HEIGHT = 22 + 3 * 23 + 25;
 
 export function createPanorama(app, root) {
   const strip = h('div', { class: 'pano-strip' });
@@ -29,7 +31,9 @@ export function createPanorama(app, root) {
   const compare = createCompareView(app, bodies.compare);
 
   let tab = prefs.get('panorama.tab', 'checks');
-  let height = prefs.get('panorama.height', Math.round(Math.max(120, Math.min(220, window.innerHeight * 0.2))));
+  // First height: the column heads, three check rows and the tabs, so a small laptop screen keeps room for the drawing.
+  // Dragging the top edge sets her own height, remembered on this browser.
+  let height = prefs.get('panorama.height', FIRST_HEIGHT);
   const setH = () => root.style.setProperty('--pano-h', `${height}px`);
   setH();
   const setState = (s) => {

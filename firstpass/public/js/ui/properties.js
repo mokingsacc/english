@@ -1,8 +1,8 @@
 // The Properties palette: a dropdown naming the selection ("Roundabout", "Leg (1)", "No selection"), then category rows
 // (General, Geometry, Approach, Entry, Exit, Splitter island, Results) with name and value columns. The rows come from
 // the engine's parameters table (label, unit, min, max, step; help is the tooltip); values are edited in place and
-// change the drawing through the change ops. Results rows are read only: R1 to R5, V1 to V5 and the values as built,
-// shown beside the asked value whenever the two differ. Rows rebuild only when the selection changes; otherwise only
+// change the drawing through the change ops. Read-only rows: Results (R1 to R5, V1 to V5), and under each asked value
+// an "As built" row with the value the engine built, shown only when the two differ. Rows rebuild only when the selection changes; otherwise only
 // the values that changed are written. A new parameter appears here by itself; a new group maps in CATEGORY.
 import { PARAMS, LEG_PARAMS, ROUND_PARAMS, legField } from '../engine/index.js';
 import { h, ico, setText, setAttr, setClass, showValue, whole } from './dom.js';
@@ -56,16 +56,19 @@ export function createProperties(app, body) {
     out.push({ cat: 'General', key: 'g-legname', label: 'Name', text: true, get: () => same(app.selectedLegs().map((l) => l.name)),
       set: (v) => app.change(ids.map((id) => app.op.set(option.id, `legs.${id}.name`, v))) });
     out.push({ cat: 'General', key: 'g-legid', label: 'Leg id', get: () => same(app.selectedLegs().map((l) => l.id)) });
-    for (const p of LEG_PARAMS) out.push(paramRow(p, () => ids.map((id) => `legs.${id}.${legField(p)}`), legField(p)));
-    for (const k of ['R1', 'R2', 'R3', 'R4', 'R5']) out.push({ cat: 'Results', key: `r-${k}`, label: `${k}, ${RADIUS_WORDS[k]}`, res: (r) => legResult(r, ids, (L) => L.R[k], 'ft') });
-    for (const k of ['V1', 'V2', 'V3', 'V4', 'V5']) out.push({ cat: 'Results', key: `r-${k}`, label: `${k}, ${SPEED_WORDS[k]}`, res: (r) => legResult(r, ids, (L) => L.V[k], 'mph') });
     for (const p of LEG_PARAMS) {
       const f = legField(p);
-      out.push({ cat: 'Results', key: `r-built-${f}`, label: `${p.label} as built`, built: f, res: (r) => builtValue(r, ids, f, p.unit, app.selectedLegs()) });
+      out.push(paramRow(p, () => ids.map((id) => `legs.${id}.${f}`), f));
+      // Right under the asked value, the value as built, shown only when the engine built something else.
+      out.push({ cat: categoryOf(p), key: `r-built-${f}`, label: 'As built', sub: true, full: `${p.label} as built`, built: f, res: (r) => builtValue(r, ids, f, p.unit, app.selectedLegs()) });
+      if (f === 'splitterWidth') {
+        // Shown when the engine reports it: how wide the island is where it meets the circle.
+        out.push({ cat: categoryOf(p), key: 'r-splitter-circle', label: 'Where it meets the circle', sub: true, full: 'Splitter island width where it meets the circle', built: 'splitterWidthAtCircle',
+          res: (r) => (r && r.ok && r.legs.some((L) => typeof L.splitterWidthAtCircle === 'number') ? legResult(r, ids, (L) => L.splitterWidthAtCircle, 'ft') : null) });
+      }
     }
-    // Shown when the engine reports it: how wide the island is where it meets the circle.
-    out.push({ cat: 'Results', key: 'r-splitter-circle', label: 'Splitter island width at the circle', built: 'splitterWidthAtCircle',
-      res: (r) => (r && r.ok && r.legs.some((L) => typeof L.splitterWidthAtCircle === 'number') ? legResult(r, ids, (L) => L.splitterWidthAtCircle, 'ft') : null) });
+    for (const k of ['R1', 'R2', 'R3', 'R4', 'R5']) out.push({ cat: 'Results', key: `r-${k}`, label: `${k}, ${RADIUS_WORDS[k]}`, res: (r) => legResult(r, ids, (L) => L.R[k], 'ft') });
+    for (const k of ['V1', 'V2', 'V3', 'V4', 'V5']) out.push({ cat: 'Results', key: `r-${k}`, label: `${k}, ${SPEED_WORDS[k]}`, res: (r) => legResult(r, ids, (L) => L.V[k], 'mph') });
     return { kind, rows: out };
   }
 
@@ -102,7 +105,7 @@ export function createProperties(app, body) {
       });
       table.append(head, group);
       for (const r of spec.rows.filter((x) => x.cat === cat)) {
-        const name = h('div', { class: 'pr-name', text: r.label, title: r.help || r.label });
+        const name = h('div', { class: `pr-name${r.sub ? ' sub' : ''}`, text: r.label, title: r.help || r.full || r.label });
         const val = h('div', { class: `pr-val${r.set ? ' edit' : ''}${r.res ? ' ro' : ''}`, tabindex: r.set ? '0' : null, 'data-key': r.key });
         const el = h('div', { class: 'pr-row', role: 'row', 'data-key': r.key }, name, val);
         if (r.help) { el.dataset.tip = r.label; el.dataset.tipText = r.help; if (r.param) el.dataset.tipMore = `From ${r.param.min} to ${r.param.max} ${r.param.unit}.`; }
@@ -219,7 +222,7 @@ function builtValue(r, ids, field, unit, legs) {
     const asked = (legs.find((l) => l.id === id) || {})[field];
     const off = Math.abs(built - asked) > 0.005;
     differs = differs || off;
-    vals.push(off ? `${showValue(built, unit)} (asked ${showValue(asked, unit)})` : showValue(built, unit));
+    vals.push(showValue(built, unit));   // the asked value is on the row above
   }
   if (!differs) return null;
   return vals.every((v) => v === vals[0]) ? vals[0] : VARIES;

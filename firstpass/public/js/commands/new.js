@@ -8,7 +8,7 @@ export default {
   async run(ctx) {
     if (ctx.app.sync.mode() !== 'server') {
       ctx.app.sync.resetLocal();
-      ctx.app.zoomExtents();
+      ctx.app.zoomFirst();
       ctx.echo('A fresh sample is open. It is not saved: open First Pass from your link to keep projects.');
       return;
     }

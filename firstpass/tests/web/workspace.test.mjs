@@ -1,6 +1,7 @@
 // The workspace in a real browser against the real routes: it opens clean, typing goes to the command line without a
-// click (ICD 110, then U), the wheel zooms about the cursor, Esc clears, a grip drag works out the checks live and
-// commits one change on release, OPTION and COMPARE, Properties editing, window and crossing selection, a change made
+// click (ICD 110, then U), the wheel zooms about the cursor, Esc clears, pulling an entry curve grip out works out the
+// checks live until Entry speed fails and commits one change on release, turning a leg shows the corner warning under
+// its check and on the tree, OPTION and COMPARE, Properties editing, window and crossing selection, a change made
 // through the connector arriving in the history, EXPORT's plain answer, and the frame budget while dragging.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -106,36 +107,79 @@ test('Esc cancels a command and clears the selection', { skip }, async () => {
   } finally { await close(); }
 });
 
-test('dragging a grip works the checks out live, shows the value by the cursor, and commits one change on release', { skip }, async () => {
+test('pulling an entry curve grip out works the checks out live, turns Entry speed red, and commits one change on release', { skip }, async () => {
   const { page, close, project } = await fresh();
   try {
-    const c = await pointOn(page, 'round');
-    await page.mouse.click(c.x, c.y);
+    // The project's limits are left as they are: the drag alone takes the entry over its speed limit.
+    assert.deepEqual((await serverProject(project.id)).rules, {});
+    const legPoint = await pointOn(page, 'leg:N');
+    await page.mouse.click(legPoint.x, legPoint.y);
     await settle(page);
-    const g = await gripAt(page, 'quadrant::0');   // the east quadrant
-    assert.ok(g, 'the circle has quadrant grips');
-    const icd0 = icdOf(await state(page));
+    const g = await gripAt(page, 'entry-radius:N:0');
+    assert.ok(g, 'the selected leg shows its entry curve grip');
+    const c = await pointOn(page, 'round');
+    const r0 = (await state(page)).project.options[0].round.legs.find((l) => l.id === 'N').entryRadius;
+    const entryRed = () => page.locator('.ck-row.st-fail[data-check="entry-speed"]').count();
+    assert.equal(await entryRed(), 0, 'Entry speed passes before the drag');
     const values0 = await page.locator('.ck-row:not(.ck-head) .ck-v').allTextContents();
     const seq0 = (await serverProject(project.id)).seq;
+    // Out, away from the circle, a little at a time as a hand does, until Entry speed turns red.
+    const d = Math.hypot(g.x - c.x, g.y - c.y), ux = (g.x - c.x) / d, uy = (g.y - c.y) / d;
     await page.mouse.move(g.x, g.y);
     await page.mouse.down();
-    // In toward the centre, a little at a time, as a hand does.
-    for (let i = 1; i <= 20; i++) await page.mouse.move(g.x + ((c.x - g.x) * 0.55 * i) / 20, g.y + ((c.y - g.y) * 0.55 * i) / 20);
+    let red = false, i = 0;
+    while (!red && i < 80) {
+      i++;
+      await page.mouse.move(Math.round(g.x + ux * 4 * i), Math.round(g.y + uy * 4 * i));
+      if (i % 3 === 0) { await settle(page); red = (await entryRed()) > 0; }
+    }
     await settle(page);
+    assert.ok(red, 'Entry speed turned red while dragging');
     assert.ok(await page.locator('.dyn').isVisible(), 'the dynamic input box shows');
-    assert.match(await page.locator('.dyn-label').first().textContent(), /diameter/i);
+    assert.match(await page.locator('.dyn-label').first().textContent(), /entry curb radius/i);
     assert.equal((await state(page)).draft, true);
-    const red = await page.locator('.ck-row.st-fail, .ck-banner:not([hidden])').count();
-    assert.ok(red > 0, 'a check turned red');
     const values1 = await page.locator('.ck-row:not(.ck-head) .ck-v').allTextContents();
     assert.notDeepEqual(values1, values0, 'the checks changed while dragging');
     await page.mouse.up();
     await settle(page);
     const st = await state(page);
     assert.equal(st.draft, false);
-    assert.ok(icdOf(st) < icd0, 'the diameter got smaller');
+    assert.ok(st.project.options[0].round.legs.find((l) => l.id === 'N').entryRadius > r0, 'the entry curb radius got bigger');
+    assert.ok((await entryRed()) > 0, 'Entry speed stays red once the change is made');
     await until(page, async () => (await serverProject(project.id)).seq === seq0 + 1, 'one change reached the server');
     assert.match((await history(page, 1))[0], /^\*\* STRETCH \*\* /);
+  } finally { await close(); }
+});
+
+test('turning a leg a few degrees builds a tighter corner, and the warning shows under its check and on the tree', { skip }, async () => {
+  const { page, close } = await fresh();
+  try {
+    const legPoint = await pointOn(page, 'leg:E');
+    await page.mouse.click(legPoint.x, legPoint.y);
+    await settle(page);
+    const g = await gripAt(page, 'bearing:E:0');
+    assert.ok(g, 'the selected leg shows its turn grip');
+    const c = await pointOn(page, 'round');
+    const notes = () => page.locator('.ck-wrap:has(.ck-row[data-check="geometry"]) .ck-notes:not([hidden]) .ck-item').count();
+    assert.equal(await notes(), 0, 'no notes before the turn');
+    // Round the centre, a few pixels at a time, until the shape check warns.
+    const R = Math.hypot(g.x - c.x, g.y - c.y), a0 = Math.atan2(g.y - c.y, g.x - c.x);
+    await page.mouse.move(g.x, g.y);
+    await page.mouse.down();
+    let warn = false, i = 0;
+    while (!warn && i < 40) {
+      i++;
+      const a = a0 + (i * 0.6 * Math.PI) / 180;
+      await page.mouse.move(Math.round(c.x + R * Math.cos(a)), Math.round(c.y + R * Math.sin(a)));
+      if (i % 2 === 0) { await settle(page); warn = (await page.locator('.ck-row.st-warn[data-check="geometry"]').count()) > 0; }
+    }
+    await page.mouse.up();
+    await settle(page);
+    assert.ok(warn, 'the shape check warns once a corner is built tighter');
+    assert.ok(await notes() > 0, 'the warning shows under the check without opening it');
+    const note = await page.locator('.ck-wrap:has(.ck-row[data-check="geometry"]) .ck-notes .ck-it').first().textContent();
+    const tree = await page.locator('.tree .tr .tl').allTextContents();
+    assert.ok(tree.includes(note), 'the tree lists the note under the check');
   } finally { await close(); }
 });
 
@@ -220,15 +264,16 @@ test('a change made through the connector arrives on the page and in the history
   } finally { await close(); }
 });
 
-test('EXPORT says in plain words that DXF export is not built yet', { skip }, async () => {
+test('EXPORT answers in plain words: the DXF file it saved, or why it could not', { skip }, async () => {
   const { page, close } = await fresh();
   try {
     await page.mouse.move(700, 400);
     await page.keyboard.type('EXPORT');
     await page.keyboard.press('Enter');
-    await until(page, async (p) => (await history(p, 1))[0].startsWith('Not exported'), 'export answers');
+    // The export is being built in another part: either answer is plain words on one line.
+    await until(page, async (p) => /^(Saved|Not exported)/.test((await history(p, 1))[0]), 'export answers');
     const line = (await history(page, 1))[0];
-    assert.match(line, /^Not exported: DXF export is not built yet\. .* Nothing was saved\.$/);
+    assert.match(line, /^(Saved \S+\.dxf: .+\.|Not exported: .+\.)$/);
   } finally { await close(); }
 });
 

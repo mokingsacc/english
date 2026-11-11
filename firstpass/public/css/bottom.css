@@ -41,6 +41,8 @@
 .ck-e, .ck-f { color: var(--c-ink-dim); white-space: nowrap; }
 .ck-row.focus .ck-e, .ck-row.focus .ck-f { white-space: normal; }
 .ck-row .ck-f { color: var(--c-ink); }
+.ck-row .ck-v.calm { color: inherit; font-weight: inherit; }
+.ck-notes .ck-it { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ck-items { background: #2f3641; border-bottom: 1px solid #2d343e; padding: 2px 0 4px 42px; }
 .ck-item { display: flex; align-items: flex-start; gap: 6px; padding: 2px 6px; color: var(--c-ink-dim); }
 

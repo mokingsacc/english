@@ -45,6 +45,7 @@
 .pr-cat:hover { background: #333a45; }
 .pr-row { display: grid; grid-template-columns: minmax(0, 52%) minmax(0, 1fr); min-height: 20px; border-bottom: 1px solid #2d343e; }
 .pr-name { padding: 2px 6px 2px 18px; color: var(--c-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-right: 1px solid #2d343e; background: var(--c-row-alt); }
+.pr-name.sub { padding-left: 32px; color: var(--c-ink-dim); }
 .pr-val { padding: 2px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--c-row); }
 .pr-val.edit:hover { background: #46505f; }
 .pr-val.ro { color: var(--c-ink-dim); }

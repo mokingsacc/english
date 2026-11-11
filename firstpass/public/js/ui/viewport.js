@@ -69,7 +69,8 @@ export function createViewport(app, canvas) {
     const { p, snap } = snapped(w, sx, sy);
     st.cursor = { sx, sy, x: p.x, y: p.y, visible: true, snap };
     if (drag && drag.kind === 'pan') { cam.panBy(sx - drag.sx, sy - drag.sy); drag.sx = sx; drag.sy = sy; app.request('view'); return; }
-    if (drag && drag.kind === 'grip') { dragTo(p, sx, sy); return; }
+    // A grip moves by the hand's motion from where it was taken (a snapped point is used as it is).
+    if (drag && drag.kind === 'grip') { dragTo(snap ? p : { x: drag.g0.x + w.x - drag.w0.x, y: drag.g0.y + w.y - drag.w0.y }, sx, sy); return; }
     if (drag && drag.kind === 'window') {
       if (Math.abs(sx - drag.sx) > MOVE_PX || Math.abs(sy - drag.sy) > MOVE_PX) drag.moved = true;
       const win = selectionWindow(drag.w0, w, drag.sx, sx);
@@ -162,12 +163,13 @@ export function createViewport(app, canvas) {
     const round = app.round();
     const result = app.frameInfo().shown;   // the shape on screen (the last one built while the current one cannot be)
     const leg = g.leg ? round.legs.find((l) => l.id === g.leg.id) : null;
-    const ctx = { round, leg, result };
+    const ctx = { round, leg, result, rules: s.project.rules };
     const paths = gripPaths(g.grip, leg);
     const params = paths.map((p) => paramFor(p));
     drag = {
       kind: 'grip', grip: g.grip, key: g.key, leg, round, ctx, paths, params, held: true, moved: false,
       start: g.grip.start ? g.grip.start(ctx) : null, sx: local(e).sx, sy: local(e).sy,
+      g0: { x: g.x, y: g.y }, w0: cam.toWorld(local(e).sx, local(e).sy),
       values: paths.map((p) => readPath(round, p)), word: g.grip.id === 'center' ? 'MOVE' : 'STRETCH',
     };
     st.hotGrip = g.key;

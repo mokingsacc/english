@@ -8,10 +8,16 @@ export const DEFAULT_EPSG = 2226;   // CCS83 zone 2, US survey feet (docs/design
 export const PROJECTS_MAX = 500;
 export const DOC_MAX = 400_000;     // characters of project JSON
 
-// The sample site: a rural four-way crossroads in Yolo County, east of Davis (NAIP checked 11 Nov 2026). Easting and
-// northing are CCS83 zone 2 US survey feet, worked out with the zone's Lambert conformal conic formula; check them
-// against the engine's crs.js once it lands (docs/design.md, Public data).
-export const SAMPLE = { name: 'Sample roundabout', epsg: 2226, site: { lat: 38.58999, lon: -121.73968 }, center: { x: 6636071.5, y: 1976790.3 } };
+// The sample site: a rural four-way crossing of two paved two-lane county roads in Yolo County, between Davis and
+// Woodland, open fields on three corners and a house on the fourth. The centre is the middle of the crossing as the USGS
+// NAIP photo shows it (each road's centre line fitted from its pavement edges, 25 to 140 m out on both sides, 11 Nov
+// 2026); the bearings are those roads' directions on the zone 2 grid. Easting and northing are fromLatLon(2226, site) in
+// public/js/engine/crs.js (CCS83 zone 2, US survey feet), to 0.01 ft; tests/page/sample-site.test.mjs holds them to it.
+// Keep public/js/app/sample.js the same.
+export const SAMPLE = {
+  name: 'Sample roundabout', epsg: 2226, site: { lat: 38.618855, lon: -121.729697 }, center: { x: 6638894.89, y: 1987310.58 },
+  bearings: { N: 0.7, E: 90.6, S: 180.7, W: 270.6 },
+};
 
 /** The project as the API and the connector hand it out: {id, name, epsg, site, rules, options, seq, updated_at?}. */
 export function projectOut(row, doc = parseDoc(row)) {
@@ -69,7 +75,10 @@ export function newDoc(body = {}) {
   if (body.round != null) round = cleanRound(body.round, 'That roundabout');
   else {
     round = cleanRound(defaultRoundabout());
-    if (sample) round.center = { ...SAMPLE.center };
+    if (sample) {
+      round.center = { ...SAMPLE.center };
+      for (const leg of round.legs) if (SAMPLE.bearings[leg.id] !== undefined) leg.bearing = SAMPLE.bearings[leg.id];
+    }
   }
   return canonicalDoc({ name, epsg, site, rules: {}, options: [{ id: 'A', name: 'Option A', kind: 'roundabout', round }] });
 }

@@ -21,7 +21,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - `GET /api/projects/:id` src/worker/api/projects.js (get) [key]
 - `GET /api/projects/:id/changes` src/worker/api/changes.js (poll) [key]
 - `POST /api/projects/:id/changes` src/worker/api/changes.js (post) [key]
-- `GET /api/projects/:id/export/:file` src/worker/api/projects.js (exportDxf) [key]
+- `GET /api/projects/:id/export/:file` src/worker/api/export.js (exportFile) [key]
 - `POST /api/projects/:id/undo` src/worker/api/changes.js (undo) [key]
 - `GET /api/selfcheck` src/worker/api/selfcheck.js (selfcheck) [key]
 - `GET /api/settings` src/worker/api/account.js (getSettings) [key]
@@ -45,7 +45,8 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 
 - src/worker/api/account.js: Small routes about the server and the person using it: health (no key), who am I, and the server settings (only
 - src/worker/api/changes.js: Change routes: the page's changes, the 1.5 s poll, and undo. Every write goes through store/change.js.
-- src/worker/api/projects.js: Project routes: list and create her projects, read one with its recent history, and the DXF export address.
+- src/worker/api/export.js: GET /api/projects/:id/export/:file: one option of a project as a drawing file to save, built from the stored project by
+- src/worker/api/projects.js: Project routes: list and create her projects, and read one with its recent history (the export is api/export.js).
 - src/worker/api/selfcheck.js: GET /api/selfcheck: the server checks itself and answers in plain words, one line each: the database answers, a user
 - src/worker/api/tiles.js: Aerial photo tiles: standard XYZ tiles at /tiles/naip/:z/:x/:y from the USGS NAIP Plus image service (public
 - src/worker/debug/bugs.js: Problem reports (ported from practice-hub's debug/bugs.js). The page's Report a problem sheet (public/js/shared/
@@ -84,19 +85,19 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/app/frame.js: One animation frame of the page: work out the roundabout on screen (the draft while a grip is dragged), keep the last
 - public/js/app/grips/bearing.js: Grip: out along a leg, past its splitter island nose as drawn. Dragging it turns the leg (its bearing, clockwise from
 - public/js/app/grips/center.js: Grip: the centre of the roundabout as drawn. Dragging it moves the whole roundabout (centre easting and northing).
-- public/js/app/grips/entry-radius.js: Grip: a point on a leg's entry curb curve as drawn. Dragging it away from the corner the curve rounds makes the
-- public/js/app/grips/entry-width.js: Grip: the entry width where the engine measures it, at entryWidthPoint on the right curb, square to that curb from
-- public/js/app/grips/exit-radius.js: Grip: a point on a leg's exit curb curve as drawn. Dragging it away from the corner the curve rounds makes the
-- public/js/app/grips/exit-width.js: Grip: the exit width where the engine measures it, at exitWidthPoint on the right curb, square to that curb from Sx
+- public/js/app/grips/entry-radius.js: Grip: a point on a leg's entry curb curve as built (its middle, or near its road end when the width grip sits at
+- public/js/app/grips/entry-width.js: Grip: the entry width where the engine measures it, at entryWidthPoint on the outer curb, square to that curb from Se
+- public/js/app/grips/exit-radius.js: Grip: a point on a leg's exit curb curve as built (its middle, or near its road end when the width grip sits at
+- public/js/app/grips/exit-width.js: Grip: the exit width where the engine measures it, at exitWidthPoint on the outer curb, square to that curb from Sx
 - public/js/app/grips/frame.js: Shared maths for the grips. Every grip takes its place from evaluate's output (named points and the curb chain), never
 - public/js/app/grips/index.js: The grips registry. Each grip is one file that default-exports { id, on: 'round' | 'leg', path, points(g),
 - public/js/app/grips/quadrant.js: Grips: the four quadrant points of the inscribed circle as drawn. Dragging one in or out changes the inscribed
-- public/js/app/grips/splitter-tip.js: Grip: the nose (tip) of a leg's splitter island as drawn. Dragging it out along the leg makes the island longer;
+- public/js/app/grips/splitter-tip.js: Grip: the nose (tip) of a leg's splitter island as built, which can be further out than the asked length when the
 - public/js/app/main.js: The page's start: makes the store, the server link, the drawing and every panel, joins them in one `app` object that
 - public/js/app/model-index.js: What the drawing is made of, for picking and zooming: every primitive of an evaluate result with the object that owns
 - public/js/app/ops.js: The page's side of the change ops (docs/design.md, Server; the server's own copy is src/worker/store/ops.js): builders
 - public/js/app/prefs.js: Remembered settings on this browser only (palette sizes, which palettes are open, display layers, toggles): a small
-- public/js/app/sample.js: The first-run sample project, used when the page has no key or no server: the server's own sample (a rural crossroads
+- public/js/app/sample.js: The first-run sample project, used when the page has no key or no server: the server's own sample (a rural four-way
 - public/js/app/selfcheck.js: Check myself: one plain line each, green or red with what to do when red, for the data service, the Claude connector,
 - public/js/app/store.js: The page's one store: the project, the current option, the selection, the draft roundabout while a grip is dragged,
 - public/js/app/sync.js: Changes, undo and the 1.5 s poll. change(ops) applies the ops on the page at once (app/ops.js) and sends them to
@@ -105,7 +106,7 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/commands/compare.js: COMPARE: opens the Compare tab of the Panorama window: the options side by side, the best value in each row marked.
 - public/js/commands/deleteoption.js: DELETEOPTION: removes the option on screen from the project, after she says Yes. The last option cannot go.
 - public/js/commands/erase.js: ERASE (E): removes the selected legs (or the leg she picks). A roundabout keeps at least three legs.
-- public/js/commands/export.js: EXPORT: asks the server for the option on screen as a DXF drawing. Until the DXF export is built the server answers
+- public/js/commands/export.js: EXPORT: saves the option on screen as a drawing file, built here in the browser from the engine's result by the
 - public/js/commands/help.js: HELP (F1): lists every command with its short names and what it does, in the command history.
 - public/js/commands/icd.js: ICD: sets the inscribed circle diameter of the roundabout on screen ("ICD 110" in one go).
 - public/js/commands/index.js: The commands registry. Each command is one file that default-exports { name, aliases, description, ribbon, menu?,
@@ -147,7 +148,10 @@ A problem report's trace names its route (`route` in the bugs tool's get); find 
 - public/js/engine/checks/sight-stopping.js: Stopping sight distance (for information): the distance a driver needs to see ahead to stop, on each
 - public/js/engine/checks/speed-consistency.js: Speed consistency: on each leg, the entry speed V1 against the leg's own circulating speed (V2, or V4 when
 - public/js/engine/checks/truck-turns.js: Truck turns: the swept path of a design truck through each movement. Built in a later part of First Pass;
+- public/js/engine/crs.js: State plane coordinates for California: latitude and longitude to and from the California Coordinate System of 1983
 - public/js/engine/evaluate.js: evaluate(roundabout, rules) -> { ok, problems, geometry, movements, legs, checks, headline }
+- public/js/engine/export/dxf.js: DXF export: an evaluate() result as an ASCII DXF drawing, version R2000 (AC1015), to open in her CAD program.
+- public/js/engine/export/index.js: The exports registry (docs/design.md, Modular rule). Each export is one file in this folder that default-exports
 - public/js/engine/format.js: Number formatting for the sentences the engine writes. Plain and the same everywhere (no locale).
 - public/js/engine/geom.js: Plane geometry on true line segments and circular arcs.
 - public/js/engine/index.js: The engine's public API. The page and the server import from here (and from the parameter, model and

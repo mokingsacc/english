@@ -140,6 +140,12 @@ export function boot() {
       const ix = indexOf(shown);
       fitBox(ix ? ix.extents : roughExtents(app.round()), 28);
     },
+    /** The first view: framed on the roundabout itself (model-index.js firstView). */
+    zoomFirst() {
+      pushView();
+      const ix = indexOf(app.frameInfo().shown);
+      fitBox(ix ? ix.firstView : roughExtents(app.round()), 28);
+    },
     zoomToKeys(keys) {
       const ix = indexOf(app.frameInfo().shown);
       if (!ix) return;
@@ -249,10 +255,12 @@ export function boot() {
   const ui = app.ui;
   ui.titlebar = createTitlebar(app, $('titlebar'));
   ui.ribbon = createRibbon(app, $('ribbon'), ribbonEntries(COMMANDS));
-  ui.toolspace = createPalette(app, $('toolspace'), { id: 'toolspace', name: 'Toolspace', side: 'left', width: 280, tabs: [{ id: 'prospector', label: 'Prospector' }, { id: 'settings', label: 'Settings' }] });
+  // First widths follow the screen, so a 13 inch laptop keeps room for the drawing; her own widths are remembered.
+  const firstWidth = (share, lo, hi) => Math.round(Math.max(lo, Math.min(hi, window.innerWidth * share)));
+  ui.toolspace = createPalette(app, $('toolspace'), { id: 'toolspace', name: 'Toolspace', side: 'left', width: firstWidth(0.19, 220, 280), tabs: [{ id: 'prospector', label: 'Prospector' }, { id: 'settings', label: 'Settings' }] });
   ui.prospector = createProspector(app, ui.toolspace.bodies.prospector);
   ui.settings = createSettings(app, ui.toolspace.bodies.settings);
-  ui.properties = createPalette(app, $('properties'), { id: 'properties', name: 'Properties', side: 'right', width: 300, min: 220 });
+  ui.properties = createPalette(app, $('properties'), { id: 'properties', name: 'Properties', side: 'right', width: firstWidth(0.21, 240, 300), min: 220 });
   ui.propertiesView = createProperties(app, ui.properties.bodies.main);
   ui.doctabs = createDocTabs(app, $('doctabs'));
   ui.panorama = createPanorama(app, $('panorama'));
@@ -332,7 +340,7 @@ export function boot() {
       const o = project.options[0];
       const res = evaluator.run(o.round, project.rules);
       const ix = indexOf(res && res.ok ? res : null);
-      camera.fit(ix ? ix.extents : roughExtents(o.round), 28);
+      camera.fit(ix ? ix.firstView : roughExtents(o.round), 28);   // framed on the roundabout; ZOOM Extents takes in the roads
     }
     app.request('view');
   }

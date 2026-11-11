@@ -12,6 +12,7 @@ import { boxOf } from '../draw/camera.js';
 const LEG_LAYERS = ['splitter', 'centerline', 'entrance', 'exit', 'curb', 'edge'];
 const ROUND_LAYERS = ['island', 'apron', 'inscribed'];
 const NO_SNAP = new Set(['far', 'farIn', 'farOut']);   // the ends of the lead-in lines, far out on the road
+export const FIRST_VIEW_MARGIN = 40;   // ft round the roundabout in the first view (the leg names sit inside it)
 /** A leg's named points: [name, {x, y}] for every field of its geometry that is a point. */
 export function namedPoints(L) {
   return Object.entries(L).filter(([, v]) => v && typeof v === 'object' && Number.isFinite(v.x) && Number.isFinite(v.y));
@@ -24,7 +25,7 @@ const keyOf = (p) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
 export function legKey(id) { return `leg:${id}`; }
 export function legIdOf(key) { return typeof key === 'string' && key.startsWith('leg:') ? key.slice(4) : null; }
 
-/** The index of a result: { items: [{prim, key, rank, layer}], snaps: [{x, y, kind, key}], extents, legBox(id) }. */
+/** The index of a result: { items: [{prim, key, rank, layer}], snaps: [{x, y, kind, key}], extents, firstView, legBox(id) }. */
 export function indexOf(result) {
   if (!result || !result.ok || !result.geometry) return null;
   let ix = cache.get(result);
@@ -75,6 +76,13 @@ function build(result) {
   pts.push({ x: C.x - Ri, y: C.y - Ri }, { x: C.x + Ri, y: C.y + Ri });
   const extents = boxOf(pts, 10);
 
+  // The first view: the roundabout itself (the circle, the splitter islands as built and the curb curves) with a margin,
+  // not the far ends of the lead-in roads that ZOOM Extents takes in.
+  const own = [{ x: C.x - Ri, y: C.y - Ri }, { x: C.x + Ri, y: C.y + Ri }];
+  for (const p of G.layers.splitter || []) { const b = primBox(p); own.push({ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }); }
+  for (const p of G.layers.curb || []) if (p.type === 'arc') { const b = primBox(p); own.push({ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }); }
+  const firstView = boxOf(own, FIRST_VIEW_MARGIN);
+
   const legBoxes = new Map();
   for (const it of items) {
     if (it.key === 'round') continue;
@@ -86,7 +94,7 @@ function build(result) {
     legBoxes.set(id, cur ? { x0: Math.min(cur.x0, b.x0), y0: Math.min(cur.y0, b.y0), x1: Math.max(cur.x1, b.x1), y1: Math.max(cur.y1, b.y1) } : b);
   }
   return {
-    items, snaps, extents,
+    items, snaps, extents, firstView,
     legBox(id) { const b = legBoxes.get(id); return b ? grow(b, 20) : null; },
     roundBox() { return boxOf([{ x: C.x - Ri, y: C.y - Ri }, { x: C.x + Ri, y: C.y + Ri }], 30); },
   };

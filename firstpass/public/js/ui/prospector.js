@@ -5,6 +5,7 @@
 import { h, ico, setText, setAttr, keyed } from './dom.js';
 import { openMenu } from './menu.js';
 import { prefs } from '../app/prefs.js';
+import { checkNotes } from './checks-view.js';
 
 const KIND_WORD = { through: 'through', left: 'left turn', right: 'right turn' };
 
@@ -12,7 +13,9 @@ export function createProspector(app, body) {
   const tree = h('div', { class: 'tree', role: 'tree', 'aria-label': 'Prospector' });
   body.append(tree);
   const open = new Set(prefs.get('prospector.open', ['project', 'options', 'opt:A', 'round:A', 'legs:A', 'checks:A']));
-  const save = () => prefs.set('prospector.open', [...open]);
+  const shut = new Set(prefs.get('prospector.shut', []));   // note branches are open unless she closed them
+  const save = () => { prefs.set('prospector.open', [...open]); prefs.set('prospector.shut', [...shut]); };
+  const isOpen = (r) => (r.notesBranch ? !shut.has(r.key) : open.has(r.key));
 
   function worst(list) {
     if (list.includes('fail')) return 'fail';
@@ -55,7 +58,14 @@ export function createProspector(app, body) {
       const checks = res ? res.checks : [];
       add({ key: `checks:${o.id}`, depth: 4, icon: 'check', label: 'Checks', count: checks.length, branch: true, option: o.id, status: checks.length ? worst(checks.map((c) => c.status)) : null });
       if (open.has(`checks:${o.id}`)) {
-        for (const c of checks) add({ key: `check:${o.id}:${c.id}`, depth: 5, icon: null, label: c.title, status: c.status, option: o.id, check: c.id });
+        for (const c of checks) {
+          // A check with notes (a corner built tighter, an island built longer) opens to show them, until she closes it.
+          const notes = checkNotes(c), key = `check:${o.id}:${c.id}`;
+          add({ key, depth: 5, icon: null, label: c.title, status: c.status, option: o.id, check: c.id, branch: notes.length > 0, notesBranch: notes.length > 0, count: notes.length || null });
+          if (notes.length && isOpen({ key, notesBranch: true })) {
+            notes.forEach((n, i) => add({ key: `${key}:note:${i}`, depth: 6, icon: null, label: n.text, status: n.status, option: o.id, check: c.id, note: true }));
+          }
+        }
       }
     }
     return out;
@@ -71,7 +81,7 @@ export function createProspector(app, body) {
     row.__parts = { caret, iconSlot, label, count, status };
     caret.addEventListener('click', (e) => { e.stopPropagation(); toggle(row.__r); });
     row.addEventListener('click', () => choose(row.__r));
-    row.addEventListener('dblclick', () => { if (row.__r.branch && !row.__r.obj) toggle(row.__r); else zoomTo(row.__r); });
+    row.addEventListener('dblclick', () => { if (row.__r.branch && !row.__r.obj && !row.__r.check) toggle(row.__r); else zoomTo(row.__r); });
     row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(row.__r, e.clientX, e.clientY); });
     return row;
   }
@@ -80,7 +90,7 @@ export function createProspector(app, body) {
     row.__r = r;
     const { caret, iconSlot, label, count, status } = row.__parts;
     row.style.paddingLeft = `${4 + r.depth * 12}px`;
-    const caretName = r.branch ? (open.has(r.key) ? 'caretDown' : 'caretRight') : '';
+    const caretName = r.branch ? (isOpen(r) ? 'caretDown' : 'caretRight') : '';
     if (caret.__n !== caretName) { caret.__n = caretName; caret.innerHTML = ''; if (caretName) caret.append(ico(caretName, 16)); }
     if (iconSlot.__n !== r.icon) { iconSlot.__n = r.icon; iconSlot.innerHTML = ''; if (r.icon) iconSlot.append(ico(r.icon, 16)); }
     setText(label, r.label);
@@ -88,13 +98,14 @@ export function createProspector(app, body) {
     setText(count, r.count != null ? `(${r.count})` : '');
     const st = r.status || '';
     if (status.__n !== st) { status.__n = st; status.innerHTML = ''; if (st) status.append(ico(st, 16)); setAttr(status, 'title', st ? { pass: 'Pass', warn: 'Warning', fail: 'Fails', info: 'For information' }[st] : null); }
-    setAttr(row, 'aria-expanded', r.branch ? String(open.has(r.key)) : null);
+    setAttr(row, 'aria-expanded', r.branch ? String(isOpen(r)) : null);
     row.classList.toggle('current', !!r.current);
   }
 
   function toggle(r) {
     if (!r.branch) return;
-    if (open.has(r.key)) open.delete(r.key); else open.add(r.key);
+    if (r.notesBranch) { if (shut.has(r.key)) shut.delete(r.key); else shut.add(r.key); }
+    else if (open.has(r.key)) open.delete(r.key); else open.add(r.key);
     save();
     app.request('tree');
   }
@@ -103,7 +114,7 @@ export function createProspector(app, body) {
     if (r.option && r.option !== app.option().id && (r.obj || r.check || r.movement || r.key.startsWith('opt:'))) app.setOption(r.option);
     if (r.obj) app.select([r.obj]);
     if (r.check) app.focusCheck(r.check);
-    if (r.branch && !r.obj && !r.key.startsWith('opt:')) toggle(r);
+    if (r.branch && !r.obj && !r.check && !r.key.startsWith('opt:')) toggle(r);
   }
 
   function zoomTo(r) {
@@ -137,7 +148,7 @@ export function createProspector(app, body) {
     } else if (r.movement) {
       items.push({ label: 'Zoom to', run: () => zoomTo(r) });
     } else {
-      items.push({ label: open.has(r.key) ? 'Collapse' : 'Expand', run: () => toggle(r) });
+      items.push({ label: isOpen(r) ? 'Collapse' : 'Expand', run: () => toggle(r) });
       items.push({ label: 'Zoom extents', run: () => app.zoomExtents() });
     }
     openMenu(items, x, y);

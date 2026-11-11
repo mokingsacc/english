@@ -50,7 +50,8 @@ export function createFrames(app) {
     const vs = app.viewport.state();
     const focus = focusOf(st, F.shown);
     const key = [st.display.photo, st.display.curbs, st.display.edges, st.display.islands, st.display.paths, st.display.speeds, st.display.sight,
-      st.display.landtake, st.toggles.grid, st.focusCheck && st.focusCheck.id, F.dim, app.photoVersion()].join('|');
+      st.display.landtake, st.toggles.grid, st.focusCheck && st.focusCheck.id, F.dim, app.photoVersion(),
+      st.selection.join(',')].join('|');   // the selection's grips are kept clear of the speed labels
     if (key !== modelKey || F.shown !== app._lastShown) { modelVersion++; modelKey = key; app._lastShown = F.shown; }
     const cursor = vs.cursor ? { ...vs.cursor, mode: app.viewport.cursorMode() } : null;
     const scene = {

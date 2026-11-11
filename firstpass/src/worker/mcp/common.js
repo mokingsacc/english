@@ -58,10 +58,37 @@ export function checksView(checks, { detail = false } = {}) {
   });
 }
 
-/** Each leg's fastest path radii (ft) and speeds (mph). null means the path does not curve there or is not drawn. */
-export function legsView(legs) {
-  const round = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, r1(v)]));
-  return (legs || []).map(l => ({ id: l.id, name: l.name, bearing: l.bearing, R: round(l.R), V: round(l.V) }));
+// What the engine built against the parameter she asked for: [engine's built value, parameter, key]. The engine may
+// build a leg a little differently from what was asked (a curb radius that has to meet the circle, a splitter island made
+// longer so its lanes can widen), and Claude should talk about the shape as built. The splitter island's width where it
+// meets the circle is another place than the body width she asks for (the island widens towards the circle), so it is
+// given as its own number under its own key, not as a built body width.
+export const BUILT = [
+  ['entryRadiusBuilt', 'entryRadius'], ['exitRadiusBuilt', 'exitRadius'],
+  ['entryWidthBuilt', 'entryWidth'], ['exitWidthBuilt', 'exitWidth'],
+  ['splitterLengthBuilt', 'splitterLength'],
+  ['splitterWidthAtCircle', 'splitterWidth', 'splitterWidthAtCircle'],
+];
+
+/** Each leg's fastest path radii (ft) and speeds (mph); null means the path does not curve there or is not drawn.
+ * With the asked parameters (round), a leg built other than asked also has as_built (feet): {entryRadius: {asked,
+ * built}, ..., splitterWidthAtCircle: n}, only for the values the engine reports that differ by more than 0.05 ft. */
+export function legsView(legs, round = null) {
+  const one = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, r1(v)]));
+  const asked = new Map(((round && round.legs) || []).map(l => [l.id, l]));
+  return (legs || []).map(l => {
+    const out = { id: l.id, name: l.name, bearing: l.bearing, R: one(l.R), V: one(l.V) };
+    const a = asked.get(l.id);
+    if (!a) return out;
+    const diff = {};
+    for (const [built, param, key] of BUILT) {
+      const b = l[built], q = a[param];
+      if (!(typeof b === 'number' && Number.isFinite(b) && typeof q === 'number' && Math.abs(b - q) > 0.05)) continue;
+      if (key) diff[key] = r1(b); else diff[param] = { asked: q, built: r1(b) };
+    }
+    if (Object.keys(diff).length) out.as_built = diff;
+    return out;
+  });
 }
 
 /** One option worked out: {ok, problems, headline, checks}. */

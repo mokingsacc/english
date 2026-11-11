@@ -73,6 +73,22 @@ test('every sentence a person reads is plain words and ends with a full stop', (
   }
 });
 
+test('an entry just over its limit reads as over: the speed is written finely enough to differ from the limit', () => {
+  const v = evaluate(defaultRoundabout(), {}).checks.find((c) => c.id === 'entry-speed').value;
+  // A limit under the fastest entry that rounds to the same whole number, so whole numbers would read the same.
+  const lo = Math.round(v) - 0.5;
+  const limit = (Math.max(lo, v - 0.4) + v) / 2;
+  const c = evaluate(defaultRoundabout(), { 'speed.entry.max': limit }).checks.find((x) => x.id === 'entry-speed');
+  const over = c.items.filter((it) => it.status === 'fail');
+  assert.ok(over.length, 'some entry is over the limit');
+  for (const it of over) {
+    const [said, lim] = it.text.split('above the limit of');
+    const speeds = [...said.matchAll(/(\d+(?:\.\d+)?) mph/g)].map((m) => Number(m[1]));
+    const written = Number(/(\d+(?:\.\d+)?) mph/.exec(lim)[1]);
+    assert.ok(Math.max(...speeds) > written, `reads as over the limit: "${it.text}"`);
+  }
+});
+
 test('no file of the engine, its tests or its demo names an AI model', () => {
   // The names are written backwards here so that this file does not contain them either.
   const names = ['edualc', 'tpg', 'iaNEPO', 'cihporhtna', 'inimeg', 'amall', 'lartsim', 'tolipoc'].map((s) => s.split('').reverse().join(''));

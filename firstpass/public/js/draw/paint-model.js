@@ -49,7 +49,11 @@ export function paintModel(ctx, cam, scene) {
   paintFailures(ctx, cam, scene);
   if (D.paths) paintPaths(ctx, cam, res);
   const names = legNamePlaces(ctx, cam, G);
-  if (D.speeds && D.paths) paintSpeedLabels(ctx, cam, res, names.map((p) => p.box));
+  // Speed labels keep clear of the leg names, the grips of what is selected and the legend.
+  const taken = names.map((p) => p.box);
+  for (const g of scene.grips || []) taken.push([cam.sx(g.x) - 7, cam.sy(g.y) - 7, 14, 14]);
+  if (D.paths) taken.push(legendBox(cam));
+  if (D.speeds && D.paths) paintSpeedLabels(ctx, cam, res, taken);
   paintLegNames(ctx, names);
   ctx.restore();
 }
@@ -153,12 +157,13 @@ function paintSpeedLabels(ctx, cam, res, taken) {
   }
 }
 
+const LEG_NAME_PAST_NOSE = 30;   // ft beyond the island's nose as built, inside the first view's margin
 /** Where each leg's name goes (beyond its splitter island, along the leg) and the box it takes on screen. */
 function legNamePlaces(ctx, cam, G) {
   ctx.font = BOLD;
   return G.legs.map((L) => {
     const dx = L.far.x - L.nose.x, dy = L.far.y - L.nose.y, n = Math.hypot(dx, dy) || 1;
-    const x = cam.sx(L.nose.x + (dx / n) * 70), y = cam.sy(L.nose.y + (dy / n) * 70);
+    const x = cam.sx(L.nose.x + (dx / n) * LEG_NAME_PAST_NOSE), y = cam.sy(L.nose.y + (dy / n) * LEG_NAME_PAST_NOSE);
     const w = ctx.measureText(L.name).width + 6;
     return { text: L.name, x, y, box: [x - w / 2, y - 9, w, 18] };
   });
@@ -214,9 +219,16 @@ function paintFailures(ctx, cam, scene) {
 }
 
 /** The speed legend, bottom right of the drawing: what the colours of the fastest paths mean. */
+const LEGEND_W = 190, LEGEND_H = 34;
+/** The screen box the legend takes: [x, y, w, h]. */
+function legendBox(cam) {
+  const x0 = cam.w - LEGEND_W - 12, y0 = cam.h - LEGEND_H - 30;
+  return [x0 - 8, y0 - 16, LEGEND_W + 16, LEGEND_H + 18];
+}
+
 export function paintLegend(ctx, cam, scene) {
   if (!scene.display.paths) return;
-  const W = 190, H = 34, x0 = cam.w - W - 12, y0 = cam.h - H - 30;
+  const W = LEGEND_W, H = LEGEND_H, x0 = cam.w - W - 12, y0 = cam.h - H - 30;
   ctx.save();
   ctx.fillStyle = 'rgba(22,27,34,0.82)';
   ctx.fillRect(x0 - 8, y0 - 16, W + 16, H + 18);

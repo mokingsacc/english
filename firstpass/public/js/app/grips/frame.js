@@ -1,8 +1,11 @@
 // Shared maths for the grips. Every grip takes its place from evaluate's output (named points and the curb chain), never
 // from the asked parameters, so a grip always sits on what is drawn even when the engine builds something other than
 // what was asked (a curve shortened to fit, a width measured square to the curb).
-//   legGeom(result, id)  curbArc(result, a, b)  curveGrip(result, onRoad, onCircle, avoid?)  along(L, d)  bearingOf(C, P)
-import { primPoint, primTangent } from '../../engine/index.js';
+// Where a grip's value follows the hand, the rate is read from the engine too (gripRate): the shape is worked out once
+// with the value nudged and the grip found again, so a moved hand gives the value that puts the grip under it.
+//   legGeom(result, id)  curbArc(result, a, b)  curveGrip(result, onRoad, onCircle, avoid?)  gripRate(grip, g, field)
+//   valueAlong(v0, p0, J, P)  along(L, d)  bearingOf(C, P)
+import { evaluate, primPoint, primTangent } from '../../engine/index.js';
 
 export { along } from '../model-index.js';   // a point d feet beyond a leg's nose, out along the leg
 
@@ -35,14 +38,47 @@ export function arcMid(p) {
   return primPoint(p, 0.5);
 }
 
-/** The middle of the arc, or the quarter point farther from `avoid` when the middle is within a fifth of the chord of it. */
-export function gripPlace(arc, avoid) {
+/** How far along a curve (from the road end) a radius grip sits when the width grip has the middle. */
+export const NEAR_END = 0.15;
+
+/**
+ * The middle of the arc, or, when `avoid` is within a fifth of the chord of the middle, the point NEAR_END along from
+ * the end `toward` (the road end of a curb curve). Always the same end, so the grip does not jump from one end to the
+ * other while the shape changes under a drag.
+ */
+export function gripPlace(arc, avoid, toward = null) {
   const mid = arcMid(arc);
   const chord = Math.hypot(arc.a.x - arc.b.x, arc.a.y - arc.b.y);
   if (!avoid || Math.hypot(mid.x - avoid.x, mid.y - avoid.y) > 0.2 * chord) return mid;
-  const q1 = primPoint(arc, 0.25), q3 = primPoint(arc, 0.75);
-  const d = (p) => Math.hypot(p.x - avoid.x, p.y - avoid.y);
-  return d(q1) >= d(q3) ? q1 : q3;
+  const fromA = !toward || Math.hypot(arc.a.x - toward.x, arc.a.y - toward.y) <= Math.hypot(arc.b.x - toward.x, arc.b.y - toward.y);
+  return primPoint(arc, fromA ? NEAR_END : 1 - NEAR_END);
+}
+
+/**
+ * How a leg grip's point moves per unit of its value (a vector in feet per unit), read from the engine: the shape is
+ * worked out with the leg's `field` nudged by h (or by -h when that cannot be built) and the grip found again. Null when
+ * neither nudge builds or the grip does not move.
+ */
+export function gripRate(grip, g, field, h = 1) {
+  const [p0] = grip.points(g);
+  if (!p0 || !g.leg) return null;
+  for (const step of [h, -h]) {
+    const round = { ...g.round, legs: g.round.legs.map((l) => (l.id === g.leg.id ? { ...l, [field]: l[field] + step } : l)) };
+    const leg = round.legs.find((l) => l.id === g.leg.id);
+    let res;
+    try { res = evaluate(round, g.rules || {}); } catch { continue; }
+    if (!res || !res.ok) continue;
+    const [p1] = grip.points({ round, leg, result: res, rules: g.rules });
+    if (!p1) continue;
+    const J = { x: (p1.x - p0.x) / step, y: (p1.y - p0.y) / step };
+    if (Math.hypot(J.x, J.y) > 1e-4) return J;
+  }
+  return null;
+}
+
+/** The value that moves a grip from p0 to the hand at P, along its rate J (the part of the hand's motion along J). */
+export function valueAlong(v0, p0, J, P) {
+  return v0 + ((P.x - p0.x) * J.x + (P.y - p0.y) * J.y) / (J.x * J.x + J.y * J.y);
 }
 
 /** Where a ray from q in direction d first meets the circle (C, R) going forward; null when it misses. */
@@ -60,8 +96,9 @@ export function rayCircle(q, d, C, R) {
 /**
  * A leg's curb curve as drawn, between onRoad (where it leaves the approach or departure curb) and onCircle (where it
  * meets the circle): the arc, the grip's place on it, and the corner it rounds (the road curb carried on past onRoad
- * until it meets the inscribed circle). The grip sits at the curve's middle, or a quarter of the way along when `avoid`
- * (the width grip's point) is near the middle, so the two grips do not sit on top of each other. Null when there is no curve.
+ * until it meets the inscribed circle). The grip sits at the curve's middle, or near its road end (NEAR_END) when
+ * `avoid` (the width grip's point) is near the middle, so the two grips do not sit on top of each other. Null
+ * when there is no curve.
  */
 export function curveGrip(result, onRoad, onCircle, avoid = null) {
   const G = geomOf(result);
@@ -74,13 +111,13 @@ export function curveGrip(result, onRoad, onCircle, avoid = null) {
     if (near(p.a, onRoad)) { const t = primTangent(p, false); dir = { x: -t.x, y: -t.y }; break; }
   }
   const corner = (dir && rayCircle(onRoad, dir, G.center, G.radii.inscribed)) || onCircle;
-  return { arc, mid: gripPlace(arc, avoid), corner, r: arc.r };
+  return { arc, mid: gripPlace(arc, avoid, onRoad), corner, r: arc.r };
 }
 
 /**
- * A curb radius from a grip drag: the curve's middle point moves away from the corner it rounds in step with the
- * radius, so the new radius is the drawn one scaled by how far the cursor is from that corner, measured along the line
- * from the corner through the grip.
+ * A curb radius from a grip drag: a point on the curve moves away from the corner it rounds in step with the radius, so
+ * the new radius is r0 (the asked one) scaled by how far the cursor is from that corner, measured along the line from the
+ * corner through the grip.
  */
 export function radiusFromDrag(r0, corner, grip0, P) {
   const d0x = grip0.x - corner.x, d0y = grip0.y - corner.y;

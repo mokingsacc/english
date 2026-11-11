@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluate, defaultRoundabout, primPoint } from '../../public/js/engine/index.js';
 import { GRIPS, gripPoints, gripPaths } from '../../public/js/app/grips/index.js';
-import { curbArc, curveGrip, gripPlace, radiusFromDrag, along, bearingOf } from '../../public/js/app/grips/frame.js';
+import { curbArc, curveGrip, gripPlace, NEAR_END, radiusFromDrag, along, bearingOf } from '../../public/js/app/grips/frame.js';
 import { BEYOND_NOSE } from '../../public/js/app/grips/bearing.js';
 import { indexOf, legIdOf, whereBox, roughExtents } from '../../public/js/app/model-index.js';
 
@@ -44,54 +44,115 @@ test('the round grips sit on the drawn centre and circle and give back the drawn
   close(q.value({ round, result }, out, s), 2 * G.radii.inscribed + 10, 1e-9);
 });
 
-test('the width grips sit where the engine measures the width and move it by what they are dragged', () => {
+test('the width grips sit where the engine measures the width and keep the asked width where they are', () => {
   for (const leg of round.legs) {
     const L = legG(leg.id);
     for (const [id, at, base, field] of [['entry-width', 'entryWidthPoint', 'Se', 'entryWidth'], ['exit-width', 'exitWidthPoint', 'Sx', 'exitWidth']]) {
       const g = grip(id), ctx = { round, leg, result };
       const [p] = g.points(ctx);
       assert.deepEqual(p, L[at], `${id} of ${leg.id}`);
+      close(Math.hypot(L[at].x - L[base].x, L[at].y - L[base].y), L[`${field}Built`], 1e-6, `${id} of ${leg.id}: the grip is the built width from where the island meets the circle`);
       const s = g.start(ctx);
       close(g.value(ctx, p, s), leg[field], 1e-6, `${id} at its own place gives the asked width`);
-      const u = { x: (L[at].x - L[base].x) / Math.hypot(L[at].x - L[base].x, L[at].y - L[base].y), y: (L[at].y - L[base].y) / Math.hypot(L[at].x - L[base].x, L[at].y - L[base].y) };
-      close(g.value(ctx, { x: p.x + 2 * u.x, y: p.y + 2 * u.y }, s), leg[field] + 2, 1e-6);
-      // Sideways along the curb does not change it.
-      close(g.value(ctx, { x: p.x - 3 * u.y, y: p.y + 3 * u.x }, s), leg[field], 1e-6);
+      const u = { x: (L[at].x - L[base].x) / L[`${field}Built`], y: (L[at].y - L[base].y) / L[`${field}Built`] };
+      assert.ok(g.value(ctx, { x: p.x + 2 * u.x, y: p.y + 2 * u.y }, s) > leg[field], 'out is wider');
+      assert.ok(g.value(ctx, { x: p.x - 2 * u.x, y: p.y - 2 * u.y }, s) < leg[field], 'in is narrower');
     }
   }
 });
 
-test('the radius grips sit on the drawn curb curve, clear of the width grip, and keep the drawn radius where they are', () => {
+test('the radius grips sit on the built curb curve, clear of the width grip, and keep the asked radius where they are', () => {
   for (const leg of round.legs) {
     const L = legG(leg.id);
-    for (const [id, a, b] of [['entry-radius', 'T1', 'T2'], ['exit-radius', 'T1x', 'T2x']]) {
+    for (const [id, a, b, field] of [['entry-radius', 'T1', 'T2', 'entryRadius'], ['exit-radius', 'T1x', 'T2x', 'exitRadius']]) {
       const g = grip(id), ctx = { round, leg, result };
       const arc = curbArc(result, L[a], L[b]);
       assert.ok(arc, `${leg.id} has its ${id} curve in the curb layer`);
       const [p] = g.points(ctx);
-      const on = [0.25, 0.5, 0.75].map((t) => primPoint(arc, t));
-      assert.ok(on.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-9), `${id} of ${leg.id} is at the middle or a quarter of its curve`);
+      const on = [NEAR_END, 0.5, 1 - NEAR_END].map((t) => primPoint(arc, t));
+      assert.ok(on.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-9), `${id} of ${leg.id} is at the middle of its curve or near an end`);
       close(Math.hypot(p.x - arc.c.x, p.y - arc.c.y), arc.r, 1e-6);
+      close(arc.r, L[`${field}Built`], 1e-6, 'the curve is the built radius');
       const w = L[id === 'entry-radius' ? 'entryWidthPoint' : 'exitWidthPoint'];
       const chord = Math.hypot(arc.a.x - arc.b.x, arc.a.y - arc.b.y);
       assert.ok(Math.hypot(p.x - w.x, p.y - w.y) > 0.2 * chord, `${id} of ${leg.id} is clear of the width grip`);
       const s = g.start(ctx);
-      close(g.value(ctx, p, s), arc.r, 1e-6);
+      close(g.value(ctx, p, s), leg[field], 1e-6);
       // Away from the corner the curve rounds is bigger, toward it smaller.
       const c = curveGrip(result, L[a], L[b]).corner;
-      const away = { x: p.x + (p.x - c.x) * 0.5, y: p.y + (p.y - c.y) * 0.5 };
-      const toward = { x: p.x - (p.x - c.x) * 0.5, y: p.y - (p.y - c.y) * 0.5 };
-      assert.ok(g.value(ctx, away, s) > arc.r && g.value(ctx, toward, s) < arc.r, `${id} of ${leg.id}`);
+      const away = { x: p.x + (p.x - c.x) * 0.2, y: p.y + (p.y - c.y) * 0.2 };
+      const toward = { x: p.x - (p.x - c.x) * 0.2, y: p.y - (p.y - c.y) * 0.2 };
+      assert.ok(g.value(ctx, away, s) > leg[field] && g.value(ctx, toward, s) < leg[field], `${id} of ${leg.id}`);
     }
   }
   close(radiusFromDrag(50, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 5 }), 100, 1e-12);
-  // The place on a curve: the middle unless the point to avoid is near it, then the quarter farther from that point.
+  // The place on a curve: the middle unless the point to avoid is near it, then near the road end, always the same one.
   const arc = result.geometry.layers.curb.find((q) => q.type === 'arc');
-  const mid = primPoint(arc, 0.5), q1 = primPoint(arc, 0.25), q3 = primPoint(arc, 0.75);
+  const mid = primPoint(arc, 0.5);
   assert.deepEqual(gripPlace(arc, null), mid);
   assert.deepEqual(gripPlace(arc, { x: mid.x + 1e6, y: mid.y }), mid);
-  const nearQ1 = { x: mid.x + (q1.x - mid.x) * 0.1, y: mid.y + (q1.y - mid.y) * 0.1 };
-  assert.deepEqual(gripPlace(arc, nearQ1), q3);
+  assert.deepEqual(gripPlace(arc, mid, arc.a), primPoint(arc, NEAR_END));
+  assert.deepEqual(gripPlace(arc, mid, arc.b), primPoint(arc, 1 - NEAR_END));
+});
+
+// Where the grip lands, once the shape is worked out again for the value a hand at P gives.
+function landing(id, rnd, legId, P) {
+  const res = evaluate(rnd, {});
+  const leg = rnd.legs.find((l) => l.id === legId);
+  const g = grip(id), ctx = { round: rnd, leg, result: res };
+  const s = g.start(ctx);
+  const v = g.value(ctx, P(g.points(ctx)[0], s), s);
+  const field = g.path.split('.').pop();
+  const r2 = { ...rnd, legs: rnd.legs.map((l) => (l.id === legId ? { ...l, [field]: v } : l)) };
+  const res2 = evaluate(r2, {});
+  if (!res2.ok) return null;
+  return g.points({ round: r2, leg: r2.legs.find((l) => l.id === legId), result: res2 })[0];
+}
+
+// Shapes found by changing one value until the engine reports the case, so no engine number is written here.
+function shortenedCorner() {
+  for (let turn = 1; turn < 40; turn++) {
+    const r = structuredClone(round);
+    r.legs[1].bearing += turn;
+    const res = evaluate(r, {});
+    if (!res.ok) return null;
+    if (res.geometry.legs.some((L) => L.entryRadiusBuilt < r.legs.find((l) => l.id === L.id).entryRadius - 0.5)) return r;
+  }
+  return null;
+}
+function longerIsland() {
+  for (let w = round.legs[0].entryWidth; w < round.legs[0].entryWidth + 12; w += 0.5) {
+    const r = structuredClone(round);
+    r.legs[0].entryWidth = w;
+    const res = evaluate(r, {});
+    if (res.ok && res.geometry.legs[0].splitterLengthBuilt > r.legs[0].splitterLength + 1) return r;
+  }
+  return null;
+}
+
+test('each leg grip follows the hand: moved a little, the grip lands near the hand, on a plain, a shortened and a lengthened leg', () => {
+  const cases = [['default', round], ['a turned leg with a shortened corner', shortenedCorner()], ['a wide entry with a longer island', longerIsland()]];
+  for (const [name, rnd] of cases) {
+    assert.ok(rnd, `the engine gives ${name}`);
+    for (const leg of rnd.legs) {
+      for (const id of ['entry-radius', 'exit-radius', 'entry-width', 'exit-width', 'splitter-tip']) {
+        // The hand moves 1 ft the way the grip moves when its value grows.
+        let dir = null;
+        const hand = (p0, s) => {
+          const J = s.J || s.u || s.dir;
+          const n = Math.hypot(J.x, J.y);
+          dir = { x: J.x / n, y: J.y / n };
+          return { x: p0.x + dir.x, y: p0.y + dir.y };
+        };
+        const res = evaluate(rnd, {});
+        const [p0] = grip(id).points({ round: rnd, leg, result: res });
+        const p1 = landing(id, rnd, leg.id, hand);
+        assert.ok(p1, `${name}: ${id} of ${leg.id} still builds`);
+        const moved = (p1.x - p0.x) * dir.x + (p1.y - p0.y) * dir.y;
+        assert.ok(moved > 0.6 && moved < 1.4, `${name}: ${id} of ${leg.id} moved ${moved.toFixed(2)} ft for 1 ft of hand`);
+      }
+    }
+  }
 });
 
 test('the nose and bearing grips sit on the drawn leg; the nose moves the island length by the distance dragged', () => {
