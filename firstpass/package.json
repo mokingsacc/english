@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test \"tests/{engine,worker,page}/**/*.test.{mjs,js}\"",
-    "test:web": "playwright test tests/web",
+    "test:web": "node --test --test-concurrency=1 \"tests/web/**/*.test.mjs\"",
     "dev": "node --disable-warning=ExperimentalWarning scripts/dev-server.mjs",
     "build": "node scripts/build.mjs",
     "map": "node scripts/agent-map.mjs"

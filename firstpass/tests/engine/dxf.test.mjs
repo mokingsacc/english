@@ -3,7 +3,7 @@
 // islands, the paths and their labels, sight triangles, the land take (its area too), the header (version, units in
 // feet, extents that hold everything, handles), the layers, the note, byte-stable output, and the refusals. The numbers
 // compared are whatever evaluate() answers now, never the engine's defaults. An outside check runs ezdxf's audit when
-// FP_EZDXF_PYTHON names a Python that has ezdxf (CLAUDE.md, Commands).
+// FP_EZDXF_PYTHON names a Python that has ezdxf (the Commands list of the project's notes for agents).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

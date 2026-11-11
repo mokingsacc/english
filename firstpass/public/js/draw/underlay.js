@@ -91,7 +91,7 @@ export function createUnderlay({ tileUrl, epsgOf, onChange = () => {}, onStatus 
     crs = m;
     status('on', '', '');
     onChange();
-  }).catch(() => status('off', 'Photo not available', 'the coordinate converter (crs.js) is not there yet'));
+  }).catch(() => status('off', 'Photo not available', 'the map coordinate converter did not load'));
 
   function load(t, e) {
     const img = makeImage();

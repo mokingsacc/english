@@ -13,7 +13,11 @@ first. `CONTRACT.md` records each behaviour as built.
   `public/` and the real Worker routes on a local database (`.dev/dev.sqlite`, the D1 fake on node:sqlite), makes a
   Dev user and a sample project the first time, and prints the page link (`/#k=<key>`) and the connector address
   (`/mcp/<token>`). Delete `.dev/` to start again.
-- `npm run test:web`: Playwright tests in `tests/web/` against the dev server.
+- `npm run test:web`: browser tests in `tests/web/` on node:test, one file at a time, in the Chromium of the Playwright
+  already installed on the machine (never `playwright install`). Each file starts its own server on an in-memory
+  database, with photo tiles answered 404.
+- `FP_EZDXF_PYTHON=<a python with ezdxf> node --test tests/engine/dxf.test.mjs`: the DXF tests plus ezdxf's audit of
+  the file (skipped without the variable; keep ezdxf in a virtual environment outside the repo).
 - `npm run build`: bundles `src/worker/index.js` to `public/_worker.js` (esbuild; the file is git-ignored).
 - `npm run map`: regenerates `docs/agent-map.md`. A test fails when it is stale: run it after adding a file, a route
   or a tool.
@@ -29,6 +33,13 @@ with its first comment line. Read it to find a file. The overview:
 - `public/js/engine/` the maths engine (pure JS, no DOM, no Node APIs), shared by the page and the Worker:
   `roundabout/params.js` (every parameter: label, unit, min, max), `rules.js` (every design limit), `checks/*.js`
   (one file per check, listed in `checks/index.js`), `evaluate.js`. Tests: `tests/engine/`.
+- `public/js/engine/crs.js` state plane conversion: `toLatLon`, `fromLatLon` (CCS83 zones 1 to 6, EPSG 2225 to 2230,
+  US survey feet, NAD83 taken as WGS84) and `zoneFor` (by county lines; the project's `epsg` overrides it). Tested
+  against proj4, a dev dependency that must never be imported under `public/` or `src/`.
+- `public/js/engine/export/` the exports: `index.js` the registry (`EXPORTS`, `exportFileName`), `dxf.js` the DXF
+  writer and `checkDxf`. The page's EXPORT command (`commands/export.js`) builds the file in her browser;
+  `src/worker/api/export.js` serves the same text at `GET /api/projects/:id/export/<option>.dxf`.
+- `public/js/draw/underlay.js` the aerial photo under the drawing (tiles placed through `crs.js`).
 - `src/worker/index.js` the router: keyed `/api/*` (header `X-Key`), the connector at `/mcp/<token>`, `/tiles/*`,
   static files otherwise. Each `src/worker/api/*.js` file exports its `routes`.
 - `src/worker/store/` the database side: `ops.js` (the change ops, their checks and exact inverses, pure),
