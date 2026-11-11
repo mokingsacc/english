@@ -21,7 +21,8 @@
   const DAY = 864e5;
   const SHOW_TODOS = 6;
   const SHOW_DAYS = 3;
-  const SHOW_THINKS = 5;
+  const SHOW_THINKS = 6; // hearts listed before the "Show earlier hearts" fold
+  const THINK_KEEP = 200; // hearts kept, both people together (the server keeps the same number)
 
   const store = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
@@ -100,7 +101,9 @@
     if (s < 60) return 'just now';
     if (s < 3600) return Math.floor(s / 60) + ' min ago';
     if (s < DAY / 1000) return Math.floor(s / 3600) + ' h ago';
-    const d = Math.floor(s / (DAY / 1000));
+    // A day or more: counted in calendar days on this device, so "yesterday" is the day before today for each of them.
+    const dayNo = (x) => { const p = parts(x, HERE); return Date.UTC(p.y, p.mo - 1, p.d) / DAY; };
+    const d = Math.max(1, dayNo(Date.now()) - dayNo(t));
     return d === 1 ? 'yesterday' : d + ' days ago';
   }
   // The zone the person probably thinks in: LA if their clock is LA's, otherwise London.
@@ -161,7 +164,7 @@
       case 'todo.delete': b.todos = b.todos.filter((t) => t.id !== o.id); break;
       case 'event.add': if (!b.events.some((e) => e.id === o.id)) b.events = b.events.concat({ id: o.id, title: o.title, at: o.at, allDay: !!o.allDay, by: o.by }).sort((x, y) => x.at - y.at); break;
       case 'event.delete': b.events = b.events.filter((e) => e.id !== o.id); break;
-      case 'think': if (!b.thinks.some((t) => t.id === o.id)) b.thinks = [{ id: o.id, from: o.from, note: o.note, at: now, photo: !!o.photo, local: o.photo || null }].concat(b.thinks).slice(0, 20); break;
+      case 'think': if (!b.thinks.some((t) => t.id === o.id)) b.thinks = [{ id: o.id, from: o.from, note: o.note, at: now, photo: !!o.photo, local: o.photo || null, role: o.role }].concat(b.thinks).slice(0, THINK_KEEP); break;
       default:
     }
     return b;
@@ -222,6 +225,8 @@
   function onVisible() { if (S && document.visibilityState === 'visible') { poll(); schedule(); } }
 
   // One change: shown at once, sent in order, and taken back with a plain note if it can't be saved.
+  // If the line drops or the server stumbles it is sent once more by itself: the change's own id (or its plain
+  // yes or no) makes a repeat harmless, so a heart sent on a patchy signal is neither lost nor saved twice.
   function send(o, what) {
     o.by = S.name;
     S.pending.push(o);
@@ -229,12 +234,16 @@
     const me = S;
     S.chain = S.chain.then(async () => {
       let msg = '';
-      try {
-        const r = await api('', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(o) }, 30000);
-        if (r.ok) accept(await r.json());
-        else msg = r.status === 400 ? (await r.text()).slice(0, 200) : 'The board isn’t answering. Please try again.';
-      } catch (e) {
-        msg = 'The connection dropped. Please try again.';
+      for (let tries = 0; tries < 2 && me === S; tries++) {
+        if (tries) await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const r = await api('', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(o) }, 30000);
+          if (r.ok) { accept(await r.json()); msg = ''; break; }
+          msg = r.status === 400 ? (await r.text()).slice(0, 200) : 'The board isn’t answering. Please try again.';
+          if (r.status < 500) break; // the server said no: asking again won't change that
+        } catch (e) {
+          msg = 'The connection dropped. Please try again.';
+        }
       }
       if (me !== S) return;
       S.pending = S.pending.filter((p) => p !== o);
@@ -487,12 +496,16 @@
     if (F) { const hit = Object.keys(F.NAME).find((k) => F.NAME[k].toLowerCase() === n); if (hit) return hit; }
     return isMe(from) ? whoMe() : whoThem();
   };
+  // Who sent a heart. A heart says which side sent it (host is Mo, guest is Semal), so it is right on every device
+  // whatever name that device goes by; hearts from before that are told by name.
+  const whoSent = (t) => (t.role === 'host' ? 'mo' : t.role === 'guest' ? 'semal' : whoOf(t.from));
+  const mine = (t) => (t.role && S.role ? t.role === S.role : isMe(t.from));
   const placeholderName = (n) => !n || /^(host|guest|someone)$/i.test(n.trim());
   // Their name: from the app, else the latest name on the board that isn't mine, else the figure's own name.
   function theirName(b) {
     if (S.them) return S.them;
     const names = [];
-    (b ? b.thinks : []).forEach((t) => names.push([t.at || 0, t.from]));
+    (b ? b.thinks : []).forEach((t) => { if (!mine(t)) names.push([t.at || 0, t.from]); });
     (b ? b.todos : []).forEach((t) => names.push([t.at || 0, t.by]));
     (b ? b.events : []).forEach((e) => names.push([e.at || 0, e.by]));
     names.sort((x, y) => y[0] - x[0]);
@@ -781,8 +794,7 @@
     // Thinking of you
     {
       const sec = ui.secs.think;
-      const got = b.thinks.filter((t) => !isMe(t.from));
-      const top = got[0];
+      const top = b.thinks.find((t) => !mine(t));
       ui.thTop.replaceChildren();
       if (top) {
         const fresh = S.seenThink && S.seenThink !== top.id;
@@ -793,16 +805,16 @@
         sec.sum.textContent = top.from + ' · ' + ago(top.at);
       } else sec.sum.textContent = '';
       if (top) S.seenThink = top.id; else if (!S.seenThink && S.loaded) S.seenThink = '-';
-      const mine = b.thinks.find((t) => isMe(t.from));
-      ui.thSent.textContent = mine ? 'You last sent one ' + ago(mine.at) + '.' : '';
-      const rest = b.thinks.filter((t) => t !== top).slice(0, SHOW_THINKS * 4);
+      const sent = b.thinks.find(mine);
+      ui.thSent.textContent = sent ? 'You last sent one ' + ago(sent.at) + '.' : '';
+      const rest = b.thinks.filter((t) => t !== top); // every other heart kept, newest first
       ui.thList.replaceChildren();
       if (S.split) thSplit(b, rest);
       else if (rest.length) {
-        const rows = rest.map((t) => h('div', { class: 'bb-row bb-th-row' },
+        const row = (t) => h('div', { class: 'bb-row bb-th-row' },
           t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' })) : h('span', { class: 'bb-dot', html: I.heart }),
-          h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ' · ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)));
-        ui.thList.append(fold('think', ['Earlier (' + rest.length + ')', 'Hide earlier'], h('div', { class: 'bb-list' }, rows)));
+          h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: mine(t) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ' · ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null));
+        ui.thList.append(fold('think', ['Earlier (' + rest.length + ')', 'Hide earlier'], S.folds.think ? thRows(rest, row) : []));
       }
     }
 
@@ -966,6 +978,13 @@
     }
     ui.week.replaceChildren(head, h('div', { class: 'bb-cal-names', 'aria-hidden': 'true' }, names), h('div', { class: 'bb-cal-grid' }, cells));
   }
+  // The newest few hearts, then every earlier one under a fold, so the list stays short until it is asked for.
+  // (Rows are only built when they are on show: there can be 200.)
+  function thRows(rest, row) {
+    const more = rest.length - SHOW_THINKS;
+    return [h('div', { class: 'bb-list' }, rest.slice(0, SHOW_THINKS).map(row)),
+      more > 0 ? fold('thinkMore', ['Show earlier hearts (' + more + ')', 'Hide earlier hearts'], S.folds.thinkMore ? h('div', { class: 'bb-list' }, rest.slice(SHOW_THINKS).map(row)) : []) : null].filter(Boolean);
+  }
   function thSplit(b, rest) {
     const ui = S.ui;
     const f = FIG();
@@ -978,10 +997,14 @@
         h('p', { class: 'bb-empty-h', text: S.loaded ? 'No hearts yet' : 'Opening the board…' }), S.loaded ? h('p', { text: 'Send the first one. It takes one tap.' }) : null));
       return;
     }
-    ui.thHistBody.append(h('div', { class: 'bb-list' }, rest.map((t) => h('div', { class: 'bb-row bb-th-row' },
+    // The same day the walls on Home show (the last 24 hours), as numbers: the two should always agree.
+    const day = b.thinks.filter((t) => t.at && Date.now() - t.at < DAY);
+    const sent = day.filter(mine).length;
+    ui.thHistBody.append(h('p', { class: 'bb-hint', text: 'In the last day you sent ' + sent + ' and ' + (nameFor(whoThem(), b) || 'they') + ' sent ' + (day.length - sent) + '.' }));
+    ui.thHistBody.append(...thRows(rest, (t) => h('div', { class: 'bb-row bb-th-row' },
       t.photo ? h('button', { type: 'button', class: 'bb-thumb', 'aria-label': 'Open photo', onclick: () => showPhoto(photoUrl(t)) }, h('img', { src: photoUrl(t), alt: '', loading: 'lazy' }))
-        : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + whoOf(t.from), html: f ? f.figure(whoOf(t.from), { pose: 'head', label: '' }) : I.heart }),
-      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: isMe(t.from) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ', ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null)))));
+        : h('span', { class: 'bb-dot bb-dot-fig bb-fig-' + whoSent(t), html: f ? f.figure(whoSent(t), { pose: 'head', label: '' }) : I.heart }),
+      h('div', { class: 'bb-row-main' }, h('p', {}, h('b', { text: mine(t) ? 'You' : t.from }), h('span', { class: 'bb-ago', text: ', ' + ago(t.at) })), t.note ? h('p', { class: 'bb-sub', text: t.note }) : null))));
   }
   function homeSplit(b, now) {
     const ui = S.ui;
@@ -992,8 +1015,8 @@
     ui.hello.firstChild.textContent = fmt(HERE, { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
     ui.hello.lastChild.textContent = hi + (placeholderName(S.name) ? '' : ', ' + S.name);
     // The latest heart from them, with a quick one back
-    const top = b.thinks.filter((t) => !isMe(t.from))[0];
-    const them = top ? whoOf(top.from) : whoThem();
+    const top = b.thinks.find((t) => !mine(t));
+    const them = top ? whoSent(top) : whoThem();
     const nm = theirName(b) || (f ? f.NAME[whoThem()] : 'They');
     const from = top ? top.from : nm;
     const key = (top ? top.id + ago(top.at) : '-') + nm + them + S.loaded;
@@ -1405,7 +1428,7 @@ html.is-hidden .bboard *,html.is-hidden .bboard *::before,html.is-hidden .bboard
       month: monthOf(now, b.events),
       // the hearts sent in the last 24 hours, oldest first, each landing on the wall of the one it was sent to
       // (Mo, 5 Nov 2026: "when i send a heart it should land on her wall and vice versa")
-      hearts: b.thinks.filter((t) => t.at && now - t.at < DAY).sort((x, y) => x.at - y.at).map((t) => ({ id: String(t.id), at: t.at, who: whoOf(t.from) === 'mo' ? 'semal' : 'mo' })),
+      hearts: b.thinks.filter((t) => t.at && now - t.at < DAY).sort((x, y) => x.at - y.at).map((t) => ({ id: String(t.id), at: t.at, who: whoSent(t) === 'mo' ? 'semal' : 'mo' })),
     };
   }
   // This month for the wall calendar: its name, the Monday-first offset of day 1, the day count, today and plan days.

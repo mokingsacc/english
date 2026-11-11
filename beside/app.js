@@ -304,9 +304,11 @@
       heartsReady = true; // the hearts already there on opening just sit; later ones pop on
     }
   }
-  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a small heart on the wall of the one it was sent to,
-  // behind their figure. Each one's spot comes from its id, so it stays put; it never covers the window, clock,
-  // picture, calendar, fridge, lamp, the paper chain or a face. A new one pops on (not with reduced motion).
+  // The heart wall (Mo, 5 Nov 2026): each heart sent in the last 24 hours is a heart on the wall of the one it was sent to.
+  // It only ever sits on bare wall (Mo, 11 Nov 2026: "now they kinda go and hide behind the person"): clear of the whole
+  // figure with room to wave and lean, the window, clock, picture, calendar, fridge, lamp and the paper chain. The bare
+  // wall is cut into heart-sized places and each heart takes the place its id picks, so it stays put. More hearts than
+  // places: they shrink a little, and past that the newest ones show. A new one pops on (not with reduced motion).
   const HEART_SVG = '<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21.2C5.6 16.4 1 12.5 1 7.4 1 3.9 3.7 1.2 7 1.2c2 0 3.8 1 5 2.6 1.2-1.6 3-2.6 5-2.6 3.3 0 6 2.7 6 6.2 0 5.1-4.6 9-11 13.8z"/></svg>';
   const heartSeen = new Set();
   let heartsReady = false;
@@ -321,38 +323,54 @@
     const fresh = new Set(heartsReady ? list.filter((x) => !heartSeen.has(x.id)).map((x) => x.id) : []);
     list.forEach((ht) => heartSeen.add(ht.id));
     const W = room.clientWidth, H = room.clientHeight;
-    const key = list.map((x) => x.id).join(',') + '|' + W + 'x' + H;
-    if (!W || layer.dataset.k === key) return;
-    layer.dataset.k = key;
+    if (!W) return;
+    // The room's own pieces by where they stand (a wave or a press moves them for a moment; the hearts stay put).
+    const own = (e, px, py) => ({ l: e.offsetLeft - px, t: e.offsetTop - py, r: e.offsetLeft + e.offsetWidth + px, b: e.offsetTop + e.offsetHeight + py });
     const R = room.getBoundingClientRect();
-    const box = (e, pad, part) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.top - R.top + r.height * (part || 1) + pad }; };
-    const keep = [...room.querySelectorAll('.nd-win, .nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => box(e, 4));
+    const box = (e, pad) => { const r = e.getBoundingClientRect(); return { l: r.left - R.left - pad, t: r.top - R.top - pad, r: r.right - R.left + pad, b: r.bottom - R.top + pad }; };
+    const keep = [...room.querySelectorAll('.nd-clock, .nd-pic, .nd-cal, .nd-fridge, .nd-lamp')].map((e) => own(e, 5, 5));
+    const win = room.querySelector('.nd-win');
+    if (win) keep.push(own(win, 5, 11)); // with its sill
     const fig = room.querySelector('.nd-fig');
-    if (fig) keep.push(box(fig, 4, 0.3)); // the face and hat; the body may stand in front of hearts
-    const chain = $('ndChain');
-    if (chain) keep.push(box(chain, 2));
-    const s = Math.max(10, Math.min(22, W * 0.05));
-    const top = 6, bottom = room.querySelector('.nd-floor') ? box(room.querySelector('.nd-floor'), 0).t - 4 : H * 0.88;
-    const hit = (x, y, b) => x < b.r && x + s > b.l && y < b.b && y + s > b.t;
-    const placed = [];
-    const out = [];
-    list.forEach((ht) => {
-      const rnd = seeded(ht.id + ':' + ht.at);
-      let spot = null;
-      for (let i = 0; i < 80 && !spot; i++) {
-        const x = 4 + rnd() * (W - s - 8), y = top + rnd() * Math.max(0, bottom - top - s);
-        if (keep.some((b) => hit(x, y, b))) continue;
-        if (i < 40 && placed.some((p) => Math.abs(p.x - x) < s * 0.9 && Math.abs(p.y - y) < s * 0.9)) continue;
-        spot = { x, y };
+    if (fig) keep.push(own(fig, Math.max(6, fig.offsetWidth * 0.18), 6)); // the whole body, and the room its wave and lean take
+    // the picture's name can be wider than the picture; the chain crosses both rooms (its rings and its tag)
+    [...room.querySelectorAll('.nd-pic b'), ...document.querySelectorAll('#ndChain svg, #ndTag')].forEach((e) => keep.push(box(e, 4)));
+    const floor = room.querySelector('.nd-floor');
+    const bottom = (floor ? floor.offsetTop : H * 0.88) - 5;
+    // Drawn again only when the hearts, or anything they must stay clear of, have changed (the calendar grows with a plan).
+    const key = list.map((x) => x.id).join(',') + '|' + W + 'x' + H + '|' + bottom + '|' + keep.map((b) => [b.l, b.t, b.r, b.b].map(Math.round).join(' ')).join(',');
+    if (layer.dataset.k === key) return;
+    layer.dataset.k = key;
+    if (!list.length) { layer.replaceChildren(); return; }
+    // The places at one heart size: the bare wall, row by row, each a heart and a small gap from the next.
+    const places = (s) => {
+      const h = s * 22 / 24, gap = s * 0.34, out = [];
+      for (let y = 6; y + h <= bottom; y += 2) {
+        let x = 6;
+        while (x + s <= W - 6) {
+          const b = keep.find((k) => x < k.r && x + s > k.l && y < k.b && y + h > k.t);
+          const p = b ? null : out.find((q) => Math.abs(q.x - x) < s + gap - 0.01 && Math.abs(q.y - y) < h + gap);
+          if (b) x = Math.max(x + 1, b.r); else if (p) x = Math.max(x + 1, p.x + s + gap); else { out.push({ x, y }); x += s + gap; }
+        }
       }
-      if (!spot) return;
-      placed.push(spot);
+      return out;
+    };
+    const full = Math.max(15, Math.min(28, W * 0.095)); // big enough to read on a phone
+    let s = full, spots = [];
+    for (const k of [1, 0.9, 0.8, 0.72, 0.66]) { s = full * k; spots = places(s); if (spots.length >= list.length) break; }
+    const taken = [];
+    const out = (spots.length ? list.slice(-spots.length) : []).map((ht) => {
+      const rnd = seeded(ht.id);
+      let i = Math.floor(rnd() * spots.length);
+      while (taken[i]) i = (i + 1) % spots.length;
+      taken[i] = true;
+      const nudge = () => (rnd() * 2 - 1) * s * 0.06; // a little off the row, never enough to touch a neighbour
       const el = document.createElement('i');
       el.className = 'nd-heart' + (fresh.has(ht.id) ? ' pop' : '');
       el.dataset.id = ht.id;
-      el.style.cssText = 'left:' + (spot.x / W * 100).toFixed(2) + '%;top:' + (spot.y / H * 100).toFixed(2) + '%;width:' + s.toFixed(1) + 'px;--r:' + Math.round(rnd() * 30 - 15) + 'deg';
+      el.style.cssText = 'left:' + ((spots[i].x + nudge()) / W * 100).toFixed(2) + '%;top:' + ((spots[i].y + nudge()) / H * 100).toFixed(2) + '%;width:' + s.toFixed(1) + 'px;--r:' + Math.round(rnd() * 24 - 12) + 'deg';
       el.innerHTML = HEART_SVG;
-      out.push(el);
+      return el;
     });
     layer.replaceChildren(...out);
   }
