@@ -264,22 +264,35 @@ and the page never shows Autodesk's name, logo or product names as its own.
 5. Truck turns (swept path), her own base drawing or photo.
 6. One fresh-eyes review; fixes; deploy.
 
+## The entry and exit construction as built (11 Nov 2026, after four engine passes)
+
+Per leg, entry side (the exit mirrors it with the exit radius and exit width):
+- The curb line runs parallel to the leg's axis at `splitterWidth/2 + entryWidth`. The entry curb curve is tangent to it
+  and to the inscribed circle. So a wider entry moves the outer curb out and raises the entry speed.
+- The island's entry edge is its body line (at `splitterWidth/2`) down to where the curve starts, then the arc
+  concentric with the curb curve (curb radius + entry width) to the inscribed circle. The entry width, measured square
+  to the curb from where the island meets the circle, is exact by construction.
+- Upstream, the lane flares from the approach width at the island's nose to the entry width, no steeper than 1 in
+  `geom.noseTaper`; the island is built longer than asked when it needs to be, with a note.
+- When one leg's entry curve and the next leg's exit curve overlap on the circle, both radii are shortened by one
+  factor until they meet, the built radii are reported, and the geometry check warns in words.
+- Levers checked on 11 Nov: entry width, entry radius, right offset and circulating width raise R1; left offset and a
+  bigger circle lower it; approach width barely matters.
+
 ## Open items on the engine (11 Nov 2026)
 
-- Second pass, done: widths are measured the engineer's way (square to the curb, from where the island meets the
-  inscribed circle); overlapping corners shorten both radii by one factor and warn in words, with the built radii
-  reported; `solver.converged` means what it says.
-- Third pass, in hand after review: the second pass could not build ordinary sizes (entry radius 65 with exit radius
-  100, 80 with 150, 100 with 200 all answered ok:false), because the curb offset was solved against a fixed straight
-  island. The model now is: the curb line sits `splitterWidth/2 + approachWidth` from the axis; the entry curb curve is
-  tangent to it and to the inscribed circle; the island's entry edge is the arc concentric with that curve at
-  radius + entry width, back to the island's body line; the same on the exit side; the island is what is left between
-  the two lanes, at least as long as the longer curve, with its width at the circle reported.
+- Not yet checked against anything outside the engine: a published worked example, or a roundabout she has already
+  analysed. Until then every speed is unproven, however sensible the trends look.
+- Corners are tight: on a 130 ft circle a leg can turn about 18 degrees before it cannot be built, and legs closer
+  than roughly 70 degrees do not fit. Real designs join such curbs directly; the engine does not yet.
+- Islands grow long with wide entries (a 20 ft entry gives a 126 ft island) because of the 1 in 6 flare.
+- A 10 ft approach lane leaves no room for the fastest path at the nose.
+- The entry speed text can read "enters at 25 mph, above the limit of 25 mph" when the speed is 25.2: show one decimal
+  when the rounded values are equal.
 - Stopping sight factor: the engine uses 1.075 (AASHTO); NCHRP 672 prints 1.087. Both are marked verify. Check
   against NCHRP 1043 and the Caltrans HDM table before she relies on it.
-- Six legs take about 16 ms per evaluate (the budget is set for four legs).
-- Not yet shown to Claude through the connector: the built radii (`legsView` in `src/worker/mcp`). CONTRACT.md needs a
-  dated section for the engine's second and third passes.
+- Six legs take about 20 ms per evaluate (the budget is set for four legs; the page evaluates in a worker).
+- CONTRACT.md needs a dated section for the construction above, the new rules and the meaning of `converged`.
 - The data model's example values near the top of this file are the first defaults; the engine's parameter table holds
   the current ones.
 

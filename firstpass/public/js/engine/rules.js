@@ -38,7 +38,7 @@ export const RULES = [
   { id: 'geom.noseMargin', value: 10, unit: 'ft', min: 1, max: 100, verify: false, source: METHOD,
     label: 'Least distance a splitter island runs on past where the farther of its entry and exit curb curves begins' },
   { id: 'geom.noseTaper', value: 6, unit: 'ft per ft', min: 0, max: 20, verify: false, source: METHOD,
-    label: 'Least length of splitter island taper, beyond where the farther of its curb curves begins, for each foot the lanes shift out across it (half the island width)' },
+    label: 'Least length of splitter island taper, beyond where the farther of its curb curves begins, for each foot an outer curb or the island\'s edge shifts sideways along it' },
 
   // Fastest path speeds
   { id: 'speed.eq.pos.k', value: 3.4415, unit: 'mph', min: 0.1, max: 20, verify: true, source: NCHRP + ', Equation 6-1',

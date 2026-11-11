@@ -13,9 +13,9 @@ export function shapes() {
   const skew = defaultRoundabout();
   skew.legs = [0, 75, 180, 255].map((b) => defaultLeg(b));
 
-  // The default with the North leg turned 20 degrees: the corner it closes up is built with shorter radii.
+  // The default with the North leg turned 15 degrees: the corner it closes up is built with shorter radii.
   const turned = defaultRoundabout();
-  turned.legs[0].bearing = 20;
+  turned.legs[0].bearing = 15;
 
   const big = defaultRoundabout();
   big.icd = 300; big.circWidth = 24; big.apronWidth = 16;

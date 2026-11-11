@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup } from './helpers.mjs';
 import { POLL_MAX } from '../../src/worker/store/change.js';
+import { SAMPLE } from '../../src/worker/store/projects.js';
 
 test('a change by the page, then polled, then undone, through the API', async () => {
   const t = await setup();
@@ -104,7 +105,7 @@ test('projects: create (sample, given round, refused round), list, read', async 
   const sample = await t.newProject();
   assert.equal(sample.name, 'Sample roundabout');
   assert.equal(sample.epsg, 2226);
-  assert.deepEqual(sample.site, { lat: 38.58999, lon: -121.73968 });
+  assert.deepEqual(sample.site, SAMPLE.site);
   assert.deepEqual(Object.keys(sample), ['id', 'name', 'epsg', 'site', 'rules', 'options', 'seq', 'updated_at']);
   assert.deepEqual(Object.keys(sample.options[0].round), ['center', 'icd', 'circWidth', 'apronWidth', 'legs']);
   const plain = await t.newProject({ name: 'Elm and 5th' });
@@ -122,8 +123,8 @@ test('projects: create (sample, given round, refused round), list, read', async 
   assert.equal(one.json.project.id, sample.id);
   assert.deepEqual(one.json.history, []);
   const dxf = await t.call('GET', `/api/projects/${sample.id}/export/A.dxf`);
-  assert.equal(dxf.status, 501);
-  assert.match(dxf.json.error, /not built yet/);
+  assert.equal(dxf.status, 200);
+  assert.match(dxf.text, /^  0\r\nSECTION\r\n/);
   assert.equal((await t.call('DELETE', `/api/projects/${sample.id}`)).status, 405);
   assert.equal((await t.call('GET', '/api/nothing')).status, 404);
 });

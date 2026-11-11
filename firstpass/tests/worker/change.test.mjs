@@ -82,7 +82,7 @@ test('the resolved ops and their inverse are exact, in the store and in memory',
   assert.equal(r.ops.length, 1 + 4 + 1);
   assert.equal(JSON.stringify(applyResolved(r.doc, r.inverse)), JSON.stringify(doc));
   assert.equal(JSON.stringify(applyResolved(doc, invertOps(r.inverse))), JSON.stringify(r.doc));
-  assert.deepEqual(r.ops[1], { op: 'set', option: 'B', path: 'legs.N.entryRadius', value: 70, was: 65 });
+  assert.deepEqual(r.ops[1], { op: 'set', option: 'B', path: 'legs.N.entryRadius', value: 70, was: 60 });
 });
 
 test('values are checked against the parameters table and refused by label, in plain words', async () => {
@@ -129,8 +129,8 @@ test('a change records who, what, the ops, the inverse and a plain summary; one 
   const row = t.row('SELECT * FROM changes WHERE project_id = ?', ref.id);
   assert.equal(row.actor, 'claude');
   assert.equal(row.summary, 'Try a bigger entry radius');
-  assert.deepEqual(JSON.parse(row.ops), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 80, was: 65 }]);
-  assert.deepEqual(JSON.parse(row.inverse), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 65, was: 80 }]);
+  assert.deepEqual(JSON.parse(row.ops), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 80, was: 60 }]);
+  assert.deepEqual(JSON.parse(row.inverse), [{ op: 'set', option: 'A', path: 'legs.N.entryRadius', value: 60, was: 80 }]);
   const own = await applyChange(t.DB, ref, { ops: [{ op: 'set', option: 'A', path: 'icd', value: 140 }], actor: 'user' });
   assert.equal(own.change.summary, 'Inscribed circle diameter set to 140 ft (was 130 ft)');
   const all = await applyChange(t.DB, ref, { ops: [{ op: 'set', option: 'A', path: 'legs.*.exitRadius', value: 180 }], actor: 'user' });

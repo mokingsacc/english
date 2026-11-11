@@ -127,11 +127,11 @@ function evaluateShape(round, rules) {
       entryRadiusBuilt: L.entryRadiusBuilt, exitRadiusBuilt: L.exitRadiusBuilt,
       entryWidthPoint: W(L.entryWidthPoint), exitWidthPoint: W(L.exitWidthPoint),
       // Points a grip or a label can use without working anything out: the centres of the curb curves (also
-      // the centres of the island's edge arcs beside them), where each curb's taper beside the island meets
-      // its straight part, and the island's corners: where its taper meets its body, where its edge leaves
-      // the body line for the circle, and (when the entry or exit is no wider than its lane) the step out to
-      // the edge arc. A step is null when there is none; an island edge radius is null when the edge is a
-      // straight step instead of an arc.
+      // the centres of the island's edge arcs beside them), where each curb's flare beside the island's taper
+      // meets its straight part, and the island's corners: where its taper meets its body, and where its edge
+      // leaves the body line for the circle (the start of its edge arc, tangent there). The steps are always
+      // null now (the edges no longer step) and stay for the page. An island edge radius is null when the
+      // body line reaches the circle before the curve begins, so that edge has no arc.
       entryCenter: W(L.entryO), exitCenter: W(L.exitO),
       entryCurbTaper: W(L.entryCurbTaper), exitCurbTaper: W(L.exitCurbTaper),
       islandEntryTaper: W(L.islandEntryTaper), islandExitTaper: W(L.islandExitTaper),

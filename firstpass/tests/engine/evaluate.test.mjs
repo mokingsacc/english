@@ -103,7 +103,7 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   assert.ok(skew.movements.every((m) => m.ok));
   assert.notEqual(skew.checks.find((c) => c.id === 'geometry').status, 'fail');
 
-  // Closer still (the North leg turned 20 degrees): the corner is built with shorter radii and the geometry
+  // Closer still (the North leg turned 15 degrees): the corner is built with shorter radii and the geometry
   // check warns, naming the two legs and the radii.
   const turned = evaluate(shapes().turned, {});
   assert.ok(turned.ok, String(turned.problems));
@@ -111,12 +111,12 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   assert.equal(geo.status, 'warn');
   const warn = geo.items.filter((i) => i.status === 'warn');
   assert.equal(warn.length, 1);
-  assert.match(warn[0].text, /^The East leg's entry curve and the North leg's exit curve meet with no circle between them, so they are built at \d+ ft and \d+ ft, not 65 ft and 100 ft\.$/);
+  assert.match(warn[0].text, /^The East leg's entry curve and the North leg's exit curve meet with no circle between them, so they are built at \d+ ft and \d+ ft, not 60 ft and 80 ft\.$/);
   assert.ok(geo.fix && geo.fix.length);
   assert.equal(turned.headline.warns, 1);
   assert.ok(turned.movements.every((m) => m.ok));
   const E = turned.geometry.legs.find((L) => L.id === 'E'), N = turned.geometry.legs.find((L) => L.id === 'N');
-  assert.ok(E.entryRadiusBuilt < 65 && N.exitRadiusBuilt < 100);
+  assert.ok(E.entryRadiusBuilt < 60 && N.exitRadiusBuilt < 80);
   assert.equal(turned.legs.find((L) => L.id === 'E').entryRadiusBuilt, E.entryRadiusBuilt);
 
   // Too close for even the smallest radii: ok false, the two legs named and how far apart they need to be.
@@ -124,7 +124,7 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   close.legs[0].bearing = 30;
   const bad = evaluate(close, {});
   assert.equal(bad.ok, false);
-  assert.match(bad.problems[0], /^The East leg and the North leg are too close together\. .* Spread the two legs about 6 degrees further apart, or make that entry or exit narrower\.$/);
+  assert.match(bad.problems[0], /^The East leg and the North leg are too close together\. .* Spread the two legs about 12 degrees further apart, or make that entry or exit narrower\.$/);
   assert.equal(bad.geometry, null);
   assert.equal(bad.checks.length, CHECKS.length);
   bad.checks.forEach(assertCheckShape);
@@ -132,8 +132,8 @@ test('a T shape and the literal skew evaluate; corners that close up warn; legs 
   for (const c of bad.checks.slice(1)) assert.equal(c.status, 'info');
   assert.equal(bad.headline.fails, 1);
   assert.match(bad.headline.text, /cannot be built/);
-  // The 6 degrees is right: 6 degrees back, it builds.
-  close.legs[0].bearing = 24;
+  // The 12 degrees is right: 12 degrees back, it builds.
+  close.legs[0].bearing = 18;
   assert.ok(evaluate(close, {}).ok);
 });
 

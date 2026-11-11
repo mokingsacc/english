@@ -115,18 +115,42 @@ function throughR(r, k, leg, key) {
   return m.R[key];
 }
 
-test('a wider entry never lowers R1', () => {
-  // The lane follows the curb, so a wider entry only moves the island's edge in; the path keeps its room.
+test('a wider entry raises R1 and a wider exit raises R3', () => {
+  // The outer curb beside the island runs at half the island plus the entry (or exit) width, so a wider entry
+  // puts the curb further out and the fastest path enters (or leaves) on a flatter curve.
   for (const icd of [110, 130, 160, 200]) {
-    let prev = -Infinity;
-    for (let w = 14; w <= 24; w += 1) {
+    let prev1 = -Infinity, prev3 = -Infinity;
+    for (let w = 14; w <= 22; w += 1) {
+      const a = defaultRoundabout();
+      a.icd = icd;
+      a.legs[0].entryWidth = w;
+      const R1 = throughR(a, `ICD ${icd} entry width ${w}`, 0, 'R1');
+      assert.ok(R1 > prev1, `ICD ${icd} entry width ${w}: R1 ${R1} after ${prev1}`);
+      prev1 = R1;
+      const b = defaultRoundabout();
+      b.icd = icd;
+      b.legs[0].exitWidth = w;
+      const R3 = throughR(b, `ICD ${icd} exit width ${w}`, 0, 'R3');
+      assert.ok(R3 > prev3, `ICD ${icd} exit width ${w}: R3 ${R3} after ${prev3}`);
+      prev3 = R3;
+    }
+  }
+});
+
+test('the approach and departure lane widths have only a small effect on R1 and R3', () => {
+  // They set the lane only on the road before the island and along its taper, where the path is straight.
+  for (const icd of [110, 130, 160, 200]) {
+    const R1s = [], R3s = [];
+    for (let w = 11; w <= 16; w += 1) {
       const r = defaultRoundabout();
       r.icd = icd;
-      r.legs[0].entryWidth = w;
-      const R1 = throughR(r, `ICD ${icd} entry width ${w}`, 0, 'R1');
-      assert.ok(R1 >= prev * (1 - WOBBLE), `ICD ${icd} entry width ${w}: R1 ${R1} after ${prev}`);
-      prev = Math.max(prev, R1);
+      r.legs[0].approachWidth = w;
+      r.legs[0].departWidth = w;
+      R1s.push(throughR(r, `ICD ${icd} approach width ${w}`, 0, 'R1'));
+      R3s.push(throughR(r, `ICD ${icd} departure width ${w}`, 0, 'R3'));
     }
+    assert.ok(Math.max(...R1s) <= 1.08 * Math.min(...R1s), `ICD ${icd} R1: ${R1s.join(', ')}`);
+    assert.ok(Math.max(...R3s) <= 1.08 * Math.min(...R3s), `ICD ${icd} R3: ${R3s.join(', ')}`);
   }
 });
 
@@ -172,12 +196,13 @@ test('a bigger entry radius changes R1 smoothly', () => {
   }
 });
 
-test('shifting the approach left bends the entry curb further, and R1 changes smoothly', () => {
-  // The entry curb curve is tangent to the circle at its built radius, so a left offset turns it through a larger
-  // angle. Near the circle the shape only rotates, so the fastest path's R1 changes by a few percent at most.
-  let prevSweep = -Infinity, prevR1 = null;
+test('shifting the approach left bends the entry curb further and lowers R1', () => {
+  // The entry curb curve is tangent to the circle at its built radius, so a left offset turns it through a
+  // larger angle and slows the fastest entry. (Shifted right by more than about 4 ft, a corner closes up and
+  // is built with shorter radii, and R1 no longer follows the offset closely.)
+  let prevSweep = -Infinity, prevR1 = Infinity;
   const R1s = [];
-  for (let o = -6; o <= 6; o += 1) {
+  for (let o = -3; o <= 8; o += 1) {
     const r = defaultRoundabout();
     r.legs[0].offsetLeft = o;
     const G = derive(validate(r).value, rr);
@@ -186,11 +211,11 @@ test('shifting the approach left bends the entry curb further, and R1 changes sm
     assert.ok(sweep > prevSweep, `offset ${o}: the entry curve turns ${sweep} after ${prevSweep}`);
     prevSweep = sweep;
     const R1 = legR1(r);
-    if (prevR1 !== null) assert.ok(Math.abs(R1 - prevR1) <= 0.05 * prevR1, `offset ${o}: R1 ${R1} after ${prevR1}`);
-    prevR1 = R1;
+    assert.ok(R1 <= prevR1 * (1 + WOBBLE), `offset ${o}: R1 ${R1} after ${prevR1}`);
+    prevR1 = Math.min(prevR1, R1);
     R1s.push(R1);
   }
-  assert.ok(Math.max(...R1s) <= 1.1 * Math.min(...R1s), `R1 over the offsets: ${R1s.join(', ')}`);
+  assert.ok(R1s[R1s.length - 1] <= 0.9 * R1s[0], `R1 over the offsets: ${R1s.join(', ')}`);
 });
 
 test('the stopping rules used on drag frames agree with a solve to rounding', () => {

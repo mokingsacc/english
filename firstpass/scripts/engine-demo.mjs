@@ -4,8 +4,8 @@
 //   node scripts/engine-demo.mjs out.svg            the default four-leg roundabout
 //   node scripts/engine-demo.mjs out.svg t          a three-leg T (bearings 0, 90, 270)
 //   node scripts/engine-demo.mjs out.svg skew       a skewed four-leg (bearings 0, 75, 180, 255), default sizes
-//   node scripts/engine-demo.mjs out.svg turned     the default with the North leg turned 20 degrees
-//   node scripts/engine-demo.mjs out.svg tightest   the North leg turned as far as it can go (24 degrees)
+//   node scripts/engine-demo.mjs out.svg turned     the default with the North leg turned 15 degrees
+//   node scripts/engine-demo.mjs out.svg tightest   the North leg turned as far as it can go (18 degrees)
 //   node scripts/engine-demo.mjs out.svg icd150     a 150 ft circle with 100 ft entry and 200 ft exit curb radii
 //   node scripts/engine-demo.mjs out.svg big        a 300 ft circle with large curb radii and long splitter islands
 //   node scripts/engine-demo.mjs out.svg small      a small circle with tight curbs
@@ -29,8 +29,8 @@ function shape(name) {
   if (name === 'default') return r;
   if (name === 't') { r.legs = [0, 90, 270].map((b) => defaultLeg(b)); return r; }
   if (name === 'skew') { r.legs = [0, 75, 180, 255].map((b) => defaultLeg(b)); return r; }
-  if (name === 'turned') { r.legs[0].bearing = 20; return r; }
-  if (name === 'tightest') { r.legs[0].bearing = 24; return r; }
+  if (name === 'turned') { r.legs[0].bearing = 15; return r; }
+  if (name === 'tightest') { r.legs[0].bearing = 18; return r; }
   if (name === 'icd150') {
     r.icd = 150;
     r.legs.forEach((l) => { Object.assign(l, { entryRadius: 100, exitRadius: 200 }); });

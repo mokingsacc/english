@@ -3,6 +3,8 @@
 // machine. The server's lines come from GET /api/selfcheck. A new line: one function that answers { id, ok, title,
 // text } and one entry in runSelfCheck.
 import { evaluate, defaultRoundabout, CHECKS, speedFromRadius, stoppingSightDistance, resolveRules } from '../engine/index.js';
+import { toDxf, checkDxf } from '../engine/export/dxf.js';
+import { buildExport } from '../commands/export.js';
 import { percentiles } from './evaluator.js';
 
 const NO_KEY = 'This page has no key, so it works on its own and saves nothing. Open First Pass from your link (the one with #k= in it).';
@@ -55,15 +57,8 @@ export async function runSelfCheck(app) {
   lines.push({ id: 'engine', ok: eng.ok && (!se || se.ok), title: 'Maths engine',
     text: eng.ok ? `The maths engine passes its self-test on this page (formula values, the default roundabout built and checked, the same answer twice) in ${eng.ms.toFixed(1)} ms.${se ? (se.ok ? ' The server\'s copy works too.' : ` On the server: ${se.text}`) : ''}`
       : `The maths engine failed its self-test: ${eng.problems.join('; ')}. Use Report a problem so it can be fixed.` });
-  // 4. The export.
-  const p = app.store.get().project, opt = app.option();
-  if (!has || !p.id) lines.push({ id: 'export', ok: false, title: 'DXF export', text: has ? 'There is no saved project to export yet.' : NO_KEY });
-  else {
-    const ex = await app.api.exportDxf(p.id, opt.id);
-    if (ex.ok) lines.push({ id: 'export', ok: true, title: 'DXF export', text: `The export answers: ${opt.name} can be saved as a DXF drawing.` });
-    else if (ex.status === 501) lines.push({ id: 'export', ok: false, title: 'DXF export', text: `${ex.error} Nothing to do now: the EXPORT command will work once that part is in.` });
-    else lines.push({ id: 'export', ok: false, title: 'DXF export', text: ex.offline ? 'The server cannot be reached, so the export cannot be tried.' : `The export answered with a problem: ${ex.error}` });
-  }
+  // 4. The export, built on this page (it needs no server).
+  lines.push(exportLine(app));
   // 5. The aerial photo.
   const tl = server('tiles');
   const ph = app.store.get().photo;
@@ -74,6 +69,35 @@ export async function runSelfCheck(app) {
   // 6. Speed on this machine.
   lines.push(speedLine(app));
   return lines;
+}
+
+/** The DXF export's self-test: the default roundabout's drawing built here and read back as well formed. */
+export function exportSelfTest() {
+  const t0 = performance.now();
+  try {
+    const r = evaluate(defaultRoundabout(), {});
+    if (!r.ok) return { ok: false, problems: ['the default roundabout could not be built, so there was nothing to draw'], ms: 0 };
+    const text = toDxf(r, { name: 'Check myself', epsg: 2226, option: { id: 'A', name: 'Option A' }, date: '2026-11-11' });
+    const c = checkDxf(text);
+    const problems = c.problems.map((p) => p.replace(/\.$/, '').toLowerCase());
+    if (!c.counts.ARC || !c.counts.LWPOLYLINE) problems.push('the drawing came out without its arcs or outlines');
+    return { ok: !problems.length, problems, counts: c.counts, bytes: text.length, ms: performance.now() - t0 };
+  } catch (e) {
+    return { ok: false, problems: [`writing it failed (${(e && e.message) || e})`], ms: performance.now() - t0 };
+  }
+}
+
+function exportLine(app) {
+  const t = exportSelfTest();
+  if (!t.ok) return { id: 'export', ok: false, title: 'DXF export', text: `The DXF export failed its self-test: ${t.problems.join('; ')}. Use Report a problem so it can be fixed.` };
+  const n = t.counts;
+  const opt = app.option();
+  const here = opt ? buildExport(app) : { ok: false, error: 'There is no option on screen.' };
+  return {
+    id: 'export', ok: true, title: 'DXF export',
+    text: `The DXF export works on this page: the default roundabout made a well formed drawing (${n.LINE} lines, ${n.ARC} arcs, ${n.LWPOLYLINE} outlines and paths, ${n.TEXT} labels) in ${t.ms.toFixed(1)} ms.`
+      + (here.ok ? ` EXPORT saves ${opt.name} as ${here.file}.` : ` ${opt ? opt.name : 'The option on screen'} cannot be saved yet: ${here.error}`),
+  };
 }
 
 function speedLine(app) {

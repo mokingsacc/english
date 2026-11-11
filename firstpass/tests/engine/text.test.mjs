@@ -39,16 +39,15 @@ function collect() {
   const pinch = defaultRoundabout(); pinch.legs[0].entryWidth = 15; pinch.legs[1].exitWidth = 16; cases.push(pinch);
   const cross = defaultRoundabout(); Object.assign(cross.legs[0], { entryWidth: 12, splitterWidth: 4 }); cases.push(cross);
   const tight = defaultRoundabout(); tight.circWidth = 12; tight.legs.forEach((l) => { l.entryWidth = 12; l.exitWidth = 12; l.exitRadius = 100; l.splitterWidth = 30; }); cases.push(tight);
-  // The third pass: a curb too far out to turn onto the circle, a width the curve cannot reach, an entry and
-  // exit that overlap at the circle, an island built longer than asked, and an island tip cut back.
+  // The third and fourth passes: a curb too far out to turn onto the circle, entries too wide for a small
+  // circle, an island built longer than asked, and an island that meets the circle on its body line.
   const miss = defaultRoundabout(); miss.icd = 70; miss.circWidth = 14; miss.apronWidth = 0;
-  Object.assign(miss.legs[0], { splitterWidth: 40, approachWidth: 20 }); cases.push(miss);
-  const reach = defaultRoundabout(); reach.icd = 70; reach.circWidth = 14; reach.apronWidth = 0;
-  Object.assign(reach.legs[0], { splitterWidth: 20, approachWidth: 20, entryRadius: 30 }); cases.push(reach);
-  const overlap = defaultRoundabout();
-  Object.assign(overlap.legs[0], { entryRadius: 30, exitRadius: 40, entryWidth: 26, exitWidth: 26, splitterWidth: 4 }); cases.push(overlap);
-  const longer = defaultRoundabout(); longer.icd = 150; longer.legs.forEach((l) => { l.entryRadius = 100; l.exitRadius = 200; }); cases.push(longer);
-  const tip = defaultRoundabout(); tip.icd = 90; Object.assign(tip.legs[0], { entryRadius: 30, exitRadius: 40, splitterWidth: 6 }); cases.push(tip);
+  Object.assign(miss.legs[0], { splitterWidth: 40 }); cases.push(miss);
+  const crowd = defaultRoundabout(); crowd.icd = 90; crowd.apronWidth = 0;
+  crowd.legs.forEach((l) => Object.assign(l, { entryWidth: 20, exitWidth: 21 })); cases.push(crowd);
+  const longer = defaultRoundabout(); longer.icd = 150; longer.legs.forEach((l) => { l.entryRadius = 100; l.exitRadius = 200; l.splitterLength = 40; }); cases.push(longer);
+  const body = defaultRoundabout(); body.legs = [0, 120, 240].map((b) => defaultLeg(b));
+  Object.assign(body.legs[0], { entryRadius: 30, entryWidth: 26, splitterWidth: 40 }); cases.push(body);
   const junk = defaultRoundabout(); junk.icd = 'x'; junk.legs[0].entryRadius = 9999; cases.push(junk);
   cases.push(null, { legs: [] });
   for (const r of cases) sentences.push(...sentencesOf(evaluate(r, {})));

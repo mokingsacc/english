@@ -6,6 +6,7 @@ import * as projects from './api/projects.js';
 import * as changes from './api/changes.js';
 import * as selfcheck from './api/selfcheck.js';
 import * as tiles from './api/tiles.js';
+import * as exporting from './api/export.js';
 import * as bugs from './debug/bugs.js';
 import { handleMcp } from './mcp/server.js';
 import { traceRequest, noteTrace } from './debug/trace.js';
@@ -17,7 +18,7 @@ export const KEY_HEADER = 'X-Key';
 export const WORKER_PREFIXES = ['/api/', '/mcp/', '/tiles/'];
 
 // Every route module exports routes: [{method, pattern, handler, auth?}]; auth is 'key' (the default) or 'none'.
-const MODULES = [account, projects, changes, selfcheck, bugs, tiles];
+const MODULES = [account, projects, changes, exporting, selfcheck, bugs, tiles];
 
 function compile(r) {
   const keys = [];

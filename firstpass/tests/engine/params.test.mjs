@@ -25,10 +25,10 @@ test('the data model fields are exactly the parameters in the table', () => {
   assert.deepEqual(legKeys, LEG_PARAMS.map(legField).sort());
   assert.deepEqual(r.legs.map((l) => l.id), ['N', 'E', 'S', 'W']);
   assert.deepEqual(r.legs.map((l) => l.name), ['North leg', 'East leg', 'South leg', 'West leg']);
-  assert.equal(r.icd, 130); assert.equal(r.circWidth, 18); assert.equal(r.legs[0].entryRadius, 65);
-  // The default sizes (third engine pass): see the geometry tests for the slack they leave at every corner.
-  assert.equal(r.legs[0].splitterLength, 100);
-  assert.deepEqual([r.legs[0].entryWidth, r.legs[0].exitWidth, r.legs[0].exitRadius], [16.5, 18, 100]);
+  assert.equal(r.icd, 130); assert.equal(r.circWidth, 18); assert.equal(r.legs[0].entryRadius, 60);
+  // The default sizes (fourth engine pass): see the geometry tests for the slack they leave at every corner.
+  assert.equal(r.legs[0].splitterLength, 110);
+  assert.deepEqual([r.legs[0].entryWidth, r.legs[0].exitWidth, r.legs[0].exitRadius], [16, 17, 80]);
 });
 
 test('paths name parameters by leg position or leg id', () => {
@@ -43,7 +43,7 @@ test('paths name parameters by leg position or leg id', () => {
   assert.equal(getAt(r, 'center.x'), 6000000);
   const r2 = setAt(r, 'legs.S.entryRadius', 80);
   assert.equal(getAt(r2, 'legs.2.entryRadius'), 80);
-  assert.equal(getAt(r, 'legs.2.entryRadius'), 65, 'the original is unchanged');
+  assert.equal(getAt(r, 'legs.2.entryRadius'), 60, 'the original is unchanged');
   assert.equal(setAt(r, 'legs.Q.entryRadius', 80), null);
   assert.equal(setAt(r, 'nonsense', 1), null);
 });
