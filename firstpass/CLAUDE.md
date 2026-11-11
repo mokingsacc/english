@@ -7,7 +7,8 @@ first. `CONTRACT.md` records each behaviour as built.
 
 ## Commands (all from `firstpass/`)
 
-- `npm test`: the engine, worker and page tests on node:test (no network, no browser, no wrangler).
+- `npm test`: the engine, worker and page tests on node:test (no network, no browser, no wrangler), then the speed test
+  in `tests/speed/` on its own (timed side by side with the others it fails on a busy laptop).
   One file: `node --test tests/worker/<name>.test.mjs`.
 - `npm run dev`: the dev server on Node at http://localhost:8788 (`PORT=8790 npm run dev` for another port). It serves
   `public/` and the real Worker routes on a local database (`.dev/dev.sqlite`, the D1 fake on node:sqlite), makes a

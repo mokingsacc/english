@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluate, defaultRoundabout } from '../../public/js/engine/index.js';
-import { median } from './helpers.mjs';
+import { median } from '../engine/helpers.mjs';
 
 // The page calls evaluate on every drag frame, so four legs (twelve movements) must take under 15 ms once
-// warmed up. The test files run side by side, so the best of three rounds is taken: it measures the engine,
-// not whatever else the machine is doing at that moment.
+// warmed up. This file sits in tests/speed/, which `npm test` runs on its own after the other files: run side by
+// side with them, a laptop's mix of fast and slow cores gave 24 to 28 ms for the same 10 ms of work (11 Nov 2026).
+// The best of three rounds is taken, so it measures the engine, not whatever else the machine is doing.
 test('evaluate runs a four-leg roundabout in under 15 ms after warm-up', () => {
   const r = defaultRoundabout();
   for (let i = 0; i < 30; i++) evaluate(r, {});

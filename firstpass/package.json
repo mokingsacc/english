@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test \"tests/{engine,worker,page}/**/*.test.{mjs,js}\"",
+    "test": "node --test \"tests/{engine,worker,page}/**/*.test.{mjs,js}\" && node --test \"tests/speed/*.test.mjs\"",
     "test:web": "node --test --test-concurrency=1 \"tests/web/**/*.test.mjs\"",
     "dev": "node --disable-warning=ExperimentalWarning scripts/dev-server.mjs",
     "test:workerd": "node scripts/test-workerd.mjs",
