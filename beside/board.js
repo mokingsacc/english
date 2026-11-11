@@ -480,7 +480,8 @@
         ui.thWeek = h('div', { class: 'bb-hweek bb-card', role: 'img' });
         ui.thNotes = h('button', { type: 'button', class: 'bb-rowbtn bb-card', 'aria-haspopup': 'dialog', onclick: () => notesOpen() },
           h('span', { class: 'bb-ri', html: svg('note') }), h('span', { class: 'bb-rl', text: 'Notes and photos' }), h('span', { class: 'bb-rv' }), h('span', { class: 'bb-rc', html: svg('chev') }));
-        s.body.append(ui.thEmpty, ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra), ui.thWeek, ui.thNotes);
+        // two groups, so a wide panel can set them side by side: the note and the button, then the week and the row
+        s.body.append(ui.thEmpty, h('div', { class: 'bb-hcol' }, ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra)), h('div', { class: 'bb-hcol' }, ui.thWeek, ui.thNotes));
       } else s.body.append(ui.thTop, h('div', { class: 'bb-th-send' }, go, more, extra, ui.thSent), ui.thList);
     }
 
@@ -1812,6 +1813,15 @@
 .bboard.bb-tabs .bb-talk .bb-add-btn{width:44px;height:44px;min-height:44px;padding:0;border-radius:50%}
 .bb-tabs .bb-talk .bb-add-word{display:none}
 .bb-tabs .bb-talk .bb-ri{color:var(--ink-2)}
+/* On the tab, Say it floats over the list: a soft fade of the page colour behind it, down to the bottom of the
+   screen, so no row shows around it; and room above it, so the last row scrolls clear. The pill is drawn by
+   ::after, because a sticky bar paints its own layers above its background. */
+.tabpanel .bboard.bb-tabs .bb-talk{margin-top:24px;background:none;box-shadow:none}
+.tabpanel .bboard.bb-tabs .bb-talk::before,.tabpanel .bboard.bb-tabs .bb-talk::after{content:"";position:absolute;z-index:-1;pointer-events:none}
+.tabpanel .bboard.bb-tabs .bb-talk::before{left:calc(-1 * max(16px,env(safe-area-inset-left)));right:calc(-1 * max(16px,env(safe-area-inset-right)));top:-24px;bottom:calc(-1 * (var(--tabbar-top,78px) + 10px));background:linear-gradient(color-mix(in srgb,var(--bg) 0%,transparent),var(--bg) 24px)}
+.tabpanel .bboard.bb-tabs .bb-talk::after{inset:0;border-radius:var(--round);background:var(--surface);box-shadow:var(--e2)}
+.tabpanel .bboard.bb-tabs .bb-talk:focus-within{box-shadow:none}
+.tabpanel .bboard.bb-tabs .bb-talk:focus-within::after{box-shadow:0 0 0 2px var(--ink),var(--e2)}
 /* empty moments: the two of you, one sentence, one button */
 .bb-tabs .bb-empty-pat{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 16px}
 .bboard.bb-tabs .bb-pair{display:block;width:104px;margin-bottom:6px}
@@ -1853,6 +1863,29 @@
 .bb-tabs .bb-hday.bb-today span{color:var(--ink);font-weight:700}
 .bb-tabs .bb-notes{display:grid;gap:6px}
 .bb-tabs .bb-notes .bb-th-note{font:var(--callout);font-family:var(--font-voice);font-style:italic;font-weight:400;margin-top:2px}
+/* ---------- Plans and Hearts on a wide panel ----------
+   Laid out by the panel's own width (a sidebar may take some of the window), never the window's: one column when
+   narrow, two from 760 px of panel, the content capped at 1080 px and centred. */
+#tabPlans,#tabHearts{container:bpanel / inline-size;max-width:1080px}
+.tabpanel .bb-tabs .bb-grid{grid-template-columns:minmax(0,1fr)}
+.bb-tabs .bb-hcol{display:grid;gap:14px;align-content:start;min-width:0}
+.bb-tabs .bb-hcol:has(> .bb-hweek[hidden]){display:none}
+@container bpanel (min-width:760px){
+  /* Plans: the countdown, the week and the plans on the left, the to-dos on the right. Say it spans the whole
+     grid from the bottom, so it can still float while you scroll; the last row keeps its place free. */
+  #boardMount.bb-tabs:not(.bb-plans-empty){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto 1fr auto 76px;column-gap:18px;align-items:start}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > *{grid-column:1 / -1}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-ptop{grid-column:1;grid-row:1}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-grid{display:contents}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-grid > .bb-col:first-child{grid-column:1;grid-row:2}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-grid > .bb-col:last-child{grid-column:2;grid-row:1 / span 2}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-status{grid-row:3}
+  #boardMount.bb-tabs:not(.bb-plans-empty) > .bb-talk{grid-row:1 / -1;align-self:end;margin:0}
+  /* Hearts: the newest note and the button on the left, the week and the notes on the right */
+  #bHearts [data-sec=think] > .bb-body{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:18px;align-items:start}
+  #bHearts [data-sec=think] > .bb-body > .bb-empty-pat{grid-column:1 / -1}
+  #bHearts [data-sec=think] > .bb-body:has(.bb-hweek[hidden]){grid-template-columns:minmax(0,1fr)}
+}
 .bb-psheet .menu{max-width:560px}
 .bb-psheet .bb-both{text-align:center}
 /* notes sit above the tab bar */

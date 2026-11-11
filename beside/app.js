@@ -2537,7 +2537,8 @@
 
   // ---------- FACES WINDOW ----------
   // Chrome and Edge, in a call: the faces pop out into their own always-on-top window (Document Picture-in-
-  // Picture), like Teams. You on one side, them on the other; three people split three ways, four make a grid.
+  // Picture), like Teams. Two people: their face fills it and you are a round dot bottom right, as in the call;
+  // three people split three ways, four make a grid. One glass pill bottom left: Mic, Camera and a red End.
   // Drag it over the tab you share or onto another screen and size it as you like. It is its own window, so it
   // never shows in the shared picture. While you share, a dot someone puts on your screen flashes up in it.
   const HAS_MINI = 'documentPictureInPicture' in window;
@@ -2572,7 +2573,7 @@
       win = await window.documentPictureInPicture.requestWindow(miniSize(people().length));
     } catch (e) {
       mini.opening = false;
-      note('The faces window didn’t open. Press Pop out to try again.', 'info');
+      note('The faces window didn’t open. Press Small window to try again.', 'info');
       return;
     }
     mini.opening = false;
@@ -2581,6 +2582,8 @@
     const css = document.querySelector('style');
     const st = d.createElement('style');
     st.textContent = css ? css.textContent : '';
+    // the tokens come with the page's styles; the fonts are their own links
+    document.querySelectorAll('link[rel=stylesheet]').forEach((l) => d.head.appendChild(d.importNode(l, false)));
     const meta = d.createElement('meta');
     meta.name = 'color-scheme';
     meta.content = 'light dark';
@@ -2605,7 +2608,10 @@
     const snd = soundPanel(d, { noTest: true });
     snd.classList.add('fw-sound');
     snd.hidden = true;
+    const acts = div('fw-acts');
     const bar = div('fw-bar');
+    const stopBar = div('fw-bar fw-stopbar');
+    stopBar.hidden = true;
     const btn = (actName, label, from, cls) => {
       const b = d.createElement('button');
       b.className = 'mini-btn ' + (cls || '');
@@ -2620,12 +2626,20 @@
     stop.className = 'mini-btn stop';
     stop.dataset.act = 'unshare';
     stop.textContent = 'Stop sharing';
-    bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'));
-    if (CAN_VOL) bar.append(btn('sound', 'Sound', '#soundBtn'));
-    bar.append(stop);
-    root.append(grid, stage, peek, wait, snd, bar);
+    // End does what the call's own end button does (the host ends the call, a guest leaves it)
+    const endFrom = isGuest ? '#leaveBtn' : '#stopBtn';
+    const endB = $(isGuest ? 'leaveBtn' : 'stopBtn');
+    bar.append(btn('mute', 'Mic', isGuest ? '#gMuteBtn' : '#muteBtn'), btn('cam', 'Camera', isGuest ? '#gCamBtn' : '#camBtn', 'cam'),
+      btn('end', (endB && endB.getAttribute('aria-label')) || 'End the call', endFrom, 'end'));
+    stopBar.append(stop);
+    acts.append(bar, stopBar);
+    // Sound: a small round button top right that shows when the pointer moves; its panel opens below it
+    const sndBtn = CAN_VOL ? btn('sound', 'Sound', '#soundBtn', 'fw-sndbtn') : null;
+    if (sndBtn) sndBtn.setAttribute('aria-expanded', 'false');
+    root.append(grid, stage, peek, wait, snd, acts);
+    if (sndBtn) root.append(sndBtn);
     d.body.appendChild(root);
-    bar.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
+    root.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) act(b.dataset.act); });
     const awake = () => {
       root.classList.add('awake');
       clearTimeout(mini.awakeTimer);
@@ -2638,7 +2652,7 @@
     ['resize', 'loadedmetadata'].forEach((ev) => v.addEventListener(ev, () => fitLayer(v, dots)));
     win.addEventListener('pagehide', () => { if (mini.win === win) { mini.win = null; mini.els = null; layout(); } });
     mini.win = win;
-    mini.els = { grid, stage, v, dots, peek, wait, bar, snd, root };
+    mini.els = { grid, stage, v, dots, peek, wait, bar, stopBar, sndBtn, snd, root };
     mini.sig = '';
     layout();
     soundUi();
@@ -2649,7 +2663,11 @@
     if (name === 'mute') { if (isGuest) guestMute(); else hostMute(); }
     else if (name === 'cam') { if (isGuest) guestCam(); else hostCam(); }
     else if (name === 'unshare') { if (isGuest) guestUnshare(); else hostUnshare(); }
-    else if (name === 'sound' && mini.els) { mini.els.snd.hidden = !mini.els.snd.hidden; mini.els.root.classList.toggle('awake', !mini.els.snd.hidden); }
+    else if (name === 'sound' && mini.els) {
+      mini.els.snd.hidden = !mini.els.snd.hidden;
+      mini.els.root.classList.toggle('awake', !mini.els.snd.hidden);
+      if (mini.els.sndBtn) mini.els.sndBtn.setAttribute('aria-expanded', mini.els.snd.hidden ? 'false' : 'true');
+    } else if (name === 'end') { const e = $(isGuest ? 'leaveBtn' : 'stopBtn'); if (e) e.click(); return; }
     miniRender();
   }
   function miniClose() {
@@ -2666,6 +2684,9 @@
     const g = mini.els.grid;
     const tiles = [...g.children];
     const n = tiles.length, W = g.clientWidth, Ht = g.clientHeight;
+    mini.els.root.dataset.n = String(n);
+    // two people: their face fills the window and you are the dot (sized by the styles, not here)
+    if (n === 2) { tiles.forEach((t) => { t.style.width = ''; t.style.height = ''; }); g.dataset.cols = ''; return; }
     if (!n || !W || !Ht) return;
     let best = null;
     for (let c = 1; c <= n; c++) {
@@ -2729,8 +2750,7 @@
     if (m) m.setAttribute('aria-pressed', muted ? 'true' : 'false');
     const c = bar.querySelector('[data-act=cam]');
     if (c) c.setAttribute('aria-pressed', camOn ? 'true' : 'false');
-    const s = bar.querySelector('[data-act=unshare]');
-    if (s) s.hidden = !amSharing();
+    mini.els.stopBar.hidden = !amSharing();
   }
   function miniDot(x, y, from, name) {
     if (!mini.win || !mini.els || !amSharing()) return;
@@ -3108,7 +3128,7 @@
       b.type = 'button';
       b.className = 'btn quiet ytgo';
       b.textContent = 'Watch together';
-      b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 699px)').matches) chatOpen(false); });
+      b.addEventListener('click', () => { ytWatch(t); if (matchMedia('(max-width: 899px)').matches) chatOpen(false); });
       body.appendChild(b);
     }
     if (!mine) incoming(name, ': ' + t);
@@ -3143,7 +3163,7 @@
     if (!t || !chatAvailable()) return;
     inp.value = '';
     chatPost(t);
-    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 699px)').matches) chatOpen(false);
+    if (ytId(t) && ytWatch(t) && matchMedia('(max-width: 899px)').matches) chatOpen(false); // the sheet would cover the film; the docked chat stays
   }
   function chatPost(t) {
     const msg = { t: 'chat', id: rid(), text: t };
