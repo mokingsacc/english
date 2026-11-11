@@ -651,6 +651,8 @@ button.stbtn:hover:not(:disabled){background:var(--fill)}
 .composer .send{background:var(--them);color:var(--on-them)}
 /* From 900 px wide the chat docks beside the video: a rounded column on the right, and the video (with its bar,
    dot, tray and pills) moves over to make room, so nothing covers a face. Under 900 px it is the bottom sheet. */
+/* while the chat is open the video is smaller than the window: the rest of the window is the call's dark, not the page */
+body.chat-open .stage.watch::before{content:"";position:fixed;inset:0;background:var(--bg)}
 @media (min-width:900px){
   .chat{top:var(--cg-t);right:var(--cg-r);bottom:max(var(--bar-b),calc(var(--kb,0px) + 8px));width:360px;border-left:0;border-radius:var(--r3);background:var(--surface);box-shadow:var(--e1);padding-top:6px;overflow:hidden}
   .chat .composer{background:var(--surface);padding:10px 12px 12px}
