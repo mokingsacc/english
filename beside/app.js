@@ -882,6 +882,7 @@
       const live = (!opts.live || opts.live()) && tr && tr.readyState === 'live' && tr.enabled && !tr.muted;
       zero = sum === 0 && live ? zero + 20 : 0;
       if (zero >= 4000 && !dead) { dead = true; report(); }
+      else if (dead && sum > 0) { dead = false; report(); } // sound came back: the leveller is used again
       const db = sum > 0 ? 10 * Math.log10(sum / buf.length + 1e-12) : -300;
       const go = clearGate(gst, db, now, t, document.hidden);
       if (go) n.gate.gain.setTargetAtTime(go[0], ctx.currentTime, go[1]);
@@ -922,6 +923,7 @@
         ch.src = ctx.createMediaStreamSource(stream2);
         zero = 0;
         wire();
+        if (dead) { dead = false; report(); }
       },
       close() { clearInterval(timer); CLEAR.chains.delete(ch); [ch.src, tail, n && n.out, n && n.pre].forEach((x) => { try { if (x) x.disconnect(); } catch (e) {} }); isoEnd(n); },
     };
@@ -1341,9 +1343,11 @@
   // ended is asked for again. Each side also reads what arrives from the other: if nothing does, it asks that
   // device to restart its mic. "Fix sound" does all of it on both sides at once; pressed twice, it connects the
   // call again. What happened is kept in a short log, shown in Check my setup.
-  const SW = { timer: 0, log: [], lanes: new Map(), micBadAt: 0, micBusy: false, micTry: 0, micFails: 0, fixAt: 0, sayT: 0, owed: '' };
+  const SW = { timer: 0, log: [], lanes: new Map(), plays: new WeakSet(), micBadAt: 0, micHid: false, micBusy: 0, micP: null, micPF: false, micTry: 0, micFails: 0, fixAt: 0, sayT: 0, owed: '', owedFix: false };
   try { SW.log = (JSON.parse(store.get('beside.sndlog') || '[]') || []).filter((e) => e && typeof e.w === 'string' && e.t > 0).slice(-30); } catch (e) { SW.log = []; }
   function inCallNow() { return isGuest ? app.state === 'watching' : app.state === 'live'; }
+  // A phone gives an app in the background neither the mic nor a new player; a computer's tab gets both.
+  function inBack() { return IS_IOS && document.visibilityState !== 'visible'; }
   function sndLog(what) {
     const now = Date.now();
     const last = SW.log[SW.log.length - 1];
@@ -1356,7 +1360,7 @@
     const box = $('sndLog'), list = $('sndLogList');
     if (!box || !list) return;
     const sum = box.querySelector('summary');
-    if (sum) sum.textContent = 'Sound log' + (SW.log.length ? ' · ' + SW.log.length + (SW.log.length === 1 ? ' line' : ' lines') : ' · nothing yet');
+    if (sum) sum.textContent = 'Sound log, ' + (SW.log.length ? SW.log.length + (SW.log.length === 1 ? ' line' : ' lines') : 'nothing yet');
     const cur = $('sndNow');
     if (cur) cur.textContent = !inCallNow() ? '' : !outCtx() ? 'Right now the sound engine is closed: voices play straight through the page.' : 'Right now the sound engine is on.';
     list.textContent = '';
@@ -1375,7 +1379,7 @@
   function soundWatch() {
     if (SW.timer || !inCallNow()) return;
     SW.timer = setInterval(() => {
-      if (!inCallNow()) { clearInterval(SW.timer); SW.timer = 0; SW.lanes.clear(); SW.micBadAt = SW.micFails = 0; SW.owed = ''; return; }
+      if (!inCallNow()) { clearInterval(SW.timer); SW.timer = 0; SW.lanes.clear(); SW.micBadAt = SW.micFails = 0; SW.micHid = SW.owedFix = false; SW.owed = ''; return; }
       soundCheck();
       laneWatch();
     }, 2000);
@@ -1383,14 +1387,17 @@
   // Put right whatever on this device stopped the call's sound.
   function soundCheck() {
     if (!inCallNow()) return;
-    let n = 0;
     document.querySelectorAll('#screenVideo, #watchRoot .tile video').forEach((v) => { if (v.srcObject && v.paused) v.play().catch(() => {}); });
+    const tap = $('tapToHear');
+    const waits = !!tap && !tap.hidden; // "Tap to hear" already shows: try again without showing it again
     outEls().forEach(([el]) => {
-      if (!el.srcObject || !el.paused) return;
-      n++;
-      if (isGuest) playWithSound(el); else el.play().catch(() => {});
+      if (!el.srcObject || !el.paused || SW.plays.has(el)) return;
+      SW.plays.add(el);
+      (isGuest ? playWithSound(el, waits) : el.play().then(() => true, () => false)).then((ok) => {
+        SW.plays.delete(el);
+        if (ok && !el.paused) sndLog('A sound that had been paused was started again.');
+      });
     });
-    if (n) sndLog('A sound that had been paused was started again.');
     // A sound meant to play on the page must not be left muted there.
     OUT.map.forEach((l) => { if (l.route === 'page' && l.el.muted && l.el.srcObject) { l.el.muted = false; sndLog('A sound that had been left muted was turned back on.'); } });
     [outCtx(), G.vctx].forEach((ctx) => {
@@ -1398,10 +1405,11 @@
       ctx.resume().then(() => { if (ctx.state === 'running') sndLog('The sound engine had stopped. It was started again.'); }).catch(() => {});
     });
     if (isGuest) guestVoicePick(); else hostVoicePick();
-    if (SW.owed && document.visibilityState === 'visible') {
-      const who = SW.owed;
+    if (SW.owed && !inBack()) {
+      const who = SW.owed, fix = SW.owedFix;
       SW.owed = '';
-      micAgain(who + ' heard nothing from your mic, so it was started again.', true);
+      SW.owedFix = false;
+      if (fix) soundFix(who); else micAgain(who + ' heard nothing from your mic, so it was started again.', true);
     } else micWatch();
   }
   // A mic the phone cut (for 2.5 s or more, with Beside in front) or ended is asked for again.
@@ -1416,19 +1424,24 @@
     }
     const now = Date.now();
     if (!SW.micBadAt) { SW.micBadAt = now; sndLog(ended ? 'Your mic stopped.' : 'Your mic was cut by this device.'); }
-    if (document.visibilityState !== 'visible') return; // a phone won't give the mic to an app in the background
+    if (inBack()) { SW.micHid = true; return; }
+    if (SW.micHid) { SW.micHid = false; SW.micBadAt = now; } // back in front: the phone gets its 2.5 s to give the mic back
     if (!ended && (!IS_IOS || now - SW.micBadAt < 2500)) return; // elsewhere a cut mic is often a headset's own mute
     if (now - SW.micTry < (SW.micFails >= 3 ? 30000 : 8000)) return;
     micAgain('Your mic was started again.');
   }
+  function micWhy(e) {
+    const n = (e && e.name) || '';
+    return n === 'NotAllowedError' ? 'this device did not allow it' : n === 'NotFoundError' ? 'no mic was found' : n === 'NotReadableError' || n === 'AbortError' ? 'the mic is busy somewhere else' : 'this device gave no reason';
+  }
   // Waits its turn behind a change of mic mode. force: also when the mic looks fine from here.
   function micAgain(why, force) {
+    if (SW.micP && (SW.micPF || !force)) return SW.micP; // one is already waiting its turn
     const run = async () => {
       const stream = isGuest ? G.mic : H.mic;
       const tr = stream && stream.getAudioTracks()[0];
       if (!tr || !inCallNow()) return false;
       if (!force && tr.readyState === 'live' && !tr.muted) return true; // it came back while this waited
-      SW.micBusy = true;
       SW.micTry = Date.now();
       try {
         const fresh = await getOwn('audio', micWant(CLEAR.mode));
@@ -1445,13 +1458,17 @@
         return true;
       } catch (e) {
         SW.micFails++;
-        sndLog('Your mic could not be started again (' + ((e && e.name) || 'unknown') + ').');
+        sndLog('Your mic could not be started again: ' + micWhy(e) + '.');
         return false;
-      } finally { SW.micBusy = false; }
+      }
     };
-    const p = CLEAR.q.then(run, run);
-    CLEAR.q = p.catch(() => {});
-    return p.catch(() => false);
+    SW.micBusy++;
+    const p = CLEAR.q.then(run, run).catch(() => false);
+    CLEAR.q = p;
+    const me = p.then((ok) => { SW.micBusy--; if (SW.micP === me) SW.micP = null; return ok; });
+    SW.micP = me;
+    SW.micPF = !!force;
+    return me;
   }
   // What arrives on each voice lane, read from the call itself. Nothing arriving on a connected call for 6 s means
   // the other device stopped sending: it is asked to restart its mic. Perfect silence for 20 s is only noted (they
@@ -1476,9 +1493,9 @@
       if (typeof bytes !== 'number') continue;
       const now = Date.now();
       let l = SW.lanes.get(p.id);
-      if (!l || l.track !== p.track) { SW.lanes.set(p.id, { track: p.track, bytes, energy, bAt: now, eAt: now, seen: false, asks: 0, askAt: 0, quiet: false }); continue; }
+      if (!l || l.track !== p.track) { SW.lanes.set(p.id, { track: p.track, bytes, energy, bAt: now, eAt: now, seen: false, asks: 0, flats: 0, askAt: 0, quiet: false }); continue; }
       if (bytes !== l.bytes) { l.bytes = bytes; l.bAt = now; if (l.seen && l.asks) l.asks = 0; l.seen = true; }
-      if (energy !== l.energy) { l.energy = energy; l.eAt = now; l.quiet = false; }
+      if (energy !== l.energy) { l.energy = energy; l.eAt = now; l.quiet = false; l.flats = 0; }
       const stall = l.seen && now - l.bAt > 6000;
       const flat = !stall && l.seen && energy != null && !l.quiet && now - l.eAt > 20000;
       if (stall && l.asks < 3 && now - l.askAt > 15000) {
@@ -1486,7 +1503,8 @@
         l.askAt = now;
         sndLog('Nothing was arriving from ' + p.name + '’s mic. Their device was asked to restart it.');
         tell(p.conn, { t: 'snd', q: 'stall' });
-      } else if (flat && now - l.askAt > 15000) {
+      } else if (flat && l.flats < 3 && now - l.askAt > 15000) {
+        l.flats++;
         l.askAt = now;
         tell(p.conn, { t: 'snd', q: 'flat' });
       }
@@ -1498,7 +1516,13 @@
     if (g && !rate(g, 'sndT', 5)) return;
     const conn = g ? g.conn : G.conn;
     const who = g ? g.name || 'Your guest' : theirName || 'Your host';
-    if (d.fix === 2) {
+    if (d.fix && inBack()) {
+      // Restarting players or the engine from the background can lose the sound this phone still has.
+      SW.owed = who;
+      SW.owedFix = true;
+      sndLog(who + ' pressed Fix sound while Beside was in the background here. The sound is restarted when you come back.');
+      tell(conn, { t: 'snd', a: 'away' });
+    } else if (d.fix === 2) {
       if (!isGuest) return;
       sndLog(who + ' pressed Fix sound twice, so the call was connected again.');
       guestLost();
@@ -1506,7 +1530,7 @@
     else if (d.q === 'stall') {
       const stream = isGuest ? G.mic : H.mic;
       if (!stream) tell(conn, { t: 'snd', a: 'muted' });
-      else if (document.visibilityState !== 'visible') { SW.owed = who; tell(conn, { t: 'snd', a: 'away' }); }
+      else if (inBack()) { SW.owed = who; tell(conn, { t: 'snd', a: 'away' }); }
       else {
         soundCheck();
         micAgain(who + ' heard nothing from your mic, so it was started again.', true).then((ok) => tell(conn, { t: 'snd', a: ok ? 'fixed' : 'failed' }));
@@ -1520,7 +1544,10 @@
       if (!l) return;
       if (d.a === 'muted' || d.a === 'quiet' || d.a === 'open') l.quiet = true;
       if (d.a === 'open') sndLog(who + '’s mic sent only silence for 20 seconds. If you can’t hear them, press Fix sound.');
-      else if (d.a === 'away') sndLog(who + ' has Beside in the background. Their mic is restarted when they come back.');
+      else if (d.a === 'away') {
+        sndLog(who + ' has Beside in the background. Their sound is restarted when they come back.');
+        if (SW.sayT) fixSay(who + ' has Beside in the background. Their sound is restarted when they come back.');
+      }
       else if (d.a === 'fixed') sndLog(who + '’s mic was started again.');
       else if (d.a === 'failed') sndLog(who + '’s mic could not be started again.');
     }
@@ -1557,14 +1584,14 @@
     else if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
     applyVolumes();
     if (isGuest) guestVoicePick(); else hostVoicePick();
-    if (document.visibilityState === 'visible') micAgain('Your mic was started again.', true);
+    if (!inBack()) micAgain('Your mic was started again.', true);
     if (!by) fixSay('The sound was restarted on both sides. Still nothing? Press again to connect the call again.');
   }
   function fixSay(txt) {
     document.querySelectorAll('.sound-fix-say').forEach((el) => { el.textContent = txt; });
     if (mini.els && mini.els.snd) mini.els.snd.querySelectorAll('.sound-fix-say').forEach((el) => { el.textContent = txt; });
     clearTimeout(SW.sayT);
-    if (txt) SW.sayT = setTimeout(() => fixSay(''), 30000);
+    SW.sayT = txt ? setTimeout(() => fixSay(''), 30000) : 0;
   }
   // The Beside app says when the phone's sound changed hands (Calls.swift).
   const SND_NATIVE = {
@@ -5008,14 +5035,15 @@
     stayAwake(true);
     wakeControls();
   }
-  function playWithSound(el) {
-    el.play().then(() => { app.autoplayErr = ''; tapHide(); }).catch((e) => {
+  function playWithSound(el, quiet) {
+    return el.play().then(() => { app.autoplayErr = ''; tapHide(); return true; }).catch((e) => {
       app.autoplayErr = e && e.name;
-      if (!e || e.name !== 'NotAllowedError') return;
+      if (!e || e.name !== 'NotAllowedError' || quiet) return false;
       // Sound blocked until the next tap: offer "Tap to hear".
       const t = $('tapToHear');
       if (t) t.hidden = false;
       wakeControls();
+      return false;
     });
   }
   // iPhone pauses media while locked, in another app, or when the camera starts: start it again.
@@ -5209,6 +5237,7 @@
     try {
       const m = await getOwn('audio', micWant(CLEAR.mode));
       const t = m.getAudioTracks()[0];
+      if (!G.mic || G.mic.getAudioTracks()[0] !== a) { m.getTracks().forEach((x) => x.stop()); return; } // the sound watch got there first
       t.enabled = !G.muted;
       try { t.contentHint = CLEAR.mode === 'music' ? 'music' : 'speech'; } catch (e) {}
       G.mic = m;
