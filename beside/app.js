@@ -1101,8 +1101,10 @@
   // the mic's, and a voice passed through it clicks now and then; in Natural mode, which skips it, the crackle
   // went away. So there Clear voice, Voice focus and Far away use Apple's own voice processing (echo cancel,
   // noise suppression, auto volume, and voice isolation for Voice focus only: it can cut a distant voice), and
-  // the listener lifts the voice (LIFT).
+  // a computer listening lifts the voice (LIFT).
   const SEND_RAW = IS_IOS;
+  // Said under Clear voice, Voice focus and Far away there: only a computer listening lifts the voice.
+  const RAW_SAY = ' This works when they listen on a computer. An iPhone or iPad plays your voice just as your phone sends it.';
   // CLEAR.pre: the slot for a node that goes first in a chain whose tuning has pre (Voice focus), for its noise
   // remover: a function (ctx, mode) giving an AudioNode, or null. Set it, then clearRebuild(), to put it in.
   const CLEAR = { mode: savedMode(), on: false, chains: new Set(), q: Promise.resolve(), pre: null };
@@ -1420,8 +1422,8 @@
     }
   }
   // LIFT: an iPhone sending its mic as it comes in Clear voice, Voice focus or Far away asks the other side to run
-  // the same processing on its voice before playing it, on any device, an iPhone too (Mo, 2 Nov 2026: "and it will
-  // lift hers for mine?"). What you hear already passes through the engine there, with no crackle. Old copies of
+  // the same processing on its voice before playing it (Mo, 2 Nov 2026: "and it will lift hers for mine?"). A
+  // computer does. An iPhone or iPad plays it as it comes, straight through the page (see outRest). Old copies of
   // Beside ignore the message and hear Apple's levelled voice.
   function liftMsg() { return { t: 'lift', mode: SEND_RAW && tuneFor(CLEAR.mode) ? CLEAR.mode : '' }; }
   function liftTell(g) {
@@ -1466,15 +1468,15 @@
     } catch (e) { /* defaults are fine */ }
   }
   // What you hear, on this device: their voice (0 to 150%), the video's sound (0 to 100%), and the video's sound
-  // ducking under a voice (Mo, 2 Nov 2026). iPhones and iPads ignore a page's volume, so on Safari, iPhone, iPad
-  // and the Beside app a sound whose volume you changed plays through the audio engine, where each lane has its
-  // own volume. Other browsers play through the page (their echo cancelling hears that best), and use the engine
-  // only to go above 100% or to lift an iPhone's voice (LIFT). If the engine stops (an iPhone phone call, or its
-  // clock stalls), the page plays it again at once. On an iPhone or iPad the engine is closed while a video is
-  // open together (see outRest below).
+  // ducking under a voice (Mo, 2 Nov 2026). Safari on a Mac (and the Mac app) plays every sound through the audio
+  // engine, where each lane has its own volume (ENGINE_OUT). Other computer browsers play through the page (their
+  // echo cancelling hears that best), and use the engine only to go above 100% or to lift an iPhone's voice
+  // (LIFT). If the engine stops or its clock stalls, the page plays it again at once. An iPhone or iPad always
+  // plays through the page, never through the engine, and the buttons on its side set the volume, because it
+  // ignores a page's volume (see outRest below).
   const CAN_VOL = true;
   const UA = navigator.userAgent;
-  const ENGINE_OUT = IS_IOS || (/AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|Android|OPR/.test(UA));
+  const ENGINE_OUT = !IS_IOS && /AppleWebKit/.test(UA) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|Android|OPR/.test(UA);
   const DUCK = 0.25; // about -12 dB under a voice
   function savedVol(k, max) { const v = parseFloat(store.get(k)); return v >= 0 && v <= max ? v : 1; }
   const SND = { voice: savedVol('beside.vol.voice', 1.5), media: savedVol('beside.vol.media', 1), duck: store.get('beside.duck') !== '0' };
@@ -1502,7 +1504,8 @@
     if (l && (l.ctx !== ctx || l.track !== tr || l.lift !== lift)) { outDrop(l); l = null; }
     if (!l) {
       l = { el, kind, ctx, track: tr, src: null, gain: null, chain: null, lift, on: false, route: 'page' };
-      if (ctx && tr && ctx.state !== 'closed') {
+      // Never on an iPhone or iPad, not even while the host's engine is briefly alive (see outRest).
+      if (ctx && tr && ctx.state !== 'closed' && !outRest()) {
         try {
           l.src = ctx.createMediaStreamSource(new MediaStream([tr]));
           l.gain = ctx.createGain();
@@ -1538,22 +1541,26 @@
     }
     l.route = eng ? 'engine' : 'page';
   }
-  // Does this lane need the engine? On Safari, iPhone, iPad and the app, always; elsewhere a voice does only to
-  // be lifted or to go above 100%.
+  // Does this lane need the engine? On an iPhone or iPad, never (OUT.rest). On Safari on a Mac and the Mac app,
+  // always; elsewhere a voice does only to be lifted or to go above 100%.
   function outEngine(l) {
     if (!l.gain || OUT.rest || !engineOk(l.ctx)) return false;
     return ENGINE_OUT || (l.kind === 'voice' && (!!l.chain || SND.voice > 1));
   }
   // Mo, 5 Nov 2026: "when im watching a youtube video on the app together then there is crackles, both when we're
   // speaking and when the video is playing". 10 Nov: "I want the sound quality to be A1 because that was the whole
-  // purpose of building this app". On an iPhone or iPad, an audio engine that merely exists makes the phone play
-  // ALL of the app's sound (voices, YouTube, the mic) in slices of under 3 ms; with YouTube busy as well they fall
-  // behind, and everything crackles. Pausing the engine does not undo that (the first fix, 5 Nov, paused it, and
-  // the crackle stayed): only closing it does. YouTube ignores its volume there anyway. So while a video is open
-  // together on an iPhone or iPad the engine is closed, and voices play through the page (at full volume, not
-  // lifted), unless the call's own sound still passes through it (three or more people, or a video file you
-  // share). It is made again when the video closes, and an ordinary call sounds as it did before.
-  function outRest() { return IS_IOS && !!W.id; }
+  // purpose of building this app". 12 Nov: "It still crackles, mainly on the iPhone, when I'm hearing her voice on
+  // my phone it crackles, and then my voice for her just stopps, like when I'm talking it just stops sometimes
+  // apparently". On an iPhone or iPad, an audio engine that merely exists makes the phone run ALL of the call's
+  // sound (the mic with Apple's voice processing, and everything you hear) in slices of 128 frames, under 3 ms;
+  // when they fall behind, it crackles, both what you hear and the mic you send. Pausing the engine does not undo
+  // that (the first fix, 5 Nov, paused it, and the crackle stayed): only closing it does. A voice played through
+  // the engine there also leaves Apple's own call path (the one its echo canceller listens to) and goes through a
+  // bridge into the engine that drops and clicks. The 11 Nov fix closed it only while a video was open together.
+  // So on an iPhone or iPad, in every call, what you hear always plays through the page (at full volume, not
+  // lifted: the buttons on the side set the volume), and the engine is closed whenever the call's own sound
+  // doesn't need it (engineBusy). Computers are unchanged.
+  function outRest() { return IS_IOS; }
   // Does the call's own sound pass through the engine? A host needs it until one guest is settled in: the lanes
   // of a call are made from its tracks, and three or more people get a mix that only it can make.
   function engineBusy() {
@@ -1579,8 +1586,9 @@
     outEls().forEach(([el, kind, lift]) => outApply(outLane(el, kind, lift))); // on the page from here
     ctx.close().catch(() => {});
   }
-  // iPhone and iPad only: the engine goes when a video opens together and comes back when it closes. It waits
-  // 2 s before closing, so a video opened and closed at once doesn't close it and make it again.
+  // iPhone and iPad only: the engine is closed once the call's own sound doesn't need it (engineBusy), and made
+  // again when it does. It waits 2 s before closing, so a need that comes and goes at once doesn't close it and
+  // make it again.
   function outIdle() {
     if (!IS_IOS) return;
     const live = isGuest ? app.state === 'watching' : app.state === 'live';
@@ -1971,8 +1979,8 @@
     for (let i = 0; i < T.buf.length; i++) s += T.buf[i] * T.buf[i];
     return Math.sqrt(s / T.buf.length);
   }
-  // With no engine (an iPhone or iPad host while a video is open together, see outRest) the call itself says how
-  // loud each voice it receives is.
+  // With no engine (an iPhone or iPad host once the call has settled, see outRest) the call itself says how loud
+  // each voice it receives is.
   // Such a host can't measure its own mic (blind), so each guest measures the host's voice the same way.
   function rxLevel(pc, track) {
     try {
@@ -2803,7 +2811,8 @@
   }
   // The Sound panel: what you hear, and how your mic is sent. One in the call, one in the faces window and one in
   // the Sound sheet outside a call; all show the same: a grouped card (Their voice, Film sound, the switch), the
-  // five mic chips with one line on the chosen one, then Hear myself and Fix sound side by side.
+  // five mic chips with one line on the chosen one, then Hear myself and Fix sound side by side. An iPhone or iPad
+  // ignores a page's volume, so there the card is hidden and the line under it says why (see outRest).
   function rangeFill(r) { r.style.setProperty('--pct', (r.value - r.min) / ((r.max - r.min) || 1) * 100 + '%'); }
   function soundPanel(doc, opts) {
     opts = opts || {};
@@ -2812,6 +2821,7 @@
     const head = (txt) => { const h = doc.createElement('h3'); h.className = 'sound-h'; h.textContent = txt; return h; };
     const card = doc.createElement('div');
     card.className = 'sound-card';
+    card.hidden = IS_IOS;
     box.appendChild(card);
     [['voice', 'Their voice', 150], ['media', 'Film sound', 100]].forEach(([k, label, max]) => {
       const row = doc.createElement('label');
@@ -2912,8 +2922,7 @@
         rangeFill(r);
         row.querySelector('.sound-pct').textContent = n + '%';
         r.setAttribute('aria-valuetext', n + '%');
-        // An iPhone or iPad plays voices at full volume while a video is open together (see outRest).
-        const off = (k === 'media' && amSharing() && !W.id) || (k === 'voice' && IS_IOS && !!W.id);
+        const off = k === 'media' && amSharing() && !W.id;
         r.disabled = off;
         row.classList.toggle('off', off);
       });
@@ -2925,20 +2934,21 @@
         m.tabIndex = on ? 0 : -1;
       });
       const say = b.querySelector('.sound-say');
-      if (say) say.textContent = MODE_TEXT[CLEAR.mode][1] + (CLEAR.mode !== 'focus' || SEND_RAW ? ''
-        : ISO.why === 'slow' ? ' The typing remover was too slow on this device, so it is off. Other sounds are still pushed back.'
-          : ISO.why === 'rate' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.'
-            : ISO.why === 'broke' ? ' The typing remover can’t run on this device, so other sounds are only pushed back.' : '');
+      if (say) say.textContent = MODE_TEXT[CLEAR.mode][1] + (SEND_RAW ? (tuneFor(CLEAR.mode) ? RAW_SAY : '')
+        : CLEAR.mode !== 'focus' ? ''
+          : ISO.why === 'slow' ? ' The typing remover was too slow on this device, so it is off. Other sounds are still pushed back.'
+            : ISO.why === 'rate' ? ' The typing remover can’t run with this mic, so other sounds are only pushed back.'
+              : ISO.why === 'broke' ? ' The typing remover can’t run on this device, so other sounds are only pushed back.' : '');
       const fr = b.querySelector('.sound-fixrow');
       if (fr) fr.hidden = !inCallNow();
       const h = b.querySelector('.sound-hint');
       if (h) {
-        h.textContent = IS_IOS && W.id ? 'While a video is open together, voices play at full volume here: that keeps the sound clean. Use the volume buttons on the side.'
+        h.textContent = IS_IOS ? 'On an iPhone or iPad, the volume buttons on the side set how loud everything is. Beside plays every sound straight through, which keeps it clean.'
           : !amSharing() ? 'Changes only what you hear. Nobody else’s sound changes.'
           : mine ? 'You’re sharing: use the video’s own volume. Everyone hears that change.'
             : 'You’re sharing without sound. Share a tab with “Also share tab audio” on to send its sound.';
         // the usual line ("Changes only what you hear") is left off the panel; a line that explains a slider is kept
-        h.hidden = !(IS_IOS && W.id) && !amSharing();
+        h.hidden = !IS_IOS && !amSharing();
       }
     });
   }
@@ -4712,7 +4722,7 @@
         try { g.vsrc = H.ctx.createMediaStreamSource(new MediaStream([a])); g.an = analyser(g.vsrc); } catch (e) { g.vsrc = g.an = null; }
         rewire();
       }
-      applyVolumes(); // your volume for their voice (through the engine on iPhone, iPad and Safari)
+      applyVolumes(); // your volume for their voice (through the engine on Safari on a Mac)
       if (g.audio.paused) g.audio.play().catch(() => note('Click anywhere on this page to hear ' + (g.name || 'them') + '.', 'stay'));
       hostFace(g);
       if (H.sharer === g.id) roomSound(); // their shared video's sound may have just arrived
@@ -5433,10 +5443,9 @@
       // Unlock sound inside the tap (iPhone): voices and the shared video's sound each play in their own element.
       ['voice', 'media'].forEach((id) => { const el = $(id); if (el) { el.muted = outMuted(el); el.play().catch(() => {}); } });
       // Computers that can share back hold two silent sound lanes ready: the mic's (if joining without it) and the
-      // shared tab's. The audio engine starts inside the tap, so it is allowed to run. (Not iPhone and iPad: no
-      // audio engine track is ever sent from there, as that made the voice crackle. Their videos go without sound.)
-      // Clear voice needs the engine too, so anyone joining with a mic starts it here.
-      // Everyone gets it: your volumes for their voice and the video play through it on iPhone and iPad.
+      // shared tab's. The audio engine starts inside the tap, so it is allowed to run. Clear voice needs it too,
+      // and Safari on a Mac plays what you hear through it. Not on an iPhone or iPad: no engine is made there
+      // (see outRest), as one makes the whole call crackle. Their videos go without sound.
       if (!G.ctx && !outRest()) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       if (G.ctx) {
         G.ctx.resume().catch(() => {});
@@ -5899,8 +5908,9 @@
     if (G.sharing || G.display || !G.screenSender || G.hostVer < 2 || app.state !== 'watching') return;
     G.sharing = true;
     try {
-      // The tick for a hidden sharer needs sound unlocked, so the audio engine starts inside this tap.
-      if (!G.ctx) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
+      // The tick for a hidden sharer needs sound unlocked, so the audio engine starts inside this tap. (Never on
+      // an iPhone or iPad: they can't share a screen, and an engine there makes the call crackle, see outRest.)
+      if (!G.ctx && !IS_IOS) { try { G.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { G.ctx = null; } }
       let s;
       try {
         s = await getDisplay(true);
