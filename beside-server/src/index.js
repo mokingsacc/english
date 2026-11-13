@@ -4,7 +4,8 @@
    two browsers anywhere in the world always meet in the same place. It never sees the picture or sound.
 
    /peerjs/health   is it up (Beside checks this before choosing a server)
-   /peerjs/turn     short-lived relay passwords (Cloudflare TURN) for networks that block direct calls
+   /peerjs/turn     short-lived relay passwords (Cloudflare TURN) for networks that block direct calls;
+                    ?room= with the x-beside-key header: once that room is locked, only for its listed devices
    .../peerjs/id    a fresh random id (PeerJS asks for one when it isn't given one)
    .../peerjs?id=   the WebSocket
    /peerjs/board/<room>   the Together board: GET it, or POST one change ({op, ...}); one Durable Object per room.
@@ -21,7 +22,8 @@ import { understand, toOps, TalkError, TALK_ZONES, TALK_MAX } from './talk.js';
 
 const STALE_MS = 120000; // PeerJS beats every 5 s (up to ~60 s in a hidden, throttled tab); silent longer = a dead line
 const QUEUE_MS = 5000; // like peerjs-server: hold a message for a browser that's reconnecting, then EXPIRE
-const TURN_TTL = 12 * 3600;
+const TURN_TTL = 12 * 3600; // open (and a page from before that sends no room)
+const TURN_LOCKED_TTL = 3600; // locked: a listed device's relay passwords last an hour (the page renews them in good time)
 const JSON_H = { 'content-type': 'application/json', 'cache-control': 'no-store' };
 
 export default {
@@ -49,13 +51,37 @@ function ownPage(req) {
   try { return new URL(o).host === new URL(req.url).host; } catch (e) { return false; }
 }
 
+// One room only. The optional Worker secret HOME_ROOM is the SHA-256 (hex) of the room code. Once it is set, every
+// board route and the relay passwords answer for that room alone, so a made-up room name gets nothing (and can't spend
+// the AI key on Say it). Set it once, in beside-server/ on a Mac, typing the room code at the silent prompt (so it is
+// never written down or kept in the shell's history):
+//   read -rs R && printf %s "$R" | shasum -a 256 | cut -c1-64 | npx -y wrangler@4.151.0 secret put HOME_ROOM; unset R
+// Unset (wrangler secret delete HOME_ROOM), any room works, as before. A New link needs it set again, for the new code.
+async function homeRoom(env, room) {
+  return !env.HOME_ROOM || (await sha(room)) === String(env.HOME_ROOM).trim().toLowerCase();
+}
+
+// The page sends its room and its key. Locked: only a listed device gets passwords, and they last an hour; anyone else
+// gets none. Open, or no room (a page from before): as before, 12 hours.
 async function turn(req, env) {
-  if (!env.TURN_KEY_ID || !env.TURN_KEY_TOKEN) return new Response('{"iceServers":[]}', { headers: JSON_H });
-  if (!ownPage(req)) return new Response('{"iceServers":[]}', { status: 403, headers: JSON_H });
+  const none = (status) => new Response('{"iceServers":[]}', { status, headers: JSON_H });
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_TOKEN) return none(200);
+  if (!ownPage(req)) return none(403);
+  let ttl = TURN_TTL;
+  const room = new URL(req.url).searchParams.get('room');
+  if (room != null) {
+    if (!ROOM_RE.test(room) || !(await homeRoom(env, room))) return none(403);
+    // The lock lives in the room's Board: ask it whether this key is listed (only this Worker can reach /turn there).
+    const b = await env.BOARD.get(env.BOARD.idFromName(room)).fetch('https://board/turn', { headers: { 'x-beside-key': req.headers.get('x-beside-key') || '' } });
+    const s = b.ok ? await b.json() : null;
+    if (!s) return none(502);
+    if (s.on && !s.listed) return none(403);
+    if (s.on) ttl = TURN_LOCKED_TTL;
+  }
   const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
     method: 'POST',
     headers: { authorization: 'Bearer ' + env.TURN_KEY_TOKEN, 'content-type': 'application/json' },
-    body: JSON.stringify({ ttl: TURN_TTL }),
+    body: JSON.stringify({ ttl }),
   });
   if (!r.ok) return new Response('{"iceServers":[]}', { status: 502, headers: JSON_H });
   const j = await r.json();
@@ -64,7 +90,7 @@ async function turn(req, env) {
     ...s,
     urls: [].concat(s.urls).filter((u) => !/:53(\?|$)/.test(u)),
   })).filter((s) => s.urls.length);
-  return new Response(JSON.stringify({ iceServers, ttl: TURN_TTL }), { headers: JSON_H });
+  return new Response(JSON.stringify({ iceServers, ttl }), { headers: JSON_H });
 }
 
 // ---------- the Together board ----------
@@ -84,11 +110,13 @@ const PHOTO_RE = /^data:image\/(jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 
 const plain = (msg, status = 400) => new Response(msg, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...CORS } });
 
-function board(req, env, p) {
+async function board(req, env, p) {
+  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring|talk|hello))?\/?$/);
+  // HOME_ROOM set: any other room isn't here at all (not even a preflight).
+  if (env.HOME_ROOM && !(m && (await homeRoom(env, m[1])))) return plain('Not found', 404);
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type, x-beside-key', 'access-control-max-age': '86400' } });
   }
-  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring|talk|hello))?\/?$/);
   if (!m) return plain('Not found', 404);
   if (!ROOM_RE.test(m[1])) return plain('That board name isn’t right: use 4 to 40 letters, numbers or _.');
   if (m[3] && !ID_RE.test(m[3])) return plain('Not found', 404);
@@ -145,10 +173,14 @@ const TALK_ALL_DAY = 200; // sentences per day across every board, so made-up bo
 // Once locked, every route answers 403 to a device that isn't listed; a new device can only ask (and shows a code the
 // people compare), a listed one lets it in, and the recovery code made at Lock lists a device when nobody can.
 // A device can only remove devices added after it, so a device that got in while the room was open can't push out
-// the ones that were there first.
+// the ones that were there first. The recovery code removes any device (the earliest too, or the one in hand).
+// Lock also makes the room's call id (cid): the call server's links are named by it instead of the room code, and only
+// a listed device is given it, so the old link alone no longer reaches the call layer. A new one at each Lock, and at
+// each Remove while locked (the removed device knew it); none while open (the room code is used, as before).
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/; // 32 bytes, base64url: a key, a photo token, and pub's x and y
 const DEV_RE = /^[0-9a-f]{12}$/; // a device's id: the first 12 hex of h
-const DEVICES_MAX = 12;
+const DEVICES_MAX = 20;
+const IDLE_MS = 24 * 3600e3; // open and full: only a device not seen for a day makes room for a new one
 const ASKS_MAX = 5;
 const HOUR = 3600e3;
 const ASKS_HOUR = 10; // new asks per room per hour
@@ -165,6 +197,9 @@ const b64u = (d) => btoa(String.fromCharCode(...d)).replace(/\+/g, '-').replace(
 async function sha(s) { return Array.from(await digest(s), (x) => x.toString(16).padStart(2, '0')).join(''); }
 // A recovery code as typed: capitals, no spaces or dashes.
 const recNorm = (s) => s.toUpperCase().replace(/[\s-]+/g, '');
+// A call id: 16 random bytes as hex (a PeerJS id may only hold letters and digits, with single - or _ between them).
+const newCid = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, '0')).join('');
+const FULL = `The list is full (${DEVICES_MAX}). Remove a device on one that is let in, then try again.`;
 function recoveryCode() {
   let s = '';
   while (s.length < 12) for (const b of crypto.getRandomValues(new Uint8Array(16))) if (b < 250 && s.length < 12) s += REC_ABC[b % REC_ABC.length];
@@ -214,23 +249,39 @@ export class Board {
     return { k: h ? k : '', h, dev };
   }
   listed(h) { return !!h && this.lock.devices.some((d) => d.h === h); }
-  // The list as a listed device sees it: never anyone's h or p; pub is public, for the check at a call's start.
+  // The list as a listed device sees it (only ever a listed one): never anyone's h or p; pub is public, for the check at
+  // a call's start. Locked, it carries the call id.
   lockView(h) {
     const L = this.lock, now = Date.now();
     return {
       on: L.on,
+      ...(L.on && L.cid ? { cid: L.cid } : {}),
       devices: L.devices.map((d) => ({ id: d.id, label: d.label, role: d.role, kind: d.kind, added: d.added, seen: d.seen, pub: d.pub, me: d.h === h })),
       asks: L.asks.filter((a) => now - a.at < ASK_MS).map((a) => ({ id: a.id, label: a.label, kind: a.kind, at: a.at })),
       // a device that rings but isn't on the list (it hasn't opened Beside since the update): Lock stops its rings
       strays: this.subs.some((s) => !this.listed(s.h)),
     };
   }
-  // Puts a device on the list. Full: the device seen longest ago makes room.
+  // Puts a device on the list. Full: the device seen longest ago makes room, but only one not seen for a day, so a
+  // device someone is using now is never pushed off. False when none can (nothing changes).
   enlist(d, now) {
     const L = this.lock;
-    if (L.devices.length >= DEVICES_MAX) L.devices.splice(L.devices.reduce((i, x, j) => (x.seen < L.devices[i].seen ? j : i), 0), 1);
+    if (L.devices.length >= DEVICES_MAX) {
+      const i = L.devices.reduce((i, x, j) => (x.seen < L.devices[i].seen ? j : i), 0);
+      if (now - L.devices[i].seen < IDLE_MS) return false;
+      L.devices.splice(i, 1);
+    }
     L.devices.push({ ...d, added: now, seen: now });
     L.asks = L.asks.filter((a) => a.h !== d.h);
+    return true;
+  }
+  // A recovery code tried (its hash): null when right, else [status, why]. A wrong one counts: 5 an hour per room.
+  recTry(rh, now) {
+    const L = this.lock;
+    L.fails = (L.fails || []).filter((t) => now - t < HOUR);
+    if (L.fails.length >= TRIES_HOUR) return [429, 'Too many tries. Try again in an hour.'];
+    if (!L.rec || rh !== L.rec) { L.fails.push(now); return [403, 'That code isn’t right.']; }
+    return null;
   }
   // Asks older than a day go. True when one went.
   tidy(now) {
@@ -278,14 +329,14 @@ export class Board {
         write = true;
       }
     } else if (!L.on) {
-      this.enlist(me1, now);
+      // A full list where every device was seen today: this one carries on unlisted, as a page from before would.
+      if (!this.enlist(me1, now)) { if (write) await this.ctx.storage.put('lock', L); return this.reply({ in: true, lock: null }); }
       write = true;
     } else if (rec) {
-      L.fails = (L.fails || []).filter((t) => now - t < HOUR);
-      if (L.fails.length >= TRIES_HOUR) return out(429, 'Too many tries. Try again in an hour.');
-      if (!L.rec || rec !== L.rec) { L.fails.push(now); write = true; return out(403, 'That code isn’t right.'); }
-      this.enlist(me1, now); // the code stays good until the next Lock makes a new one
+      const why = this.recTry(rec, now); // the code stays good until the next Lock makes a new one
       write = true;
+      if (why) return out(why[0], why[1]);
+      if (!this.enlist(me1, now)) return out(403, FULL);
     } else {
       if (o.ask === true) {
         const had = L.asks.find((a) => a.h === me.h);
@@ -305,8 +356,9 @@ export class Board {
   }
 
   // Lock, Unlock, Let in, No and Remove, from a listed device. Everything is checked before anything changes.
-  // rec: the hash of a fresh recovery code, kept when this turns the lock on.
-  lockOp(o, h, rec) {
+  // rec: the hash of a fresh recovery code, kept when this turns the lock on. byCode: Remove with the right recovery
+  // code (checked already), which may remove any device, this one too.
+  lockOp(o, h, rec, byCode) {
     const L = this.lock, now = Date.now();
     const dev = h && L.devices.find((d) => d.h === h);
     if (!dev) return false;
@@ -316,9 +368,11 @@ export class Board {
       if (o.on && !(L.devices.some((d) => d.role === 'host') && L.devices.some((d) => d.role === 'guest'))) throw new Bad('Open Beside once on both people’s devices first, so they are listed.');
       if (o.on && !L.on) {
         L.rec = rec;
+        L.cid = newCid();
         // Rings and hearts go only to listed devices from now on: a ring registration no listed device made goes.
         this.subs = this.subs.filter((s) => this.listed(s.h));
       }
+      if (!o.on) delete L.cid; // open: calls use the room code again
       L.on = o.on;
       return true;
     }
@@ -336,10 +390,11 @@ export class Board {
     } else {
       const x = L.devices.find((d) => d.id === o.id);
       if (!x) return true; // already gone
-      if (x === dev) throw new Bad('This is the device you’re using, so it stays on the list.');
-      if (!(x.added > dev.added)) throw new Bad('This device can only remove devices added after it.');
+      if (!byCode && x === dev) throw new Bad('This is the device you’re using, so it stays on the list.');
+      if (!byCode && !(x.added > dev.added)) throw new Bad('This device can only remove devices added after it.');
       L.devices = L.devices.filter((d) => d !== x);
       this.subs = this.subs.filter((s) => s.h !== x.h); // it doesn't ring any more either
+      if (L.on) L.cid = newCid(); // it knew the call id: a new one, so the old one reaches nobody
     }
     return true;
   }
@@ -512,6 +567,8 @@ export class Board {
       return new Response(null, { status: (await this.count(n, TALK_ALL_DAY)) ? 204 : 429 });
     }
     const me = await this.who(req, url);
+    // For the relay passwords (only this Worker can reach it): is the room locked, and is this key listed?
+    if (url.pathname === '/turn') return this.reply({ on: !!this.lock.on, listed: !!me.dev });
     if (/\/hello\/?$/.test(url.pathname)) return this.hello(req, me);
     // Locked: a device that isn't listed gets nothing at all, checked before anything else.
     if (this.lock.on && !me.dev) return plain(NOT_IN, 403);
@@ -553,16 +610,27 @@ export class Board {
     try { o = JSON.parse(raw); } catch (e) { return plain('That change couldn’t be read.'); }
     if (!o || typeof o !== 'object' || Array.isArray(o)) return plain('That change couldn’t be read.');
     if (LOCK_OPS.includes(o.op)) {
+      // Remove with the recovery code: the code is checked first, and a wrong one is counted (and kept) even though
+      // nothing else changes.
+      const byCode = o.op === 'forget' && o.recover != null;
+      if (byCode) {
+        if (!me.dev) return plain(NOT_IN, 403);
+        if (typeof o.recover !== 'string' || !o.recover.trim() || o.recover.length > 40) return plain('Type the recovery code.');
+        const why = this.recTry(await sha(recNorm(o.recover)), Date.now());
+        if (why) { await this.ctx.storage.put('lock', this.lock); return plain(why[1], why[0]); }
+      }
       // Lock: a new recovery code, shown once in this answer; only its hash is kept.
       const code = o.op === 'lock' && o.on === true ? recoveryCode() : '';
       const rec = code ? await sha(code) : '';
       let done;
-      try { done = this.lockOp(o, me.h, rec); } catch (e) {
+      try { done = this.lockOp(o, me.h, rec, byCode); } catch (e) {
         if (e instanceof Bad) return plain(e.message);
         throw e;
       }
       if (!done) return plain(NOT_IN, 403);
       await this.ctx.storage.put({ lock: this.lock, subs: this.subs });
+      // This device removed itself with the code: it is signed out, so no list (and no call id) goes back to it.
+      if (!this.listed(me.h)) return this.reply({ lock: null, out: true });
       return this.reply({ lock: this.lockView(me.h), ...(rec && this.lock.rec === rec ? { recovery: code } : {}) });
     }
     // From here to this.b = ... there is no await, so two changes at once can't overwrite each other.

@@ -22,14 +22,16 @@
   const OWN = srv ? (spare ? at(srv, '/') : null) : (/(^|\.)sitbeside\.pages\.dev$/.test(location.hostname) ? { host: location.hostname, port: 443, path: '/peerjs/', secure: true } : null);
   const FREE = srv ? at(spare || srv, '/') : {};
   // NET.own: the own server answered its health check. NET.ice: STUN, plus relay passwords when we got them.
-  const NET = { own: false, ice: srv ? [] : ICE, at: 0, p: null, relay: false, relayAt: 0 };
+  // NET.life: how long the relay passwords last.
+  const NET = { own: false, ice: srv ? [] : ICE, at: 0, p: null, relay: false, relayAt: 0, life: 12 * 3600e3 };
   const opts = (free) => ({ ...(OWN && NET.own && !free ? OWN : FREE), config: { iceServers: NET.ice }, debug: 0 });
-  async function getJSON(u, ms) {
+  async function getJSON(u, ms, headers) {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), ms);
-    try { const r = await fetch(u, { cache: 'no-store', signal: c.signal }); return r.ok ? await r.json() : null; } catch (e) { return null; } finally { clearTimeout(t); }
+    try { const r = await fetch(u, { cache: 'no-store', signal: c.signal, ...(headers ? { headers } : {}) }); return r.ok ? await r.json() : null; } catch (e) { return null; } finally { clearTimeout(t); }
   }
-  // Checked when the page opens, and again before a call if it's been a while (the passwords last 12 hours).
+  // Checked when the page opens, and again before a call if it's been a while (the passwords last 12 hours, or an
+  // hour once the room is locked).
   // Returns true when ready; otherwise NET.p resolves once it is.
   // Mo, 10 Nov 2026: "Can't connect you two ... It was working before". The relay carries a call across a network
   // that blocks direct calls, and three things could leave a device without it: one slow answer to the password
@@ -37,11 +39,15 @@
   // hours; and a retry after a failed connection used the same old passwords. Now a missing relay is asked for
   // again within a minute, every open link gets the newest passwords for its next connection (netPeers), they
   // are renewed while a link is open (netKeep), and a failed connection asks for fresh ones before it retries.
+  // Once the room is locked they last an hour, and a call can last longer: a connection made keeps going, but a
+  // reconnect needs passwords still good, so they are renewed quietly half way through their life, and a call
+  // starting in their last quarter waits for new ones.
   function netReady() {
     if (!OWN || NET.p) return !OWN;
     const age = Date.now() - NET.at;
-    if (NET.at && age < (NET.own ? 6 * 3600e3 : 60e3)) {
-      if (!NET.relay && !srv && age > 60e3) netAsk(); // no relay yet: ask again quietly, nobody waits for it
+    const used = NET.relay ? (Date.now() - NET.relayAt) / NET.life : 0;
+    if (NET.at && age < (NET.own ? 6 * 3600e3 : 60e3) && (used < 0.75 || age < 60e3)) {
+      if (!srv && age > 60e3 && (!NET.relay || used > 0.5)) netAsk(); // no relay yet, or half used: ask again quietly, nobody waits for it
       return true;
     }
     netAsk();
@@ -50,11 +56,18 @@
   function netAsk() {
     if (!OWN || NET.p) return;
     const base = srv ? 'http://' + srv : '';
-    NET.p = Promise.all([getJSON(base + '/peerjs/health', 3000), srv ? null : getJSON('/peerjs/turn', 6000)]).then(([h, t]) => {
+    // With the room and this device's key: once the room is locked, only a device on its list gets passwords.
+    const k = store.get('beside.key') || '';
+    const turnU = '/peerjs/turn?room=' + encodeURIComponent(boardRoom());
+    NET.p = Promise.all([getJSON(base + '/peerjs/health', 3000), srv ? null : getJSON(turnU, 6000, /^[A-Za-z0-9_-]{43}$/.test(k) ? { 'x-beside-key': k } : null)]).then(([h, t]) => {
       NET.own = !!(h && h.ok);
       const relay = t && Array.isArray(t.iceServers) ? t.iceServers.filter((x) => x && x.username && x.credential) : [];
-      // A request that failed keeps the passwords we have (they last 12 hours): better than none.
-      if (!srv && (relay.length || !NET.relay || Date.now() - NET.relayAt > 11 * 3600e3)) { NET.ice = ICE.concat(relay); NET.relay = relay.length > 0; if (NET.relay) NET.relayAt = Date.now(); }
+      // A request that failed keeps the passwords we have until near the end of their life: better than none.
+      if (!srv && (relay.length || !NET.relay || Date.now() - NET.relayAt > NET.life * 11 / 12)) {
+        NET.ice = ICE.concat(relay);
+        NET.relay = relay.length > 0;
+        if (NET.relay) { NET.relayAt = Date.now(); NET.life = Math.min(12 * 3600, t.ttl > 0 ? t.ttl : 12 * 3600) * 1000; }
+      }
       app.net = { own: NET.own, relay: NET.relay };
       NET.at = Date.now();
       NET.p = null;
@@ -93,7 +106,7 @@
     crypto.getRandomValues(a);
     return Array.from(a, (n) => ALPHA[n % ALPHA.length]).join('');
   }
-  // Link looks like  .../beside/#k7m2abcd-Mo  : 8-letter room code, then the host's name.
+  // Link looks like  .../beside/#abcd1234-Mo  : 8-letter room code, then the host's name.
   const hashM = location.hash.slice(1).match(/^([a-z0-9]{8})(?:-(.*))?$/);
   const guestCode = hashM ? hashM[1] : '';
   const isGuest = !!guestCode;
@@ -101,7 +114,7 @@
   document.documentElement.classList.toggle('as-semal', isGuest);
   document.documentElement.classList.toggle('as-mo', !isGuest);
   function cleanName(n) { return String(n || '').replace(/[^\p{L}\p{N} .'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20); }
-  // Your own other devices (iPad, iPhone) host the same room: open  .../?room=k7m2abcd  once there, or add that to the
+  // Your own other devices (iPad, iPhone) host the same room: open  .../?room=abcd1234  once there, or add that to the
   // Home Screen. Your partner keeps the usual link.
   try {
     const q = new URLSearchParams(location.search);
@@ -3482,6 +3495,14 @@
     } catch (e) { /* no key pair: the server treats this page as an older one */ }
   })();
   const keyHead = () => (LK.key ? { 'x-beside-key': LK.key } : {});
+  // The call server's links. Open: PREFIX + the room code, as always. Locked: PREFIX + the room's call id, which
+  // Beside's server gives only to listed devices (and makes anew at each Lock), so someone with just the old link can't
+  // reach the call layer. Every PeerJS id this page opens or dials comes from here: the host's link (and its spare on
+  // the free server), the guest's knock, a look for the call on my other device, and moving the call. Ring links carry
+  // the room code, never an id: the page they open says hello first. The list is kept on this device too, so a call
+  // still finds the right id when Beside's server can't be reached.
+  const CID_RE = /^[0-9a-f]{32}$/;
+  function callId(code) { const L = LK.lock; return PREFIX + (L && L.on && CID_RE.test(L.cid || '') ? L.cid : code); }
   const lockStoreKey = () => 'beside.lock.' + boardRoom();
   const lockDev = (id) => (LK.lock && LK.lock.devices.find((d) => d.id === id)) || null;
   // The 4 digits an ask shows on both screens (from the asking device's id), for the two people to compare.
@@ -3533,13 +3554,14 @@
     const L = lock && Array.isArray(lock.devices) && Array.isArray(lock.asks) ? lock : null;
     const sig = L ? JSON.stringify(L) : '';
     LK.lock = L;
-    if (sig === LK.sig) return; // the 5 s check brings the same list most times
+    if (sig === LK.sig) { hostReid(); return; } // the 5 s check brings the same list most times
     LK.sig = sig;
     store.set(lockStoreKey(), sig);
     lockUi();
     askUi();
     // A device removed while locked leaves the call too.
     if (L && L.on) for (const [k, g] of H.guests) if (g.conn.besideDev && !lockDev(g.conn.besideDev)) hostDropGuest(k);
+    hostReid(); // locked, unlocked or a new call id: the host's link follows
   }
   // The board said no: check with hello, then show the "not let in" screen.
   function lockDenied() { if (!LK.out) lockHello(false).then((j) => { if (j && !j.in && !LK.out) lockOut(!!j.asked); }); }
@@ -3552,6 +3574,11 @@
       if (isGuest && !G.left) guestLeave();
       else if (!isGuest && ['waiting', 'live'].includes(app.state)) hostStop();
       box.hidden = false;
+      // The list kept on this device goes, with the call id in it.
+      LK.lock = null;
+      LK.sig = '';
+      store.set(lockStoreKey(), '');
+      lockUi();
       askUi();
     }
     if (LK.asked && !asked) LK.no = true; // turned down (or a day went by): said until it asks again
@@ -3626,14 +3653,37 @@
             trustBtn('Cancel', 'btn sm', () => { LK.confirm = ''; lockUi(); }));
           li.append(q);
         } else li.append(trustBtn('Remove', 'btn sm', () => { LK.confirm = d.id; lockUi(); }, 'Remove ' + d.label));
+      } else if (me && L.on) {
+        // Where that rule says no (a device added before this one, or this one): the recovery code removes it.
+        if (LK.confirm === 'rec:' + d.id) li.append(recRemove(d));
+        else li.append(trustBtn('Remove with recovery code', 'btn sm', () => { LK.confirm = 'rec:' + d.id; trustMsg(''); lockUi(); const i = $('trustRecInput'); if (i) i.focus(); }, 'Remove ' + d.label + ' with the recovery code'));
       }
       list.append(li);
     });
     text('trustLockBtn', L.on ? 'Unlock' : 'Lock Beside');
     if (L.on) lockConfirm(false);
   }
+  // "Remove with recovery code": asks for the code, then removes the device, even this one (which is then signed out).
+  function recRemove(d) {
+    const f = document.createElement('form'), p = document.createElement('p'), inp = document.createElement('input');
+    f.className = 'trust-ask';
+    f.autocomplete = 'off';
+    p.textContent = d.me ? 'Type the recovery code to remove this device. It will be signed out, and will have to ask to come in again.' : 'Type the recovery code to remove ' + d.label + '. It will have to ask to come in again.';
+    Object.assign(inp, { id: 'trustRecInput', type: 'text', maxLength: 20, placeholder: 'Recovery code', autocapitalize: 'characters', spellcheck: false, enterKeyHint: 'go' });
+    inp.setAttribute('aria-label', 'Recovery code');
+    inp.setAttribute('autocorrect', 'off');
+    const go = trustBtn('Remove', 'btn sm primary', () => {
+      const v = inp.value.trim();
+      if (!v) { inp.focus(); return; }
+      lockOp({ op: 'forget', id: d.id, recover: v }, go).then((m) => { trustMsg(m); if (!m) { LK.confirm = ''; lockUi(); } });
+    });
+    f.addEventListener('submit', (e) => { e.preventDefault(); go.click(); });
+    f.append(p, inp, go, trustBtn('Cancel', 'btn sm', () => { LK.confirm = ''; trustMsg(''); lockUi(); }));
+    return f;
+  }
   function trustBtn(label, cls, fn, aria) {
     const x = document.createElement('button');
+    x.type = 'button';
     x.className = cls;
     x.textContent = label;
     if (aria) x.setAttribute('aria-label', aria);
@@ -3653,8 +3703,11 @@
     let msg = '';
     try {
       const r = await fetch(ringBase(), { method: 'POST', cache: 'no-store', headers: { 'content-type': 'text/plain;charset=UTF-8', ...keyHead() }, body: JSON.stringify(o) });
-      if (r.ok) { const j = await r.json(); lockSet(j.lock); if (j.recovery) recShow(j.recovery); }
-      else msg = r.status === 400 || r.status === 403 ? (await r.text()).slice(0, 200) : 'Beside’s server didn’t answer. Try again.';
+      if (r.ok) {
+        const j = await r.json();
+        if (j.out) lockDenied(); // this device removed itself with the recovery code: signed out
+        else { lockSet(j.lock); if (j.recovery) recShow(j.recovery); }
+      } else msg = r.status === 400 || r.status === 403 || r.status === 429 ? (await r.text()).slice(0, 200) : 'Beside’s server didn’t answer. Try again.';
     } catch (e) { msg = 'Can’t reach Beside’s server. Try again.'; }
     if (btn) btn.disabled = false;
     return msg;
@@ -4892,6 +4945,8 @@
     H.stopping = false;
     text('liveHint', 'Getting your link ready…');
     if (!netReady()) { const code = H.code; NET.p.then(() => { if (H.code === code && !H.stopping && app.state === 'live') openHostPeer(); }); return; }
+    // The link's id depends on the lock (callId): wait for the first hello, 3 s at most.
+    if (LK.first && !LK.firstDone) { const code = H.code; LK.first.then(() => { if (H.code === code && !H.stopping && app.state === 'live') openHostPeer(); }); return; }
     if (H.moveTo && !H.moveTo.sent) { H.moveTo.sent = true; H.fast = 40; text('liveHint', 'Moving the call here…'); moveAsk(); }
     // Another of my devices was live a moment ago: ask it first, before claiming the link, so this one never
     // takes the call from it (a blip on that device's line would otherwise free the link for a second or two).
@@ -4908,7 +4963,8 @@
       return;
     }
     let wasOpen = false;
-    const peer = new Peer(PREFIX + H.code, opts());
+    H.pid = callId(H.code);
+    const peer = new Peer(H.pid, opts());
     app.hostPeers++;
     H.peer = peer;
     peer.on('open', () => {
@@ -5027,11 +5083,11 @@
   // Beside, or a network that can't reach the own server. The own server carries everything else.
   function openSparePeer() {
     if (H.spare && !H.spare.destroyed) { try { H.spare.destroy(); } catch (e) {} }
-    const code = H.code;
-    const peer = new Peer(PREFIX + code, opts(true));
+    const id = H.pid; // the same id as the link on the own server
+    const peer = new Peer(id, opts(true));
     H.spare = peer;
     const again = (ms) => setTimeout(() => {
-      if (H.spare === peer && H.code === code && !H.stopping && app.state === 'live' && (peer.destroyed || peer.disconnected)) {
+      if (H.spare === peer && H.pid === id && !H.stopping && app.state === 'live' && (peer.destroyed || peer.disconnected)) {
         if (peer.destroyed) openSparePeer(); else { try { peer.reconnect(); } catch (e) {} }
       }
     }, ms);
@@ -5203,6 +5259,15 @@
     if (g.live && !H.stopping) ytAway(g.name || 'Your guest');
     if (H.sharer && H.sharer === g.id) { H.sharer = ''; V.pin = ''; roomScreen(); }
     guestStatus();
+    if (!H.guests.size && !H.stopping) setTimeout(hostReid, 0); // the last one left: the link may move now (a guest coming back is added first)
+  }
+  // Locked or unlocked (or a new call id): the host's link moves to the id that is right now (callId). Never in the
+  // middle of a call, which would drop it: at once when nobody is in the call, else as soon as the last one has left.
+  function hostReid() {
+    if (isGuest || !H.peer || H.stopping || app.state !== 'live' || H.guests.size || H.pid === callId(H.code)) return;
+    if (H.spare) { try { H.spare.destroy(); } catch (e) {} H.spare = null; } // it opens again under the new id
+    H.idRetries = 0;
+    openHostPeer();
   }
   // A guest's camera becomes a face tile; layout() decides whether it is big or a bubble.
   function hostFace(g) {
@@ -5620,7 +5685,7 @@
     if (!window.Peer || !roomy()) { if (then) then(null); return; }
     const nm = isGuest ? cleanName(store.get('beside.name') || '') : '';
     if (isGuest && !nm) { if (then) then(null); return; } // no name yet: nothing to match a guest's other device by
-    const target = isGuest ? hostId : PREFIX + (H.code || hostCode());
+    const target = callId(isGuest ? guestCode : (H.code || hostCode()));
     MV.probing = true;
     let p = null;
     const done = (r) => {
@@ -5713,7 +5778,7 @@
     const bye = () => setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 300);
     try { p = new Peer(opts()); } catch (e) { return; }
     p.on('open', () => {
-      const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'yield', as: 'host', since: H.liveSince, cam: !!H.cam } });
+      const c = p.connect(H.pid, { reliable: true, metadata: { beside: 'yield', as: 'host', since: H.liveSince, cam: !!H.cam } });
       gateWire(c);
       c.on('data', (d) => { if (!gateMsg(d)) bye(); });
       c.on('close', bye);
@@ -5728,7 +5793,7 @@
     const bye = () => setTimeout(() => { try { if (p) p.destroy(); } catch (e) {} }, 300);
     try { p = new Peer(opts()); } catch (e) { return; }
     p.on('open', () => {
-      const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'move', as: 'host' } });
+      const c = p.connect(callId(H.code), { reliable: true, metadata: { beside: 'move', as: 'host' } });
       gateWire(c);
       c.on('data', (d) => { if (!gateMsg(d)) bye(); });
       c.on('close', bye);
@@ -5826,6 +5891,9 @@
     hostCleanup();
     H.code = code8();
     store.set('beside.room', H.code);
+    LK.lock = null; // the old room's list (and its call id) isn't this room's: hello again for the new one
+    LK.sig = '';
+    lockStart();
     renderLink();
     ended('New link ready.', 'The old link no longer works. Start a call, then send the new link.', 'Start a call');
   }
@@ -5843,7 +5911,7 @@
     hostName: '', ctx: null, display: null, screenTrack: null, screenBlank: null, screenSender: null,
     voiceSender: null, mediaSender: null, silentA: null, silentB: null, people: [], tiles: new Map(),
   };
-  const hostId = PREFIX + guestCode;
+  const hostId = PREFIX + guestCode; // the host as this page names it in the call; dialled as G.dial (callId)
   const MIC_BLOCKED = 'Your microphone is blocked, so you can watch and listen but they can’t hear you. Allow the microphone for this site to talk. If this link opened inside another app (WhatsApp, Instagram…), open it in Safari or Chrome instead.';
 
   function setJoinBusy(b) { ['joinBtn', 'homeRingBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
@@ -5964,7 +6032,8 @@
     });
   }
   function guestOnCall(peer, call) {
-    if (G.peer !== peer || G.left || call.peer !== hostId) { try { call.close(); } catch (e) {} return; }
+    // Only from the link this page knocked on.
+    if (G.peer !== peer || G.left || ![G.conn, G.spare].some((c) => c && c.peer === call.peer)) { try { call.close(); } catch (e) {} return; }
     if (G.call) { const old = G.call; G.call = null; try { old.close(); } catch (e) {} }
     G.call = call;
     // Answer with the mic and the camera lane (the camera, or the blank that holds its place).
@@ -6017,13 +6086,16 @@
       return;
     }
     clearTimeout(G.retry);
+    // The link's id depends on the lock (callId): wait for the first hello (3 s at most) before knocking.
+    if (LK.first && !LK.firstDone) { G.retry = setTimeout(guestConnect, 250); return; }
     // The last knock stays open one more round if nobody answered it: a slow call server may still deliver the answer.
     if (G.spare) { const s = G.spare; G.spare = null; try { s.close(); } catch (e) {} }
     const old = G.conn;
     G.conn = null;
     if (old && !old.open && !answered(old)) G.spare = old;
     else if (old) { try { old.close(); } catch (e) {} }
-    const conn = G.peer.connect(hostId, { reliable: true, metadata: G.moveIn ? { name: store.get('beside.name') || '', move: 1 } : { name: store.get('beside.name') || '' } });
+    G.dial = callId(guestCode);
+    const conn = G.peer.connect(G.dial, { reliable: true, metadata: G.moveIn ? { name: store.get('beside.name') || '', move: 1 } : { name: store.get('beside.name') || '' } });
     G.conn = conn;
     knock(conn);
   }
@@ -7043,7 +7115,8 @@
     // Is the call live on another of my devices? A probe that got no answer (now and then the first one doesn't)
     // asks again, twice.
     const bootProbe = (n) => moveProbe((r) => { if (!r && n < 2 && ['idle', 'join', 'ended'].includes(app.state)) setTimeout(() => bootProbe(n + 1), 1500); else moveFound(r); });
-    if (window.Peer) whenNet(() => setTimeout(() => bootProbe(0), 400));
+    // (after the first hello: locked, the live device's link has the call id)
+    if (window.Peer) whenNet(() => setTimeout(() => { if (LK.first && !LK.firstDone) LK.first.then(() => bootProbe(0)); else bootProbe(0); }, 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
     lockBoot();
