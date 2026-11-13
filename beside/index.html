@@ -945,6 +945,18 @@ button:disabled{opacity:.55;cursor:default}
 .trust-list b{font:var(--callout);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .trust-list small{font:var(--caption);color:var(--ink-2)}
 .trust-list .btn{flex:none}
+.trust-list li{flex-wrap:wrap}
+.trust-ask{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.trust-ask p{flex-basis:100%;font:var(--callout)}
+.trust-confirm{display:flex;flex-direction:column;gap:8px;font:var(--callout)}
+.trust-confirm ul{padding-left:20px}
+.trust-confirm .movecard-acts{margin-top:4px}
+.lockout-code{font:var(--callout);font-weight:600}
+.lockout-rec{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.lockout-rec input{min-height:44px;width:12em;padding:0 12px;border:1px solid var(--line);border-radius:var(--r2);background:var(--bg);color:var(--ink);font:var(--callout);text-transform:uppercase;letter-spacing:.06em}
+.lockout-in .lockout-rec .btn{margin-top:0}
+.rec-code{letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.note button.note-act{width:auto;padding:0 10px;border-radius:var(--r2);font:inherit;text-decoration:underline;text-underline-offset:3px}
 #trustLockBtn{align-self:flex-start}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 /* Home: how they are, the house, both places in one line, one Ring button with a heart, and their latest note */
@@ -1398,7 +1410,14 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
     <i data-icon="device" data-size="40"></i>
     <h1 id="lockOutTitle">This device isn’t let in yet.</h1>
     <p id="lockOutText">Beside only opens on devices that are let in.</p>
+    <p class="lockout-code" id="lockOutCode" hidden></p>
     <button class="btn primary" id="lockAskBtn">Ask to come in</button>
+    <button class="movecard-not" id="lockRecLink">Use a recovery code</button>
+    <form class="lockout-rec" id="lockRecForm" autocomplete="off" hidden>
+      <input id="lockRecInput" type="text" maxlength="20" placeholder="Recovery code" aria-label="Recovery code" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <button type="submit" class="btn" id="lockRecGo">Use code</button>
+    </form>
+    <p id="lockRecMsg" role="status" hidden></p>
   </div>
 </section>
 
@@ -1411,7 +1430,7 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   </div>
   <!-- A device that isn't let in asked to come in (trusted devices, while Beside is locked) -->
   <div class="endcard movecard" id="askCard" role="region" aria-label="A device asks to come in" hidden>
-    <div class="endcard-words"><h2 class="display" id="askTitle">A device wants to come in.</h2><p>Only let it in if you know whose it is.</p></div>
+    <div class="endcard-words"><h2 class="display" id="askTitle">A device wants to come in.</h2><p id="askText">Only let it in if they tell you its code.</p></div>
     <div class="movecard-acts"><button class="btn primary" id="askLetIn">Let in</button><button class="movecard-not" id="askNo">No</button></div>
   </div>
   <div class="tabpanel" id="tabHome" data-tab="home" role="tabpanel" aria-labelledby="tb-home">
@@ -1702,8 +1721,30 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
             <ul class="trust-list" id="trustList"></ul>
             <p class="trust-say" id="trustMsg" role="status" hidden></p>
             <button class="btn sm" id="trustLockBtn">Lock Beside</button>
+            <!-- Lock asks first: what will happen, in plain words -->
+            <div class="trust-confirm" id="trustConfirm" hidden>
+              <p>Once locked, only these devices get in:</p>
+              <ul id="trustStay"></ul>
+              <p>Any other device has to ask, and one of these lets it in. You get a recovery code to keep.</p>
+              <p id="trustStrays" hidden>Some devices that ring haven’t opened Beside since the update. They stop ringing until opened once.</p>
+              <div class="movecard-acts"><button class="btn sm primary" id="trustLockNow">Lock now</button><button class="movecard-not" id="trustLockCancel">Cancel</button></div>
+            </div>
           </div>
         </details>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- THE RECOVERY CODE (trusted devices): shown once, when Beside is locked -->
+<div class="sheet" id="recSheet" hidden>
+  <div class="menu invitesheet" role="dialog" aria-modal="true" aria-labelledby="recTitle">
+    <header><h2 class="display" id="recTitle">Recovery code</h2></header>
+    <div class="body">
+      <p>Save this recovery code. It lets one of your devices back in if you both get locked out.</p>
+      <div class="link rec-code" id="recCode"></div>
+      <div class="row linkcard-acts">
+        <button class="btn quiet" id="recCopy"><i data-icon="copy"></i><span class="label-t">Copy</span></button>
+        <button class="btn primary" id="recDone">Done</button>
       </div>
     </div>
   </div>
@@ -1898,8 +1939,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=21"></script>
+<script src="board.js?v=22"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=56"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>

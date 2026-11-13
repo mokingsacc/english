@@ -163,7 +163,7 @@
   // Plans (Say it, calendar, to-dos), Hearts (send one, history).
   function boardMountNow() {
     window.BesideBoard.mount($('boardMount'), {
-      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered, onLock: lockSet, onDenied: lockDenied,
+      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered, onLock: lockSet, onDenied: lockDenied, key: () => LK.key, photoKey: () => LK.p,
       targets: { hello: $('bHello'), skies: $('bSkies'), homeThink: $('bHomeThink'), countdown: $('bHomeCount'), next: $('bHomeNext'), plans: $('boardMount'), hearts: $('bHearts'), note: $('bNote'), shared: $('bShared') },
     });
   }
@@ -861,13 +861,22 @@
 
   function on(id, ev, fn) { const el = $(id); if (el) el.addEventListener(ev, fn); }
   let noteTimer = 0;
-  function note(msg, kind) {
+  // acts: [label, fn] pairs, each a word button that closes the note (a device asking to come in, during a call).
+  function note(msg, kind, acts) {
     app.log.push(msg);
     const el = $('note');
     if (!el) return;
     clearTimeout(noteTimer);
+    delete el.dataset.ask;
     if (!msg) { el.hidden = true; return; }
     el.textContent = msg;
+    (acts || []).forEach(([label, fn]) => {
+      const b = document.createElement('button');
+      b.className = 'note-act';
+      b.textContent = label;
+      b.onclick = () => { el.hidden = true; fn(); };
+      el.appendChild(b);
+    });
     const x = document.createElement('button');
     x.setAttribute('aria-label', 'Close');
     x.innerHTML = window.BesideIcons ? window.BesideIcons.svg('x', 18) : '';
@@ -3295,8 +3304,9 @@
     RG.busy = false;
     ringMeUi();
   }
-  // The Beside app's device code: handed over quietly, again whenever it or the room changes.
-  function ringNative() {
+  // The Beside app's device code: handed over quietly, again whenever it or the room changes, and (force) each time
+  // this device opens and is let in, so the server knows which listed device it belongs to.
+  function ringNative(force) {
     const n = window.BesideNative;
     if (!n || !n.voip || !/^[0-9a-f]{64,200}$/.test(n.voip)) return;
     if (!isGuest && !store.get('beside.room.linked')) return; // not yet given a link: no room of its own to ring
@@ -3304,7 +3314,7 @@
     // Handed over again each day: if the server ever dropped this phone's codes (Apple said one was gone), it gets
     // them back within a day, so rings and heart pings can't stay lost.
     const mark = n.voip + '|' + alert + '|' + boardRoom() + '|' + ringRole() + '|' + boardName() + '|' + new Date().toISOString().slice(0, 10);
-    if (store.get('beside.voip.sent') === mark) return;
+    if (force !== true && store.get('beside.voip.sent') === mark) return;
     ringPost('/push', { role: ringRole(), name: boardName(), open: ringOpen(), voip: n.voip, alert: alert || undefined, env: n.env === 'sandbox' ? 'sandbox' : 'production' })
       .then(() => store.set('beside.voip.sent', mark)).catch(() => {});
   }
@@ -3410,7 +3420,6 @@
     on('ringBannerAnswer', 'click', () => { ringBanner(''); ringNoteClose(); ringAnswerNow(); });
     on('ringBannerNot', 'click', () => { ringBanner(''); ringNoteClose(); });
     ringMeUi();
-    ringNative();
     window.addEventListener('besidenative', () => { ringMeUi(); ringNative(); });
     on('nameInput', 'change', ringNative);
     if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
@@ -3426,44 +3435,61 @@
       if (here) { if (d.fresh) ringAnswerNow(); }
       else if (u) location.href = u.href; // a ring for another room or role: open that one
     });
-    ringRecheck();
-    ringAnswer();
+    ringAnswer(); // the first ringRecheck and ringNative run once the first hello is answered (lockStart)
   }
 
   // ---------- TRUSTED DEVICES ----------
   // Mo, 13 Nov 2026: "ok we need some security then, what do you propose, anyway only we can access this link and no
   // one else can". Until then the link was the only lock. Each device now keeps a random key of its own (never shown,
-  // sent only to Beside's own server). While Beside is open, every device that opens it is listed by itself. Once
-  // locked (Calls and setup, Trusted devices), a new device sees "This device isn't let in yet", asks once, and a
-  // listed device lets it in from the banner on Home. The server keeps everyone else off the board, rings and photos;
-  // a call goes browser to browser, so the two pages check each other when it starts (the call gate, below).
+  // sent only to Beside's own server) and a key pair whose public half goes on the list. While Beside is open, every
+  // device that opens it is listed by itself. Once locked (Calls and setup, Trusted devices), a new device sees "This
+  // device isn't let in yet" and asks once, showing a code the two people compare, and a listed device lets it in from
+  // the banner on Home (or the note in a call). The recovery code shown once at Lock lists a device when nobody can.
+  // The server keeps everyone else off the board, rings and photos; a call goes browser to browser, so the two pages
+  // check each other when it starts (the call gate, below).
   const keyText = (a) => btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const hexOf = (buf) => Array.from(new Uint8Array(buf), (x) => x.toString(16).padStart(2, '0')).join('');
-  const sha256 = async (s) => hexOf(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-  async function hmac256(k, msg) {
-    const ck = await crypto.subtle.importKey('raw', new TextEncoder().encode(k), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    return hexOf(await crypto.subtle.sign('HMAC', ck, new TextEncoder().encode(msg)));
-  }
+  const hexOf = (a) => Array.from(a, (x) => x.toString(16).padStart(2, '0')).join('');
+  const lockSha = async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+  const LOCK_EC = { name: 'ECDSA', namedCurve: 'P-256' }, LOCK_SIG = { name: 'ECDSA', hash: 'SHA-256' };
   function lockKey() {
     const k = store.get('beside.key') || '';
     if (/^[A-Za-z0-9_-]{43}$/.test(k)) return k;
     try { const n = keyText(crypto.getRandomValues(new Uint8Array(32))); store.set('beside.key', n); return n; } catch (e) { return ''; }
   }
-  // key: this device's own; id and c: what the server knows it by (12 hex of its hash) and its call secret.
-  // lock: the list as the server last gave it (kept for when the server can't be reached); out: not let in.
-  const LK = { key: lockKey(), id: '', c: '', lock: null, out: false, asked: false, no: false, t: 0, told: false, sig: '', first: null, firstDone: false };
-  LK.ready = LK.key && window.crypto && crypto.subtle
-    ? Promise.all([sha256(LK.key), sha256(LK.key + ':call')]).then(([h, c]) => { LK.id = h.slice(0, 12); LK.c = c; }).catch(() => {})
-    : Promise.resolve();
+  // This device's key pair, made once: the private half stays here (a JWK next to beside.key), the public half is listed.
+  async function lockPair() {
+    let jwk = null, priv = null;
+    try { jwk = JSON.parse(store.get('beside.pair') || 'null'); } catch (e) {}
+    if (jwk && jwk.kty === 'EC' && jwk.crv === 'P-256' && jwk.d) { try { priv = await crypto.subtle.importKey('jwk', jwk, LOCK_EC, false, ['sign']); } catch (e) { priv = null; } }
+    if (!priv) {
+      const kp = await crypto.subtle.generateKey(LOCK_EC, true, ['sign', 'verify']);
+      jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      priv = kp.privateKey;
+      store.set('beside.pair', JSON.stringify(jwk));
+    }
+    return { priv, pub: { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y } };
+  }
+  // key: this device's own; id: what the server knows it by (12 hex of its hash); p: its photo token; pub and priv:
+  // its key pair. lock: the list as the server last gave it (kept for when the server can't be reached); out: not let in.
+  const LK = { key: lockKey(), id: '', p: '', pub: null, priv: null, lock: null, out: false, asked: false, no: false, msg: '', t: 0, told: new Set(), sig: '', first: null, firstDone: false, noted: '', confirm: '' };
+  LK.ready = (async () => {
+    if (!LK.key || !window.crypto || !crypto.subtle) return;
+    try {
+      const [h, p] = await Promise.all([lockSha(LK.key), lockSha(LK.key + ':photo')]);
+      LK.id = hexOf(h).slice(0, 12);
+      LK.p = keyText(p);
+      Object.assign(LK, await lockPair());
+    } catch (e) { /* no key pair: the server treats this page as an older one */ }
+  })();
   const keyHead = () => (LK.key ? { 'x-beside-key': LK.key } : {});
   const lockStoreKey = () => 'beside.lock.' + boardRoom();
   const lockDev = (id) => (LK.lock && LK.lock.devices.find((d) => d.id === id)) || null;
-  // What this device is called on the list: the person (this page's own name for that side, else Mo or Semal),
-  // then the device.
-  function sideName(role, knownOnly) {
-    const mine = role === ringRole();
-    const n = mine ? (isGuest ? cleanName(store.get('beside.name') || '') : myName()) : (isGuest ? theirName : cleanName((app.people && app.people.them) || ''));
-    return n || (knownOnly ? '' : role === 'host' ? 'Mo' : 'Semal');
+  // The 4 digits an ask shows on both screens (from the asking device's id), for the two people to compare.
+  const askCode = (id) => String(parseInt(String(id).slice(0, 8), 16) % 10000).padStart(4, '0');
+  // A person's name as this page really has it, or '' (a guest link with no name, say, is "Guest" on the list).
+  function sideName(role) {
+    if (role === ringRole()) return isGuest ? cleanName(store.get('beside.name') || ($('nameInput') && $('nameInput').value) || '') : myName();
+    return isGuest ? theirName : cleanName((app.people && app.people.them) || '');
   }
   function lockKind() {
     const u = navigator.userAgent;
@@ -3475,23 +3501,31 @@
     const br = browserName();
     return os && br !== 'Browser' ? os + ' ' + br : 'browser';
   }
-  // Hello: this device and its key. Answers {in, lock}, or {in: false, asked} when locked out; null when the server
-  // can't be reached (or is an older one).
-  async function lockHello(ask) {
+  // Hello: this device, its key and its public key; ask: "Ask to come in"; recover: a recovery code. Answers {in, lock},
+  // or {in: false, asked, msg} when kept out; null when the server can't be reached (or is an older one).
+  async function lockHello(ask, recover, ms) {
     await LK.ready;
     if (!LK.id) return null;
     const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 8000);
+    const t = setTimeout(() => c.abort(), ms || 8000);
     try {
-      const r = await fetch(ringBase() + '/hello', { method: 'POST', cache: 'no-store', signal: c.signal, headers: { 'content-type': 'application/json', ...keyHead() },
-        body: JSON.stringify({ role: ringRole(), name: sideName(ringRole()), kind: lockKind(), ask: !!ask }) });
-      if (r.status === 403) { const j = await r.json().catch(() => null); return j && j.in === false ? j : null; }
+      const o = { role: ringRole(), name: sideName(ringRole()), kind: lockKind(), ask: !!ask };
+      if (LK.pub) o.pub = LK.pub;
+      if (recover) o.recover = recover;
+      const r = await fetch(ringBase() + '/hello', { method: 'POST', cache: 'no-store', signal: c.signal, headers: { 'content-type': 'application/json', ...keyHead() }, body: JSON.stringify(o) });
+      if (r.status === 403 || r.status === 429) { const j = await r.json().catch(() => null); return j && j.in === false ? j : null; }
       return r.ok ? await r.json() : null;
     } catch (e) { return null; } finally { clearTimeout(t); }
   }
+  // The first hello. A call starting meanwhile waits for it, 3 s at most. Then the ring registrations go to the server
+  // again (quietly, as at every start), so a listed device's rings are known to be its own.
   function lockStart() {
     try { const j = JSON.parse(store.get(lockStoreKey()) || 'null'); if (j && Array.isArray(j.devices) && Array.isArray(j.asks)) LK.lock = j; } catch (e) {}
-    LK.first = lockHello(false).then(lockAnswer).finally(() => { LK.firstDone = true; });
+    const first = lockHello(false).then((j) => {
+      lockAnswer(j);
+      if (!j || j.in) { ringRecheck(); ringNative(!!j); }
+    }).catch(() => {});
+    LK.first = Promise.race([first, new Promise((r) => setTimeout(r, 3000))]).finally(() => { LK.firstDone = true; });
   }
   // No answer: carry on as before (a list kept from before still checks calls).
   function lockAnswer(j) { if (j) { if (j.in) lockSet(j.lock); else lockOut(!!j.asked); } }
@@ -3523,7 +3557,9 @@
     if (LK.asked && !asked) LK.no = true; // turned down (or a day went by): said until it asks again
     LK.asked = asked;
     if (asked) LK.no = false;
-    text('lockOutText', asked ? askedWords() : LK.no ? 'Not let in this time. You can ask again.' : 'Beside only opens on devices that are let in.');
+    text('lockOutText', asked ? askedWords() : LK.msg || (LK.no ? 'Not let in this time. You can ask again.' : 'Beside only opens on devices that are let in.'));
+    const code = $('lockOutCode');
+    if (code) { code.hidden = !asked; code.textContent = asked ? 'Your code is ' + askCode(LK.id) + '. Tell it to them.' : ''; }
     const b = $('lockAskBtn');
     if (b) { b.hidden = asked; b.disabled = false; }
     clearTimeout(LK.t);
@@ -3538,15 +3574,30 @@
     if (b) b.disabled = true;
     lockHello(true).then((j) => {
       if (j && j.in) { location.reload(); return; }
-      if (j) { lockOut(!!j.asked); return; }
+      if (j) { LK.msg = j.msg || ''; lockOut(!!j.asked); return; }
       text('lockOutText', 'Can’t reach Beside. Check the internet, then try again.');
       if (b) b.disabled = false;
     });
   }
+  // "Use a recovery code": the code made when Beside was locked lets this device in.
+  function lockRecover(e) {
+    if (e) e.preventDefault();
+    const inp = $('lockRecInput'), b = $('lockRecGo'), m = $('lockRecMsg');
+    const v = String((inp && inp.value) || '').trim();
+    if (!v) { if (inp) inp.focus(); return; }
+    if (b) b.disabled = true;
+    lockHello(false, v).then((j) => {
+      if (j && j.in) { location.reload(); return; }
+      if (b) b.disabled = false;
+      if (m) { m.textContent = j ? j.msg || 'That code isn’t right.' : 'Can’t reach Beside. Check the internet, then try again.'; m.hidden = false; }
+    });
+  }
   function askedWords() {
-    const names = [sideName('host', true), sideName('guest', true)].filter(Boolean);
+    const names = [sideName('host'), sideName('guest')].filter(Boolean);
     return 'Asked. ' + (names.length ? names.join(' or ') + ' can let this device in from their Beside.' : 'The other device can let this one in from its Beside.');
   }
+  // A new name: hello again, so this device's place on the list says it.
+  function lockRename() { if (LK.lock && !LK.out) lockHello(false).then(lockAnswer); }
   // Calls and setup: the Trusted devices fold (closed until opened: the list stays out of the way).
   function lockUi() {
     const card = $('trustCard'), L = LK.lock;
@@ -3555,6 +3606,7 @@
     if (!L) return;
     text('trustVal', L.on ? 'Locked' : 'Open');
     text('trustSay', L.on ? 'Locked. Only these devices get in.' : 'Open to anyone with the link.');
+    const me = L.devices.find((d) => d.me);
     const list = $('trustList');
     list.textContent = '';
     L.devices.forEach((d) => {
@@ -3564,17 +3616,29 @@
       s.textContent = d.me ? 'This device' : 'Seen ' + seenWords(d.seen);
       w.append(b, s);
       li.append(w);
-      if (!d.me) {
-        const x = document.createElement('button');
-        x.className = 'btn sm';
-        x.textContent = 'Remove';
-        x.setAttribute('aria-label', 'Remove ' + d.label);
-        x.addEventListener('click', () => lockOp({ op: 'forget', id: d.id }, x).then(trustMsg));
-        li.append(x);
+      // Remove: only a device added after this one (one that got in later can't push out those before it), asked once.
+      if (me && !d.me && d.added > me.added) {
+        if (LK.confirm === d.id) {
+          const q = document.createElement('div'), p = document.createElement('p');
+          q.className = 'trust-ask';
+          p.textContent = 'Remove ' + d.label + '? It will have to ask to come in again.';
+          q.append(p, trustBtn('Remove', 'btn sm primary', (x) => lockOp({ op: 'forget', id: d.id }, x).then((m) => { LK.confirm = ''; trustMsg(m); lockUi(); })),
+            trustBtn('Cancel', 'btn sm', () => { LK.confirm = ''; lockUi(); }));
+          li.append(q);
+        } else li.append(trustBtn('Remove', 'btn sm', () => { LK.confirm = d.id; lockUi(); }, 'Remove ' + d.label));
       }
       list.append(li);
     });
     text('trustLockBtn', L.on ? 'Unlock' : 'Lock Beside');
+    if (L.on) lockConfirm(false);
+  }
+  function trustBtn(label, cls, fn, aria) {
+    const x = document.createElement('button');
+    x.className = cls;
+    x.textContent = label;
+    if (aria) x.setAttribute('aria-label', aria);
+    x.addEventListener('click', () => fn(x));
+    return x;
   }
   function seenWords(t) {
     const day = (x) => new Date(x).setHours(0, 0, 0, 0);
@@ -3582,47 +3646,89 @@
     return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
   }
   function trustMsg(m) { const el = $('trustMsg'); if (el) { el.textContent = m || ''; el.hidden = !m; } }
-  // One change to the list. Answers '' when done, else what went wrong in plain words.
+  // One change to the list. Answers '' when done, else what went wrong in plain words. Lock's answer carries the new
+  // recovery code, shown once.
   async function lockOp(o, btn) {
     if (btn) btn.disabled = true;
     let msg = '';
     try {
       const r = await fetch(ringBase(), { method: 'POST', cache: 'no-store', headers: { 'content-type': 'text/plain;charset=UTF-8', ...keyHead() }, body: JSON.stringify(o) });
-      if (r.ok) lockSet((await r.json()).lock);
+      if (r.ok) { const j = await r.json(); lockSet(j.lock); if (j.recovery) recShow(j.recovery); }
       else msg = r.status === 400 || r.status === 403 ? (await r.text()).slice(0, 200) : 'Beside’s server didn’t answer. Try again.';
     } catch (e) { msg = 'Can’t reach Beside’s server. Try again.'; }
     if (btn) btn.disabled = false;
     return msg;
   }
+  // Lock: first what will happen, in plain words, then "Lock now". Unlock needs no asking.
   function lockToggle() {
     const L = LK.lock;
     if (!L) return;
-    if (!L.on) {
-      const miss = ['guest', 'host'].find((r) => !L.devices.some((d) => d.role === r));
-      if (miss) { trustMsg('Open Beside once on ' + sideName(miss) + '’s devices first, so they are listed.'); return; }
-    }
-    lockOp({ op: 'lock', on: !L.on }, $('trustLockBtn')).then(trustMsg);
+    if (L.on) { lockOp({ op: 'lock', on: false }, $('trustLockBtn')).then(trustMsg); return; }
+    const miss = ['guest', 'host'].find((r) => !L.devices.some((d) => d.role === r));
+    if (miss) { const n = sideName(miss); trustMsg('Open Beside once on ' + (n ? n + '’s' : 'the other person’s') + ' device first, so it is listed.'); return; }
+    trustMsg('');
+    const ul = $('trustStay');
+    if (ul) ul.replaceChildren(...L.devices.map((d) => { const li = document.createElement('li'); li.textContent = d.label; return li; }));
+    const sr = $('trustStrays');
+    if (sr) sr.hidden = !L.strays;
+    lockConfirm(true);
   }
-  // Home's banner: the newest ask, with Let in and No.
+  function lockConfirm(open) {
+    const box = $('trustConfirm'), lb = $('trustLockBtn');
+    if (box) box.hidden = !open;
+    if (lb) lb.hidden = !!open;
+  }
+  function lockNow() { lockOp({ op: 'lock', on: true }, $('trustLockNow')).then((m) => { lockConfirm(false); trustMsg(m); }); }
+  // The recovery code, shown once: the server keeps only its hash, and this page forgets it when the sheet closes.
+  function recShow(code) {
+    const sh = $('recSheet');
+    if (!sh) return;
+    text('recCode', code ? String(code).match(/.{1,4}/g).join(' ') : '');
+    sh.hidden = !code;
+    const f = $(code ? 'recDone' : 'trustLockBtn');
+    if (f) f.focus();
+  }
+  // Home's banner: the newest ask, its code, Let in and No. In a call the banner is hidden, so the note says it.
   function askUi() {
-    const c = $('askCard');
+    const c = $('askCard'), n = $('note');
     if (!c) return;
     const asks = (LK.lock && LK.lock.asks) || [];
     const a = asks[asks.length - 1];
+    if (n && !n.hidden && n.dataset.ask && !asks.some((x) => x.id + x.at === n.dataset.ask)) n.hidden = true; // answered
     c.hidden = !a || LK.out;
     if (!a) return;
     c.dataset.id = a.id;
+    const say = 'Code ' + askCode(a.id) + '. Only let it in if they tell you this code.';
     text('askTitle', a.label + ' wants to come in.');
+    text('askText', say);
+    if (LK.out || !['waiting', 'live', 'watching'].includes(app.state) || LK.noted === a.id + a.at) return;
+    LK.noted = a.id + a.at;
+    note(a.label + ' wants to come in. ' + say, 'stay', [['Let in', () => askAnswer('letin', null, a.id)], ['No', () => askAnswer('refuse', null, a.id)]]);
+    if (n) n.dataset.ask = LK.noted;
   }
-  function askAnswer(op, btn) {
+  function askAnswer(op, btn, id) {
     const c = $('askCard');
-    if (c && c.dataset.id) lockOp({ op, id: c.dataset.id }, btn).then((m) => { if (m) note(m, 'info'); });
+    const which = id || (c && c.dataset.id);
+    if (which) lockOp({ op, id: which }, btn).then((m) => { if (m) note(m, 'info'); });
   }
   function lockBoot() {
     on('lockAskBtn', 'click', lockAsk);
+    on('lockRecLink', 'click', () => {
+      const f = $('lockRecForm'), l = $('lockRecLink'), i = $('lockRecInput');
+      if (f) f.hidden = false;
+      if (l) l.hidden = true;
+      if (i) i.focus();
+    });
+    on('lockRecForm', 'submit', lockRecover);
     on('trustLockBtn', 'click', lockToggle);
+    on('trustLockNow', 'click', lockNow);
+    on('trustLockCancel', 'click', () => lockConfirm(false));
+    on('recCopy', 'click', () => copyLink($('recCopy'), ($('recCode') || {}).textContent));
+    on('recDone', 'click', () => recShow(''));
     on('askLetIn', 'click', (e) => askAnswer('letin', e.currentTarget));
     on('askNo', 'click', (e) => askAnswer('refuse', e.currentTarget));
+    on('nameInput', 'change', lockRename);
+    on('hostName', 'change', lockRename);
     lockStart();
   }
 
@@ -3630,9 +3736,10 @@
   // Only while Beside is locked: a call starts only between two listed devices, checked both ways. The server never
   // sees a call (it goes browser to browser, and the spare call server isn't Beside's), so each side proves itself
   // over the call's own data link, which is encrypted end to end, and never in a knock's details (those pass through
-  // the spare server). Each side sends a random question; the other answers with an HMAC of it made with its call
-  // secret, tied to this very link (its PeerJS id and its side's encryption fingerprint), so an answer can't be carried
-  // over to another link. Unlocked, none of this runs and calls are exactly as before.
+  // the spare server). Each side sends a random question; the other signs it with its private key, tied to this very
+  // link (its PeerJS id and its side's encryption fingerprint), so an answer can't be carried over to another link, and
+  // the asker checks the signature with that device's public key from the list. Unlocked, none of this runs and calls
+  // are exactly as before.
   const gateOn = () => !!(LK.lock && LK.lock.on);
   const gateMsg = (d) => !!d && (d.t === 'proof?' || d.t === 'proof');
   // What counts for the call: never the gate's own messages, and nothing while the other side isn't checked yet.
@@ -3641,7 +3748,7 @@
   // Every link answers the other side's question, whatever this device knows of the lock: an answer gives nothing away.
   function gateWire(conn) {
     if (conn.bg) return conn.bg;
-    const bg = (conn.bg = { st: 'open', n: '', q: [], held: [], got: null });
+    const bg = (conn.bg = { st: 'open', ns: [], q: [], held: [], got: null });
     conn.on('data', (d) => {
       if (!d || typeof d !== 'object') return;
       if (d.t === 'proof?') { if (typeof d.n === 'string' && d.n.length <= 64) gateProve(conn, d.n); return; }
@@ -3653,48 +3760,78 @@
   async function gateProve(conn, n) {
     await LK.ready;
     const pc = conn.peerConnection;
-    if (!LK.c || !conn.provider) return;
-    try { tell(conn, { t: 'proof', id: LK.id, m: await hmac256(LK.c, n + ':' + conn.provider.id + ':' + sdpFp(pc && pc.localDescription)) }); } catch (e) {}
+    if (!LK.priv || !conn.provider) return;
+    try {
+      const s = await crypto.subtle.sign(LOCK_SIG, LK.priv, new TextEncoder().encode(n + ':' + conn.provider.id + ':' + sdpFp(pc && pc.localDescription)));
+      tell(conn, { t: 'proof', id: LK.id, n, s: keyText(new Uint8Array(s)) });
+    } catch (e) {}
   }
-  async function gateCheck(conn, n, d) {
-    if (!d || typeof d.id !== 'string' || typeof d.m !== 'string') return false;
-    if (!lockDev(d.id)) lockAnswer(await lockHello(false)); // let in a moment ago: get the list first
+  // true: a listed device signed one of our questions; 'old': a page from before key pairs answered; else 'wrong'.
+  async function gateCheck(conn, ns, d) {
+    if (typeof d.s !== 'string') return typeof d.m === 'string' ? 'old' : 'wrong';
+    if (typeof d.id !== 'string' || !ns.includes(d.n) || d.s.length > 100) return 'wrong';
+    if (!lockDev(d.id)) {
+      lockAnswer(await lockHello(false, '', 3000)); // let in a moment ago: get the list first
+      if (!gateOn()) return true; // unlocked meanwhile
+    }
     const dev = lockDev(d.id);
     const fp = sdpFp(conn.peerConnection && conn.peerConnection.remoteDescription);
-    if (!dev || !/^[0-9a-f]{64}$/.test(dev.c || '') || !fp) return false;
-    if ((await hmac256(dev.c, n + ':' + conn.peer + ':' + fp)) !== d.m) return false;
+    if (!dev || !dev.pub || !fp) return 'wrong';
+    try {
+      const k = await crypto.subtle.importKey('jwk', dev.pub, LOCK_EC, false, ['verify']);
+      if (!(await crypto.subtle.verify(LOCK_SIG, k, b64uBytes(d.s), new TextEncoder().encode(d.n + ':' + conn.peer + ':' + fp)))) return 'wrong';
+    } catch (e) { return 'wrong'; }
     conn.besideDev = dev.id;
     return true;
   }
-  // pass() once the other side is a listed device (at once while unlocked); fail() when it isn't, or says nothing for
-  // 8 s. Whatever came while checking is handed on after pass(), in order. The list not known yet: wait for hello.
+  // pass() once the other side is a listed device (at once while unlocked); fail(why) when it isn't: 'wrong' for a proof
+  // that doesn't check out, 'old' when nothing usable came. No answer in 4 s: the list is fetched again and the question
+  // asked once more, fresh. Whatever came while checking is handed on after pass(), in order. The list not known yet:
+  // wait for the first hello.
   function gateRun(conn, pass, fail) {
     const bg = gateWire(conn);
     bg.st = 'wait';
     if (!LK.lock && LK.first && !LK.firstDone) { LK.first.then(() => gateRun(conn, pass, fail)); return; }
-    let over = false, t = 0;
-    const end = (ok) => {
+    let over = false, t = 0, again = false;
+    const end = (ok, why) => {
       if (over) return;
       over = true;
       clearTimeout(t);
       bg.got = null;
       bg.st = ok ? 'ok' : 'no';
-      if (ok) pass(); else fail();
+      if (ok) pass(); else if (conn.open) fail(why);
       if (ok) bg.q.splice(0).forEach((d) => conn.emit('data', d));
       bg.held.splice(0).forEach((f) => f(ok));
     };
     if (!gateOn()) { end(true); return; }
-    bg.n = keyText(crypto.getRandomValues(new Uint8Array(16)));
-    t = setTimeout(() => end(false), 8000);
-    bg.got = (d) => { bg.got = null; gateCheck(conn, bg.n, d).then(end, () => end(false)); };
-    tell(conn, { t: 'proof?', n: bg.n });
+    const ask = () => {
+      const n = keyText(crypto.getRandomValues(new Uint8Array(16)));
+      bg.ns.push(n);
+      tell(conn, { t: 'proof?', n });
+      t = setTimeout(async () => {
+        if (over || !bg.got) return; // a proof came and is being checked
+        if (again || !conn.open) { end(false, 'old'); return; }
+        again = true;
+        lockAnswer(await lockHello(false, '', 3000));
+        if (over || !bg.got) return;
+        if (gateOn()) ask(); else end(true);
+      }, 4000);
+    };
+    bg.got = (d) => { bg.got = null; clearTimeout(t); gateCheck(conn, bg.ns, d).then((r) => end(r === true, r), () => end(false, 'wrong')); };
+    ask();
   }
-  // The host: someone who isn't let in knocked (said once).
-  function gateRefused() { if (!LK.told) { LK.told = true; note('A device that isn’t let in tried to join.', 'info'); } }
-  // The guest: the link was answered by a device that isn't one of ours.
-  function gateEnd() {
+  // The host: a device that isn't let in tried to join (a wrong proof), or one on an older Beside (nothing it could
+  // read). Each is said once.
+  function gateRefused(why, conn) {
+    const nm = cleanName(conn && conn.metadata && conn.metadata.name) || sideName('guest');
+    const m = why === 'old' ? (nm ? nm + '’s device is on an older Beside. They need to reload it.' : 'The other device is on an older Beside. Reload Beside there.') : 'A device that isn’t let in tried to join.';
+    if (!LK.told.has(m)) { LK.told.add(m); note(m, 'info'); }
+  }
+  // The guest: the link was answered by a device that isn't one of ours, or by one on an older Beside.
+  function gateEnd(why) {
     guestLeave();
-    ended('This link isn’t answered by one of your own devices.', 'The call didn’t start.', 'Join again');
+    if (why === 'old') ended('The other device is on an older Beside.', 'Reload Beside there.', 'Join again');
+    else ended('This link isn’t answered by one of your own devices.', 'The call didn’t start.', 'Join again');
   }
 
   // ---------- WATCH YOUTUBE TOGETHER ----------
@@ -4881,7 +5018,7 @@
     conn.on('open', () => {
       H.knocks.delete(conn.peer);
       // Locked: only a listed device comes in (at once while unlocked).
-      gateRun(conn, () => { if (conn.open) hostAddGuest(conn); }, () => { gateRefused(); try { conn.close(); } catch (e) {} });
+      gateRun(conn, () => { if (conn.open) hostAddGuest(conn); }, (why) => { gateRefused(why, conn); try { conn.close(); } catch (e) {} });
     });
     conn.on('close', () => hostDropGuest(conn.connectionId));
     conn.on('error', () => hostDropGuest(conn.connectionId));
@@ -5644,8 +5781,8 @@
     hostCleanup();
     ended('Call ended.', msg || 'Your link stays the same for next time.', 'Start a call');
   }
-  async function copyLink(btn) {
-    const link = hostLink();
+  async function copyLink(btn, what) {
+    const link = what || hostLink();
     try {
       await navigator.clipboard.writeText(link);
     } catch (e) {
@@ -5934,7 +6071,7 @@
       clearTimeout(G.openTimer);
       clearTimeout(G.retry);
       // Locked: nothing is said and no picture is taken until the host proves it is one of our own devices.
-      gateRun(conn, () => { if (G.conn === conn && !G.left) knockIn(conn); }, () => { if (G.conn === conn && !G.left) gateEnd(); });
+      gateRun(conn, () => { if (G.conn === conn && !G.left) knockIn(conn); }, (why) => { if (G.conn === conn && !G.left) gateEnd(why); });
     });
     conn.on('close', () => { if (G.conn === conn && (opened || G.call)) guestLost(); });
     conn.on('data', (d) => { if (G.conn === conn && gateLets(conn, d)) guestData(d); });
