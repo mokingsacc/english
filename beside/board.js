@@ -176,12 +176,18 @@
 
   let S = null; // the mounted board
 
+  // This device's key (trusted devices: app.js makes it). It goes only to Beside's own server: in a header, or on a
+  // photo's address, since a picture on the page can't send a header.
+  const key = () => { try { return localStorage.getItem('beside.key') || ''; } catch (e) { return ''; } };
   function api(path, opts, ms) {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), ms || 10000);
-    return fetch(BASE + '/peerjs/board/' + S.room + (path || ''), { cache: 'no-store', ...opts, signal: c.signal }).finally(() => clearTimeout(t));
+    const k = key();
+    const o = { cache: 'no-store', ...opts, signal: c.signal };
+    if (k) o.headers = { ...(o.headers || {}), 'x-beside-key': k };
+    return fetch(BASE + '/peerjs/board/' + S.room + (path || ''), o).finally(() => clearTimeout(t));
   }
-  const photoUrl = (t) => t.local || BASE + '/peerjs/board/' + S.room + '/photo/' + encodeURIComponent(t.id);
+  const photoUrl = (t) => t.local || BASE + '/peerjs/board/' + S.room + '/photo/' + encodeURIComponent(t.id) + (key() ? '?k=' + encodeURIComponent(key()) : '');
 
   function view() {
     const b = JSON.parse(JSON.stringify(S.server));
@@ -203,9 +209,12 @@
     const me = S;
     try {
       const r = await api('?v=' + S.server.v, {}, 8000);
+      // Locked and this device isn't on the list (any more): the page shows its own "not let in" screen.
+      if (r.status === 403 && me === S && S.opts.onDenied) S.opts.onDenied();
       if (!r.ok) throw new Error(String(r.status));
       const b = await r.json();
       if (me !== S) return;
+      if (b && b.lock && S.opts.onLock) S.opts.onLock(b.lock); // the trusted devices list, for app.js
       S.fails = 0;
       S.loaded = true;
       if (accept(b) || S.offline) { S.offline = false; render(); }
@@ -243,7 +252,7 @@
         try {
           const r = await api('', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(o) }, 30000);
           if (r.ok) { accept(await r.json()); msg = ''; break; }
-          msg = r.status === 400 ? (await r.text()).slice(0, 200) : 'The board isn’t answering. Please try again.';
+          msg = r.status === 400 || r.status === 403 ? (await r.text()).slice(0, 200) : 'The board isn’t answering. Please try again.';
           if (r.status < 500) break; // the server said no: asking again won't change that
         } catch (e) {
           msg = 'The connection dropped. Please try again.';

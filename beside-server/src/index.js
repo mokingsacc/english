@@ -13,6 +13,7 @@
    /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip, alert}), or {off} to stop
    /peerjs/board/<room>/ring   POST {role, name}: ring the other person's devices; GET: the last ring
    /peerjs/board/<room>/talk   POST {text, by, zone}: one sentence becomes to-dos, events or a countdown (Claude reads it)
+   /peerjs/board/<room>/hello  POST {role, name, kind, ask}: this device says hello with its key (trusted devices, below)
    /peerjs/push/key            the public key browsers need to say yes to rings */
 
 import { sendWeb, sendVoip, sendAlert, vapidPublic, pushHostOk } from './push.js';
@@ -85,13 +86,13 @@ const plain = (msg, status = 400) => new Response(msg, { status, headers: { 'con
 
 function board(req, env, p) {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' } });
+    return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type, x-beside-key', 'access-control-max-age': '86400' } });
   }
-  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring|talk))?\/?$/);
+  const m = p.match(/^\/peerjs\/board\/([^/]*)(\/photo\/([^/]+)|\/(push|ring|talk|hello))?\/?$/);
   if (!m) return plain('Not found', 404);
   if (!ROOM_RE.test(m[1])) return plain('That board name isn’t right: use 4 to 40 letters, numbers or _.');
   if (m[3] && !ID_RE.test(m[3])) return plain('Not found', 404);
-  const post = req.method === 'POST' && !m[3], get = req.method === 'GET' && m[4] !== 'push' && m[4] !== 'talk';
+  const post = req.method === 'POST' && !m[3], get = req.method === 'GET' && m[4] !== 'push' && m[4] !== 'talk' && m[4] !== 'hello';
   if (!post && !get) return plain('Only GET and POST work here.', 405);
   return env.BOARD.get(env.BOARD.idFromName(m[1])).fetch(req);
 }
@@ -132,6 +133,29 @@ const VOIP_RE = /^[0-9a-f]{64,200}$/;
 const TALK_DAY = 60; // sentences per board per day
 const TALK_ALL_DAY = 200; // sentences per day across every board, so made-up board names can't run up a bill
 
+// ---------- trusted devices ----------
+// Mo, 13 Nov 2026: "ok we need some security then, what do you propose, anyway only we can access this link and no one
+// else can". The link used to be the only lock. Now each device makes its own random key and sends it with every
+// request (the x-beside-key header, or ?k= on a photo, since a picture on the page can't send a header). The server
+// never keeps the key: only h = SHA-256(key), to know the device again, and c = SHA-256(key + ':call'), the device's
+// call secret (a call never passes through here, so the pages check each other with it when a call starts).
+// While the room is open (the default) a device is listed the first time it says hello, and nothing else changes.
+// Once locked, every route answers 403 to a device that isn't listed; a new device can only ask, and a listed one
+// lets it in.
+const KEY_RE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
+const DEV_RE = /^[0-9a-f]{12}$/; // a device's id: the first 12 hex of h
+const DEVICES_MAX = 12;
+const ASKS_MAX = 5;
+const ASK_MS = 24 * 3600e3; // an ask nobody answered goes after a day
+const SEEN_MS = 60e3; // "last seen" is written at most once a minute
+const KIND_MAX = 24;
+const LOCK_OPS = ['lock', 'letin', 'refuse', 'forget'];
+const NOT_IN = 'This device isn’t let in yet.';
+async function sha(s) {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+  return Array.from(d, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 export class Board {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -140,11 +164,116 @@ export class Board {
     this.subs = [];
     this.ring = null;
     this.hearts = {}; // when each person last pinged the other
+    this.lock = { on: false, devices: [], asks: [] };
     ctx.blockConcurrencyWhile(async () => {
       this.b = (await ctx.storage.get('board')) || { v: 0, countdown: null, todos: [], events: [], thinks: [] };
       this.subs = (await ctx.storage.get('subs')) || [];
       this.ring = (await ctx.storage.get('ring')) || null;
+      this.lock = (await ctx.storage.get('lock')) || this.lock;
     });
+  }
+
+  // Who is asking: the hash of the key they sent, and their listed device if it is one.
+  async who(req, url) {
+    const k = req.headers.get('x-beside-key') || (/\/photo\//.test(url.pathname) ? url.searchParams.get('k') : '') || '';
+    if (!KEY_RE.test(k)) return { k: '', h: '', dev: null };
+    const h = await sha(k);
+    const dev = this.lock.devices.find((d) => d.h === h) || null;
+    if (dev && Date.now() - dev.seen > SEEN_MS) { dev.seen = Date.now(); await this.ctx.storage.put('lock', this.lock); }
+    return { k, h, dev };
+  }
+  // The list as a listed device sees it: never anyone's h; c only goes to listed devices, for the check at a call's start.
+  lockView(h) {
+    const L = this.lock, now = Date.now();
+    return {
+      on: L.on,
+      devices: L.devices.map((d) => ({ id: d.id, label: d.label, role: d.role, kind: d.kind, seen: d.seen, c: d.c, me: d.h === h })),
+      asks: L.asks.filter((a) => now - a.at < ASK_MS).map((a) => ({ id: a.id, label: a.label, kind: a.kind, at: a.at })),
+    };
+  }
+  // Asks older than a day go. True when one went.
+  tidy(now) {
+    const n = this.lock.asks.length;
+    this.lock.asks = this.lock.asks.filter((a) => now - a.at < ASK_MS);
+    return this.lock.asks.length !== n;
+  }
+
+  // A device opening Beside: listed (seen again), listed now (the room is open), or, locked, kept out. {ask: true}
+  // (the "Ask to come in" button) adds or refreshes its ask; a plain hello only says whether it is still asked, so a
+  // "No" stays a no while the page keeps checking.
+  async hello(req, me) {
+    const raw = await req.text();
+    if (raw.length > 2000) return plain('That’s too big.');
+    let o, role, label, kind;
+    try { o = JSON.parse(raw); } catch (e) { return plain('That couldn’t be read.'); }
+    if (!o || typeof o !== 'object') return plain('That couldn’t be read.');
+    try {
+      if (typeof o.role !== 'string' || !RING_RE.test(o.role)) throw new Bad('Say who this device belongs to.');
+      role = o.role;
+      kind = text(o.kind, 'device', KIND_MAX, true) || 'browser';
+      label = (text(o.name, 'name', NAME_MAX, true) || (role === 'host' ? 'Host' : 'Guest')) + ', ' + kind;
+    } catch (e) {
+      if (e instanceof Bad) return plain(e.message);
+      throw e;
+    }
+    if (!me.h) return this.lock.on ? this.reply({ in: false, asked: false }, 403) : this.reply({ in: true, lock: null });
+    const c = await sha(me.k + ':call');
+    // From here to the write there is no other await, so two hellos at once can't undo each other.
+    const L = this.lock, now = Date.now();
+    let write = this.tidy(now);
+    let dev = L.devices.find((d) => d.h === me.h);
+    if (dev) {
+      if (now - dev.seen > SEEN_MS || dev.label !== label || dev.role !== role || dev.kind !== kind) { Object.assign(dev, { seen: now, label, role, kind }); write = true; }
+    } else if (!L.on) {
+      // Full: the device seen longest ago makes room (while open, it is listed again the next time it says hello).
+      if (L.devices.length >= DEVICES_MAX) L.devices.splice(L.devices.reduce((i, d, j) => (d.seen < L.devices[i].seen ? j : i), 0), 1);
+      dev = { id: me.h.slice(0, 12), h: me.h, c, label, role, kind, added: now, seen: now };
+      L.devices.push(dev);
+      L.asks = L.asks.filter((a) => a.h !== me.h);
+      write = true;
+    } else {
+      let ask = L.asks.find((a) => a.h === me.h);
+      if (o.ask === true) {
+        // its call secret is kept with the ask, so Let in on another device can list it
+        ask = { id: me.h.slice(0, 12), h: me.h, c, label, role, kind, at: now };
+        L.asks = L.asks.filter((a) => a.h !== me.h).concat(ask).slice(-ASKS_MAX);
+        write = true;
+      }
+      if (write) await this.ctx.storage.put('lock', L);
+      return this.reply({ in: false, asked: !!ask }, 403);
+    }
+    if (write) await this.ctx.storage.put('lock', L);
+    return this.reply({ in: true, lock: this.lockView(me.h) });
+  }
+
+  // Lock, Unlock, Let in, No and Remove, from a listed device. Everything is checked before anything changes.
+  lockOp(o, h) {
+    const L = this.lock, now = Date.now();
+    const dev = h && L.devices.find((d) => d.h === h);
+    if (!dev) return false;
+    this.tidy(now);
+    if (o.op === 'lock') {
+      if (typeof o.on !== 'boolean') throw new Bad('“on” must be true or false.');
+      if (o.on && !(L.devices.some((d) => d.role === 'host') && L.devices.some((d) => d.role === 'guest'))) throw new Bad('Open Beside once on both people’s devices first, so they are listed.');
+      L.on = o.on;
+      return true;
+    }
+    if (typeof o.id !== 'string' || !DEV_RE.test(o.id)) throw new Bad('That device isn’t right.');
+    if (o.op === 'letin') {
+      const a = L.asks.find((x) => x.id === o.id);
+      if (!a) return true; // already let in, or the ask went
+      if (!L.devices.some((d) => d.h === a.h)) {
+        if (L.devices.length >= DEVICES_MAX) throw new Bad(`The list is full (${DEVICES_MAX}). Remove a device first.`);
+        L.devices.push({ id: a.id, h: a.h, c: a.c, label: a.label, role: a.role, kind: a.kind, added: now, seen: a.at });
+      }
+      L.asks = L.asks.filter((x) => x !== a);
+    } else if (o.op === 'refuse') {
+      L.asks = L.asks.filter((x) => x.id !== o.id);
+    } else {
+      if (o.id === dev.id) throw new Bad('This is the device you’re using, so it stays on the list.');
+      L.devices = L.devices.filter((d) => d.id !== o.id);
+    }
+    return true;
   }
 
   // Where a ring should open on this device: Beside's own address only.
@@ -301,10 +430,18 @@ export class Board {
     return true;
   }
 
-  reply(b) { return new Response(JSON.stringify(b), { headers: { ...JSON_H, ...CORS } }); }
+  reply(b, status = 200) { return new Response(JSON.stringify(b), { status, headers: { ...JSON_H, ...CORS } }); }
 
   async fetch(req) {
     const url = new URL(req.url);
+    if (url.pathname === '/meter') { // the one shared count for Say it (only this Worker can reach it)
+      const n = Number(await req.text()) === -1 ? -1 : 1;
+      return new Response(null, { status: (await this.count(n, TALK_ALL_DAY)) ? 204 : 429 });
+    }
+    const me = await this.who(req, url);
+    if (/\/hello\/?$/.test(url.pathname)) return this.hello(req, me);
+    // Locked: a device that isn't listed gets nothing at all, checked before anything else.
+    if (this.lock.on && !me.dev) return plain(NOT_IN, 403);
     const ph = url.pathname.match(/\/photo\/([^/]+)\/?$/);
     if (ph) {
       const d = await this.ctx.storage.get('photo:' + ph[1]);
@@ -314,10 +451,6 @@ export class Board {
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return new Response(bytes, { headers: { 'content-type': 'image/' + m[1], 'cache-control': 'private, max-age=31536000, immutable', ...CORS } });
-    }
-    if (url.pathname === '/meter') { // the one shared count for Say it (only this Worker can reach it)
-      const n = Number(await req.text()) === -1 ? -1 : 1;
-      return new Response(null, { status: (await this.count(n, TALK_ALL_DAY)) ? 204 : 429 });
     }
     if (/\/talk\/?$/.test(url.pathname)) return this.talk(req);
     const sub = url.pathname.match(/\/(push|ring)\/?$/);
@@ -335,15 +468,27 @@ export class Board {
     }
     if (req.method === 'GET') {
       const b = this.b;
+      // A listed device also gets the list, so the page's 5 s check brings asks and changes with no extra asking.
+      const lock = me.dev ? this.lockView(me.h) : undefined;
       // ?v= the version the page already has: answer briefly when nothing changed (it asks every 5 s).
-      if (url.searchParams.get('v') === String(b.v)) return this.reply({ v: b.v, same: true });
-      return this.reply(b);
+      if (url.searchParams.get('v') === String(b.v)) return this.reply(lock ? { v: b.v, same: true, lock } : { v: b.v, same: true });
+      return this.reply(lock ? { ...b, lock } : b);
     }
     const raw = await req.text(); // read in full even when too big: answering mid-upload breaks the connection
     if (raw.length > BODY_MAX) return plain('That’s too big to save. Try a smaller photo.');
     let o;
     try { o = JSON.parse(raw); } catch (e) { return plain('That change couldn’t be read.'); }
     if (!o || typeof o !== 'object' || Array.isArray(o)) return plain('That change couldn’t be read.');
+    if (LOCK_OPS.includes(o.op)) {
+      let done;
+      try { done = this.lockOp(o, me.h); } catch (e) {
+        if (e instanceof Bad) return plain(e.message);
+        throw e;
+      }
+      if (!done) return plain(NOT_IN, 403);
+      await this.ctx.storage.put('lock', this.lock);
+      return this.reply({ lock: this.lockView(me.h) });
+    }
     // From here to this.b = ... there is no await, so two changes at once can't overwrite each other.
     const b = this.b;
     let next;

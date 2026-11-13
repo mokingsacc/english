@@ -163,7 +163,7 @@
   // Plans (Say it, calendar, to-dos), Hearts (send one, history).
   function boardMountNow() {
     window.BesideBoard.mount($('boardMount'), {
-      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered,
+      room: boardRoom(), name: boardName(), them: isGuest ? theirName : '', role: isGuest ? 'guest' : 'host', go: (t) => setTab(t), onRender: boardRendered, onLock: lockSet, onDenied: lockDenied,
       targets: { hello: $('bHello'), skies: $('bSkies'), homeThink: $('bHomeThink'), countdown: $('bHomeCount'), next: $('bHomeNext'), plans: $('boardMount'), hearts: $('bHearts'), note: $('bNote'), shared: $('bShared') },
     });
   }
@@ -505,6 +505,8 @@
     setupHealth();
     ringMeUi();
     text('nameRowVal', cleanName(store.get('beside.name') || ($('nameInput') && $('nameInput').value) || '') || 'Not set');
+    lockUi();
+    trustMsg('');
   }
   // "All good" once Check my setup found nothing wrong, or what it found. Before a check, only what is plain without
   // one: a browser that can't make calls, or a mic that is blocked.
@@ -3230,7 +3232,7 @@
   const ringRole = () => (isGuest ? 'guest' : 'host');
   function ringOpen() { return isGuest ? location.origin + location.pathname + location.hash : location.origin + location.pathname + '?room=' + hostCode(); }
   function ringPost(path, o) {
-    return fetch(ringBase() + path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) })
+    return fetch(ringBase() + path, { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', ...keyHead() }, body: JSON.stringify(o) })
       .then(async (r) => { if (!r.ok) throw new Error((await r.text()) || 'The ring server didn’t answer.'); return r.json(); });
   }
   const NATIVE = () => window.BesideNative && window.BesideNative.app === 'ios';
@@ -3426,6 +3428,273 @@
     });
     ringRecheck();
     ringAnswer();
+  }
+
+  // ---------- TRUSTED DEVICES ----------
+  // Mo, 13 Nov 2026: "ok we need some security then, what do you propose, anyway only we can access this link and no
+  // one else can". Until then the link was the only lock. Each device now keeps a random key of its own (never shown,
+  // sent only to Beside's own server). While Beside is open, every device that opens it is listed by itself. Once
+  // locked (Calls and setup, Trusted devices), a new device sees "This device isn't let in yet", asks once, and a
+  // listed device lets it in from the banner on Home. The server keeps everyone else off the board, rings and photos;
+  // a call goes browser to browser, so the two pages check each other when it starts (the call gate, below).
+  const keyText = (a) => btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const hexOf = (buf) => Array.from(new Uint8Array(buf), (x) => x.toString(16).padStart(2, '0')).join('');
+  const sha256 = async (s) => hexOf(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+  async function hmac256(k, msg) {
+    const ck = await crypto.subtle.importKey('raw', new TextEncoder().encode(k), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return hexOf(await crypto.subtle.sign('HMAC', ck, new TextEncoder().encode(msg)));
+  }
+  function lockKey() {
+    const k = store.get('beside.key') || '';
+    if (/^[A-Za-z0-9_-]{43}$/.test(k)) return k;
+    try { const n = keyText(crypto.getRandomValues(new Uint8Array(32))); store.set('beside.key', n); return n; } catch (e) { return ''; }
+  }
+  // key: this device's own; id and c: what the server knows it by (12 hex of its hash) and its call secret.
+  // lock: the list as the server last gave it (kept for when the server can't be reached); out: not let in.
+  const LK = { key: lockKey(), id: '', c: '', lock: null, out: false, asked: false, no: false, t: 0, told: false, sig: '', first: null, firstDone: false };
+  LK.ready = LK.key && window.crypto && crypto.subtle
+    ? Promise.all([sha256(LK.key), sha256(LK.key + ':call')]).then(([h, c]) => { LK.id = h.slice(0, 12); LK.c = c; }).catch(() => {})
+    : Promise.resolve();
+  const keyHead = () => (LK.key ? { 'x-beside-key': LK.key } : {});
+  const lockStoreKey = () => 'beside.lock.' + boardRoom();
+  const lockDev = (id) => (LK.lock && LK.lock.devices.find((d) => d.id === id)) || null;
+  // What this device is called on the list: the person (this page's own name for that side, else Mo or Semal),
+  // then the device.
+  function sideName(role, knownOnly) {
+    const mine = role === ringRole();
+    const n = mine ? (isGuest ? cleanName(store.get('beside.name') || '') : myName()) : (isGuest ? theirName : cleanName((app.people && app.people.them) || ''));
+    return n || (knownOnly ? '' : role === 'host' ? 'Mo' : 'Semal');
+  }
+  function lockKind() {
+    const u = navigator.userAgent;
+    const ipad = /iPad/.test(u) || (IS_IOS && /Macintosh/.test(u));
+    if (NATIVE()) return ipad ? 'iPad app' : 'iPhone app';
+    if (/iPhone|iPod/.test(u)) return 'iPhone';
+    if (ipad) return 'iPad';
+    const os = /Macintosh/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : '';
+    const br = browserName();
+    return os && br !== 'Browser' ? os + ' ' + br : 'browser';
+  }
+  // Hello: this device and its key. Answers {in, lock}, or {in: false, asked} when locked out; null when the server
+  // can't be reached (or is an older one).
+  async function lockHello(ask) {
+    await LK.ready;
+    if (!LK.id) return null;
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 8000);
+    try {
+      const r = await fetch(ringBase() + '/hello', { method: 'POST', cache: 'no-store', signal: c.signal, headers: { 'content-type': 'application/json', ...keyHead() },
+        body: JSON.stringify({ role: ringRole(), name: sideName(ringRole()), kind: lockKind(), ask: !!ask }) });
+      if (r.status === 403) { const j = await r.json().catch(() => null); return j && j.in === false ? j : null; }
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; } finally { clearTimeout(t); }
+  }
+  function lockStart() {
+    try { const j = JSON.parse(store.get(lockStoreKey()) || 'null'); if (j && Array.isArray(j.devices) && Array.isArray(j.asks)) LK.lock = j; } catch (e) {}
+    LK.first = lockHello(false).then(lockAnswer).finally(() => { LK.firstDone = true; });
+  }
+  // No answer: carry on as before (a list kept from before still checks calls).
+  function lockAnswer(j) { if (j) { if (j.in) lockSet(j.lock); else lockOut(!!j.asked); } }
+  function lockSet(lock) {
+    const L = lock && Array.isArray(lock.devices) && Array.isArray(lock.asks) ? lock : null;
+    const sig = L ? JSON.stringify(L) : '';
+    LK.lock = L;
+    if (sig === LK.sig) return; // the 5 s check brings the same list most times
+    LK.sig = sig;
+    store.set(lockStoreKey(), sig);
+    lockUi();
+    askUi();
+    // A device removed while locked leaves the call too.
+    if (L && L.on) for (const [k, g] of H.guests) if (g.conn.besideDev && !lockDev(g.conn.besideDev)) hostDropGuest(k);
+  }
+  // The board said no: check with hello, then show the "not let in" screen.
+  function lockDenied() { if (!LK.out) lockHello(false).then((j) => { if (j && !j.in && !LK.out) lockOut(!!j.asked); }); }
+  // Not let in: a calm full screen. No house, no calls, no hosting. It checks every 5 s, and opens Beside once let in.
+  function lockOut(asked) {
+    const box = $('lockOut');
+    if (!box) return;
+    if (!LK.out) {
+      LK.out = true;
+      if (isGuest && !G.left) guestLeave();
+      else if (!isGuest && ['waiting', 'live'].includes(app.state)) hostStop();
+      box.hidden = false;
+      askUi();
+    }
+    if (LK.asked && !asked) LK.no = true; // turned down (or a day went by): said until it asks again
+    LK.asked = asked;
+    if (asked) LK.no = false;
+    text('lockOutText', asked ? askedWords() : LK.no ? 'Not let in this time. You can ask again.' : 'Beside only opens on devices that are let in.');
+    const b = $('lockAskBtn');
+    if (b) { b.hidden = asked; b.disabled = false; }
+    clearTimeout(LK.t);
+    LK.t = setTimeout(lockOutCheck, 5000);
+  }
+  function lockOutCheck() {
+    if (document.visibilityState !== 'visible') { LK.t = setTimeout(lockOutCheck, 5000); return; }
+    lockHello(false).then((j) => { if (j && j.in) location.reload(); else lockOut(j ? !!j.asked : LK.asked); });
+  }
+  function lockAsk() {
+    const b = $('lockAskBtn');
+    if (b) b.disabled = true;
+    lockHello(true).then((j) => {
+      if (j && j.in) { location.reload(); return; }
+      if (j) { lockOut(!!j.asked); return; }
+      text('lockOutText', 'Can’t reach Beside. Check the internet, then try again.');
+      if (b) b.disabled = false;
+    });
+  }
+  function askedWords() {
+    const names = [sideName('host', true), sideName('guest', true)].filter(Boolean);
+    return 'Asked. ' + (names.length ? names.join(' or ') + ' can let this device in from their Beside.' : 'The other device can let this one in from its Beside.');
+  }
+  // Calls and setup: the Trusted devices fold (closed until opened: the list stays out of the way).
+  function lockUi() {
+    const card = $('trustCard'), L = LK.lock;
+    if (!card) return;
+    card.hidden = !L;
+    if (!L) return;
+    text('trustVal', L.on ? 'Locked' : 'Open');
+    text('trustSay', L.on ? 'Locked. Only these devices get in.' : 'Open to anyone with the link.');
+    const list = $('trustList');
+    list.textContent = '';
+    L.devices.forEach((d) => {
+      const li = document.createElement('li');
+      const w = document.createElement('span'), b = document.createElement('b'), s = document.createElement('small');
+      b.textContent = d.label;
+      s.textContent = d.me ? 'This device' : 'Seen ' + seenWords(d.seen);
+      w.append(b, s);
+      li.append(w);
+      if (!d.me) {
+        const x = document.createElement('button');
+        x.className = 'btn sm';
+        x.textContent = 'Remove';
+        x.setAttribute('aria-label', 'Remove ' + d.label);
+        x.addEventListener('click', () => lockOp({ op: 'forget', id: d.id }, x).then(trustMsg));
+        li.append(x);
+      }
+      list.append(li);
+    });
+    text('trustLockBtn', L.on ? 'Unlock' : 'Lock Beside');
+  }
+  function seenWords(t) {
+    const day = (x) => new Date(x).setHours(0, 0, 0, 0);
+    const n = Math.round((day(Date.now()) - day(t)) / 864e5);
+    return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+  }
+  function trustMsg(m) { const el = $('trustMsg'); if (el) { el.textContent = m || ''; el.hidden = !m; } }
+  // One change to the list. Answers '' when done, else what went wrong in plain words.
+  async function lockOp(o, btn) {
+    if (btn) btn.disabled = true;
+    let msg = '';
+    try {
+      const r = await fetch(ringBase(), { method: 'POST', cache: 'no-store', headers: { 'content-type': 'text/plain;charset=UTF-8', ...keyHead() }, body: JSON.stringify(o) });
+      if (r.ok) lockSet((await r.json()).lock);
+      else msg = r.status === 400 || r.status === 403 ? (await r.text()).slice(0, 200) : 'Beside’s server didn’t answer. Try again.';
+    } catch (e) { msg = 'Can’t reach Beside’s server. Try again.'; }
+    if (btn) btn.disabled = false;
+    return msg;
+  }
+  function lockToggle() {
+    const L = LK.lock;
+    if (!L) return;
+    if (!L.on) {
+      const miss = ['guest', 'host'].find((r) => !L.devices.some((d) => d.role === r));
+      if (miss) { trustMsg('Open Beside once on ' + sideName(miss) + '’s devices first, so they are listed.'); return; }
+    }
+    lockOp({ op: 'lock', on: !L.on }, $('trustLockBtn')).then(trustMsg);
+  }
+  // Home's banner: the newest ask, with Let in and No.
+  function askUi() {
+    const c = $('askCard');
+    if (!c) return;
+    const asks = (LK.lock && LK.lock.asks) || [];
+    const a = asks[asks.length - 1];
+    c.hidden = !a || LK.out;
+    if (!a) return;
+    c.dataset.id = a.id;
+    text('askTitle', a.label + ' wants to come in.');
+  }
+  function askAnswer(op, btn) {
+    const c = $('askCard');
+    if (c && c.dataset.id) lockOp({ op, id: c.dataset.id }, btn).then((m) => { if (m) note(m, 'info'); });
+  }
+  function lockBoot() {
+    on('lockAskBtn', 'click', lockAsk);
+    on('trustLockBtn', 'click', lockToggle);
+    on('askLetIn', 'click', (e) => askAnswer('letin', e.currentTarget));
+    on('askNo', 'click', (e) => askAnswer('refuse', e.currentTarget));
+    lockStart();
+  }
+
+  // ---------- THE CALL GATE ----------
+  // Only while Beside is locked: a call starts only between two listed devices, checked both ways. The server never
+  // sees a call (it goes browser to browser, and the spare call server isn't Beside's), so each side proves itself
+  // over the call's own data link, which is encrypted end to end, and never in a knock's details (those pass through
+  // the spare server). Each side sends a random question; the other answers with an HMAC of it made with its call
+  // secret, tied to this very link (its PeerJS id and its side's encryption fingerprint), so an answer can't be carried
+  // over to another link. Unlocked, none of this runs and calls are exactly as before.
+  const gateOn = () => !!(LK.lock && LK.lock.on);
+  const gateMsg = (d) => !!d && (d.t === 'proof?' || d.t === 'proof');
+  // What counts for the call: never the gate's own messages, and nothing while the other side isn't checked yet.
+  const gateLets = (conn, d) => !gateMsg(d) && (!conn.bg || conn.bg.st === 'open' || conn.bg.st === 'ok');
+  function sdpFp(desc) { const m = /a=fingerprint:\S+\s+([0-9A-Fa-f:]+)/.exec((desc && desc.sdp) || ''); return m ? m[1].toUpperCase() : ''; }
+  // Every link answers the other side's question, whatever this device knows of the lock: an answer gives nothing away.
+  function gateWire(conn) {
+    if (conn.bg) return conn.bg;
+    const bg = (conn.bg = { st: 'open', n: '', q: [], held: [], got: null });
+    conn.on('data', (d) => {
+      if (!d || typeof d !== 'object') return;
+      if (d.t === 'proof?') { if (typeof d.n === 'string' && d.n.length <= 64) gateProve(conn, d.n); return; }
+      if (d.t === 'proof') { if (bg.got) bg.got(d); return; }
+      if (bg.st === 'wait') bg.q.push(d);
+    });
+    return bg;
+  }
+  async function gateProve(conn, n) {
+    await LK.ready;
+    const pc = conn.peerConnection;
+    if (!LK.c || !conn.provider) return;
+    try { tell(conn, { t: 'proof', id: LK.id, m: await hmac256(LK.c, n + ':' + conn.provider.id + ':' + sdpFp(pc && pc.localDescription)) }); } catch (e) {}
+  }
+  async function gateCheck(conn, n, d) {
+    if (!d || typeof d.id !== 'string' || typeof d.m !== 'string') return false;
+    if (!lockDev(d.id)) lockAnswer(await lockHello(false)); // let in a moment ago: get the list first
+    const dev = lockDev(d.id);
+    const fp = sdpFp(conn.peerConnection && conn.peerConnection.remoteDescription);
+    if (!dev || !/^[0-9a-f]{64}$/.test(dev.c || '') || !fp) return false;
+    if ((await hmac256(dev.c, n + ':' + conn.peer + ':' + fp)) !== d.m) return false;
+    conn.besideDev = dev.id;
+    return true;
+  }
+  // pass() once the other side is a listed device (at once while unlocked); fail() when it isn't, or says nothing for
+  // 8 s. Whatever came while checking is handed on after pass(), in order. The list not known yet: wait for hello.
+  function gateRun(conn, pass, fail) {
+    const bg = gateWire(conn);
+    bg.st = 'wait';
+    if (!LK.lock && LK.first && !LK.firstDone) { LK.first.then(() => gateRun(conn, pass, fail)); return; }
+    let over = false, t = 0;
+    const end = (ok) => {
+      if (over) return;
+      over = true;
+      clearTimeout(t);
+      bg.got = null;
+      bg.st = ok ? 'ok' : 'no';
+      if (ok) pass(); else fail();
+      if (ok) bg.q.splice(0).forEach((d) => conn.emit('data', d));
+      bg.held.splice(0).forEach((f) => f(ok));
+    };
+    if (!gateOn()) { end(true); return; }
+    bg.n = keyText(crypto.getRandomValues(new Uint8Array(16)));
+    t = setTimeout(() => end(false), 8000);
+    bg.got = (d) => { bg.got = null; gateCheck(conn, bg.n, d).then(end, () => end(false)); };
+    tell(conn, { t: 'proof?', n: bg.n });
+  }
+  // The host: someone who isn't let in knocked (said once).
+  function gateRefused() { if (!LK.told) { LK.told = true; note('A device that isn’t let in tried to join.', 'info'); } }
+  // The guest: the link was answered by a device that isn't one of ours.
+  function gateEnd() {
+    guestLeave();
+    ended('This link isn’t answered by one of your own devices.', 'The call didn’t start.', 'Join again');
   }
 
   // ---------- WATCH YOUTUBE TOGETHER ----------
@@ -4386,6 +4655,7 @@
   }
   // Three ways to start: a video call, a voice call, or a call that starts by sharing a tab or window.
   async function hostStart(mode) {
+    if (LK.out) return; // not let in (trusted devices)
     if (H.starting || app.state === 'live') return; // double click
     if (!peerLibOk()) return;
     mode = mode === 'video' || mode === 'share' ? mode : 'voice';
@@ -4607,7 +4877,12 @@
       note((cleanName(conn.metadata && conn.metadata.name) || 'Someone') + KNOCK_FAIL + NET_WHY, 'stay');
       netAgain();
     }
-    conn.on('open', () => { H.knocks.delete(conn.peer); hostAddGuest(conn); });
+    gateWire(conn);
+    conn.on('open', () => {
+      H.knocks.delete(conn.peer);
+      // Locked: only a listed device comes in (at once while unlocked).
+      gateRun(conn, () => { if (conn.open) hostAddGuest(conn); }, () => { gateRefused(); try { conn.close(); } catch (e) {} });
+    });
     conn.on('close', () => hostDropGuest(conn.connectionId));
     conn.on('error', () => hostDropGuest(conn.connectionId));
   }
@@ -4689,7 +4964,7 @@
           hostFace(g);
         });
     }
-    conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g) hostData(g, d); });
+    conn.on('data', (d) => { if (H.guests.get(conn.connectionId) === g && gateLets(conn, d)) hostData(g, d); });
     tell(conn, { cam: !!H.cam });
     tell(conn, { t: 'hello', v: VER, name: myName(), share: CAN_SHARE || CAN_LANE, video: !!H.cam });
     tell(conn, roomMsg());
@@ -5226,6 +5501,7 @@
     p.on('open', () => {
       tr.open = Date.now() - t0;
       const c = p.connect(target, { reliable: true, metadata: { beside: 'probe', as: isGuest ? 'guest' : 'host', name: nm } });
+      gateWire(c); // locked: the live device asks this one to prove it is listed
       c.on('open', () => { tr.conn = Date.now() - t0; });
       c.on('data', (d) => { tr.data = Date.now() - t0; if (d && d.t === 'probe') done(d); });
       c.on('error', (e) => { tr.cerr = (e && e.type) || 'x'; done(null); });
@@ -5248,34 +5524,37 @@
   function moveConn(conn) {
     const m = conn.metadata;
     if (!m || (m.beside !== 'probe' && m.beside !== 'move' && m.beside !== 'yield')) return false;
-    conn.on('open', () => {
-      if (m.beside === 'probe') {
-        const nm = cleanName(m.name || '').toLowerCase();
-        const same = m.as === 'guest' && nm ? [...H.guests.values()].find((g) => g.live && (g.name || '').toLowerCase() === nm) : null;
-        tell(conn, { t: 'probe', live: app.state === 'live' && !!app.hostReady, here: m.as === 'host' || !!same, cam: m.as === 'host' ? !!H.cam : !!(same && same.camOn) });
-        setTimeout(() => { try { conn.close(); } catch (e) {} }, 1500);
-      } else if (m.beside === 'yield') {
-        // My other device has had this call since before this one took the link (its line blipped): step back.
-        const mine = H.liveSince || Date.now();
-        const back = m.as === 'host' && app.state === 'live' && +m.since > 0 && +m.since < mine;
-        tell(conn, { t: 'yield', ok: back });
-        if (back) {
-          app.mv.push({ yielded: Date.now(), since: +m.since, mine });
-          setTimeout(() => {
-            if (app.state !== 'live') return;
-            hostCleanup();
-            show('idle');
-            MV.dismissed = false;
-            moveFound({ live: true, here: true, cam: !!m.cam });
-          }, 50);
-        }
-      } else if (m.as === 'host' && app.state === 'live') {
-        // Only another host device of this room asks this; a guest's other device joins instead (see guestConnect).
-        tell(conn, { t: 'moving' });
-        setTimeout(moveAway, 100);
-      }
-    });
+    gateWire(conn);
+    // Locked: only a listed device may look, move the call or ask this one to step back.
+    conn.on('open', () => gateRun(conn, () => moveAnswer(conn, m), () => { try { conn.close(); } catch (e) {} }));
     return true;
+  }
+  function moveAnswer(conn, m) {
+    if (m.beside === 'probe') {
+      const nm = cleanName(m.name || '').toLowerCase();
+      const same = m.as === 'guest' && nm ? [...H.guests.values()].find((g) => g.live && (g.name || '').toLowerCase() === nm) : null;
+      tell(conn, { t: 'probe', live: app.state === 'live' && !!app.hostReady, here: m.as === 'host' || !!same, cam: m.as === 'host' ? !!H.cam : !!(same && same.camOn) });
+      setTimeout(() => { try { conn.close(); } catch (e) {} }, 1500);
+    } else if (m.beside === 'yield') {
+      // My other device has had this call since before this one took the link (its line blipped): step back.
+      const mine = H.liveSince || Date.now();
+      const back = m.as === 'host' && app.state === 'live' && +m.since > 0 && +m.since < mine;
+      tell(conn, { t: 'yield', ok: back });
+      if (back) {
+        app.mv.push({ yielded: Date.now(), since: +m.since, mine });
+        setTimeout(() => {
+          if (app.state !== 'live') return;
+          hostCleanup();
+          show('idle');
+          MV.dismissed = false;
+          moveFound({ live: true, here: true, cam: !!m.cam });
+        }, 50);
+      }
+    } else if (m.as === 'host' && app.state === 'live') {
+      // Only another host device of this room asks this; a guest's other device joins instead (see guestConnect).
+      tell(conn, { t: 'moving' });
+      setTimeout(moveAway, 100);
+    }
   }
   function moveAway() {
     if (app.state !== 'live') return;
@@ -5298,7 +5577,8 @@
     try { p = new Peer(opts()); } catch (e) { return; }
     p.on('open', () => {
       const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'yield', as: 'host', since: H.liveSince, cam: !!H.cam } });
-      c.on('data', bye);
+      gateWire(c);
+      c.on('data', (d) => { if (!gateMsg(d)) bye(); });
       c.on('close', bye);
       c.on('error', bye);
     });
@@ -5312,7 +5592,8 @@
     try { p = new Peer(opts()); } catch (e) { return; }
     p.on('open', () => {
       const c = p.connect(PREFIX + H.code, { reliable: true, metadata: { beside: 'move', as: 'host' } });
-      c.on('data', bye);
+      gateWire(c);
+      c.on('data', (d) => { if (!gateMsg(d)) bye(); });
       c.on('close', bye);
       c.on('error', bye);
     });
@@ -5430,6 +5711,7 @@
 
   function setJoinBusy(b) { ['joinBtn', 'homeRingBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = b; }); }
   async function guestJoin(withMic) {
+    if (LK.out) return; // not let in (trusted devices)
     if (!peerLibOk() || G.joining || (G.peer && !G.peer.destroyed)) return; // double tap
     G.joining = true;
     setJoinBusy(true);
@@ -5499,7 +5781,13 @@
       if (G.serverDown) { G.serverDown = false; if (G.lost) lostText(); else wait('Connecting…', 'Looking for ' + (theirName || 'them') + '…', ''); }
       guestConnect();
     });
-    peer.on('call', (call) => guestOnCall(peer, call));
+    peer.on('call', (call) => {
+      // Locked: the host's picture waits until the host has proved itself (and is turned away if it can't).
+      const bg = G.conn && G.conn.bg;
+      if (bg && (bg.st === 'wait' || (bg.st === 'open' && gateOn()))) bg.held.push((ok) => { if (ok) guestOnCall(peer, call); else { try { call.close(); } catch (e) {} } });
+      else if (bg && bg.st === 'no') { try { call.close(); } catch (e) {} }
+      else guestOnCall(peer, call);
+    });
     peer.on('disconnected', () => {
       if (G.left || G.peer !== peer || peer.destroyed) return;
       setTimeout(() => { if (!G.left && G.peer === peer && !peer.destroyed && peer.disconnected) { try { peer.reconnect(); } catch (e) {} } }, 1500);
@@ -5605,6 +5893,7 @@
   function knock(conn) {
     let opened = false;
     const at = Date.now();
+    gateWire(conn);
     // No answer within 4 s: they're not live yet, or the call server dropped the knock (0.peerjs.com sometimes
     // drops a knock on a link that isn't live without saying so), so knock again; after ~10 minutes, every 12 s.
     // An answer but no link after 15 s: one of the networks is blocking the call.
@@ -5641,24 +5930,28 @@
         if (newer) { try { newer.close(); } catch (e) {} }
       }
       opened = true;
-      tell(conn, { t: 'hello', v: VER, name: cleanName(store.get('beside.name') || ''), share: CAN_SHARE || CAN_LANE });
       G.tries = G.quiet = 0;
       clearTimeout(G.openTimer);
       clearTimeout(G.retry);
-      if (app.state === 'watching') return;
-      wait('Found ' + (theirName || 'them') + '.', 'Joining the call…', '');
-      // The picture follows within a second or two. If a message got lost on the way, start over.
-      clearTimeout(G.picTimer);
-      G.picTimer = setTimeout(() => {
-        if (G.conn !== conn || G.left || app.state === 'watching') return;
-        if (G.call) { const c = G.call; G.call = null; try { c.close(); } catch (e) {} }
-        dropKnocks();
-        wait('Connecting…', 'Trying again…', '');
-        guestRetry();
-      }, 10000);
+      // Locked: nothing is said and no picture is taken until the host proves it is one of our own devices.
+      gateRun(conn, () => { if (G.conn === conn && !G.left) knockIn(conn); }, () => { if (G.conn === conn && !G.left) gateEnd(); });
     });
     conn.on('close', () => { if (G.conn === conn && (opened || G.call)) guestLost(); });
-    conn.on('data', (d) => { if (G.conn === conn) guestData(d); });
+    conn.on('data', (d) => { if (G.conn === conn && gateLets(conn, d)) guestData(d); });
+  }
+  function knockIn(conn) {
+    tell(conn, { t: 'hello', v: VER, name: cleanName(store.get('beside.name') || ''), share: CAN_SHARE || CAN_LANE });
+    if (app.state === 'watching') return;
+    wait('Found ' + (theirName || 'them') + '.', 'Joining the call…', '');
+    // The picture follows within a second or two. If a message got lost on the way, start over.
+    clearTimeout(G.picTimer);
+    G.picTimer = setTimeout(() => {
+      if (G.conn !== conn || G.left || app.state === 'watching') return;
+      if (G.call) { const c = G.call; G.call = null; try { c.close(); } catch (e) {} }
+      dropKnocks();
+      wait('Connecting…', 'Trying again…', '');
+      guestRetry();
+    }, 10000);
   }
   // Everything the host sends on the data link. Unknown or broken messages are ignored.
   function guestData(d) {
@@ -6616,9 +6909,10 @@
     if (window.Peer) whenNet(() => setTimeout(() => bootProbe(0), 400));
     if (!window.Peer) peerLibOk();
     ringBoot();
+    lockBoot();
     // The Voice focus noise remover (voiceiso.js) plugs in here: fn(ctx, mode) gives the node that goes first.
     app.setVoicePre = (fn) => { CLEAR.pre = typeof fn === 'function' ? fn : null; clearRebuild(); };
-    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, RG, J, mini, ringBanner, ringing, layout, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog }; // automated tests only
+    if (LOCAL) app.debug = { H, G, V, C, T, SND, OUT, CLEAR, ENGINE_OUT, MV, RG, J, mini, ringBanner, ringing, layout, setVol, setDuck, setMicMode, micWant, renderVoice, setTalk, clearChain, clearNodes, clearGate, clearRebuild, clearEss, CLEAR_TUNE, FOCUS_TUNE, FAR_TUNE, ISO, isoOff, W, ytWatch, ytClose, SW, soundCheck, soundFix, soundAsked, soundNative, laneWatch, engineUp, engineDown, outRest, sndLog, LK }; // automated tests only
     app.booted = true;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

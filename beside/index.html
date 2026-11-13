@@ -933,6 +933,19 @@ button:disabled{opacity:.55;cursor:default}
 .movecard{padding-right:18px}
 .movecard-acts{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap}
 .movecard-not{min-height:44px;min-width:44px;padding:0 10px;font:var(--callout);color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
+/* trusted devices: the calm full screen for a device that isn't let in, and the list in Calls and setup */
+.lockout{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));background:var(--bg);text-align:center}
+.lockout-in{max-width:420px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.lockout-in svg{color:var(--ink-3)}
+.lockout-in .btn{margin-top:8px}
+.trust-say{font:var(--callout)}
+.trust-list{list-style:none;display:flex;flex-direction:column}
+.trust-list li{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.trust-list li span{flex:1;min-width:0;display:flex;flex-direction:column}
+.trust-list b{font:var(--callout);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.trust-list small{font:var(--caption);color:var(--ink-2)}
+.trust-list .btn{flex:none}
+#trustLockBtn{align-self:flex-start}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 /* Home: how they are, the house, both places in one line, one Ring button with a heart, and their latest note */
 #tabHome{max-width:460px;gap:10px}
@@ -1379,6 +1392,15 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       </defs></svg>
 <!-- paint:end -->
 <div class="note" id="note" role="status" aria-live="polite" hidden></div>
+<!-- NOT LET IN (trusted devices): Beside is locked and this device isn't on its list yet -->
+<section class="lockout" id="lockOut" role="dialog" aria-modal="true" aria-labelledby="lockOutTitle" hidden>
+  <div class="lockout-in">
+    <i data-icon="device" data-size="40"></i>
+    <h1 id="lockOutTitle">This device isn’t let in yet.</h1>
+    <p id="lockOutText">Beside only opens on devices that are let in.</p>
+    <button class="btn primary" id="lockAskBtn">Ask to come in</button>
+  </div>
+</section>
 
 <!-- NOT IN A CALL: the tabs. Home, Plans, Hearts (calls and setup are a sheet from Home). The board (board.js) draws its parts into the b* boxes. -->
 <section class="boardzone shell" id="boardZone" hidden>
@@ -1386,6 +1408,11 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
   <div class="endcard movecard" id="moveCard" role="region" aria-label="Move the call here" hidden>
     <div class="endcard-words"><h2 class="display" id="moveTitle">You’re in a call on your other device.</h2><p id="moveText">Move it here and carry on. Nobody is dropped.</p></div>
     <div class="movecard-acts"><button class="btn primary" id="moveBtn">Move the call here</button><button class="movecard-not" id="moveNot">Not now</button></div>
+  </div>
+  <!-- A device that isn't let in asked to come in (trusted devices, while Beside is locked) -->
+  <div class="endcard movecard" id="askCard" role="region" aria-label="A device asks to come in" hidden>
+    <div class="endcard-words"><h2 class="display" id="askTitle">A device wants to come in.</h2><p>Only let it in if you know whose it is.</p></div>
+    <div class="movecard-acts"><button class="btn primary" id="askLetIn">Let in</button><button class="movecard-not" id="askNo">No</button></div>
   </div>
   <div class="tabpanel" id="tabHome" data-tab="home" role="tabpanel" aria-labelledby="tb-home">
     <!-- how the other person is, by their clock: asleep (their lamp is off, 11 pm to 6 am there) or awake -->
@@ -1666,6 +1693,18 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
       <!-- the quiet way in: open the room without ringing anyone (your camera starts off) -->
       <div class="card rows" data-role="host"><button class="rowbtn" id="startBtn"><i data-icon="phone"></i><span>Start a call without ringing</span><i data-icon="chev"></i></button></div>
       <div class="card rows" data-role="guest"><button class="rowbtn" id="joinBtn"><i data-icon="phone"></i><span>Start a call without ringing</span><i data-icon="chev"></i></button></div>
+      <!-- Trusted devices: folded, as the list is long -->
+      <div class="card rows setrows" id="trustCard" hidden>
+        <details class="setmore">
+          <summary class="rowbtn"><i data-icon="device"></i><span>Trusted devices</span><em class="v" id="trustVal"></em><i data-icon="chev"></i></summary>
+          <div class="setin">
+            <p class="trust-say" id="trustSay"></p>
+            <ul class="trust-list" id="trustList"></ul>
+            <p class="trust-say" id="trustMsg" role="status" hidden></p>
+            <button class="btn sm" id="trustLockBtn">Lock Beside</button>
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 </div>
@@ -1859,8 +1898,8 @@ html.is-hidden *,html.is-hidden *::before,html.is-hidden *::after{animation-play
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js" integrity="sha512-iFU+yF1keEaLDC9HEwPfLMSRaS0unBHE14GEgx6pQKJXjp5v0tvX8xpfp2lgJ62XEjbYp/M5C3CAmej/PWXMyA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="figures.js?v=6"></script>
 <script src="icons.js?v=1"></script>
-<script src="board.js?v=20"></script>
+<script src="board.js?v=21"></script>
 <script src="voiceiso.js?v=2"></script>
-<script src="app.js?v=55"></script>
+<script src="app.js?v=56"></script>
 </body>
 </html>
