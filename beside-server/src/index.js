@@ -14,7 +14,8 @@
    /peerjs/board/<room>/push   POST: let this device ring ({role, name, open, web|voip, alert}), or {off} to stop
    /peerjs/board/<room>/ring   POST {role, name}: ring the other person's devices; GET: the last ring
    /peerjs/board/<room>/talk   POST {text, by, zone}: one sentence becomes to-dos, events or a countdown (Claude reads it)
-   /peerjs/board/<room>/hello  POST {role, name, kind, pub, ask, recover}: this device says hello with its key (trusted devices, below)
+   /peerjs/board/<room>/hello  POST {role, name, kind, pub, ask, recover}: this device says hello with its key (trusted devices, below).
+                               One listed with the recovery code is named on the other listed devices.
    /peerjs/push/key            the public key browsers need to say yes to rings */
 
 import { sendWeb, sendVoip, sendAlert, vapidPublic, pushHostOk } from './push.js';
@@ -317,7 +318,7 @@ export class Board {
     // From here to the write there is no other await, so two hellos at once can't undo each other.
     const now = Date.now();
     const me1 = { id: me.h.slice(0, 12), h: me.h, pub, p, label, role, kind };
-    let write = this.tidy(now);
+    let write = this.tidy(now), joined = false;
     const out = async (status, msg) => {
       if (write) await this.ctx.storage.put('lock', L);
       return this.reply({ in: false, asked: L.asks.some((a) => a.h === me.h), ...(msg ? { msg } : {}) }, status);
@@ -337,6 +338,7 @@ export class Board {
       write = true;
       if (why) return out(why[0], why[1]);
       if (!this.enlist(me1, now)) return out(403, FULL);
+      joined = true;
     } else {
       if (o.ask === true) {
         const had = L.asks.find((a) => a.h === me.h);
@@ -352,6 +354,9 @@ export class Board {
       return out(403);
     }
     if (write) await this.ctx.storage.put('lock', L);
+    if (joined) {
+      try { await this.sendNotice(`A new device joined with the recovery code: ${label}. If this was not you, open Trusted devices and remove it.`, [me.h]); } catch (e) { /* listed either way */ }
+    }
     return this.reply({ in: true, lock: this.lockView(me.h) });
   }
 
@@ -482,14 +487,31 @@ export class Board {
     const hour = hourIn(HOME[role === 'host' ? 'guest' : 'host'], now);
     const level = hour >= 23 || hour < 6 ? 'active' : 'time-sensitive';
     const to = this.subs.filter((s) => s.role !== role && (s.kind === 'web' || s.alert) && this.rings(s));
-    const once = (s) => (s.kind === 'web'
-      ? sendWeb(this.env, s, { kind: 'heart', title, body, url: s.open, tag: 'beside-heart' }, 'heart', HEART_KEEP)
-      : sendAlert(this.env, s, { aps: { alert: { title, body }, sound: 'ping.wav', 'thread-id': 'beside-hearts', 'interruption-level': level }, kind: 'heart' }, HEART_KEEP)
-    ).catch(() => 'fail');
+    await this.notify(to, { kind: 'heart', title, body, tag: 'beside-heart' },
+      { aps: { alert: { title, body }, sound: 'ping.wav', 'thread-id': 'beside-hearts', 'interruption-level': level }, kind: 'heart' }, 'heart');
+  }
+
+  // Mo, 14 Nov 2026: "will i be notified each time a device is added". A device listed with the recovery code, or let
+  // in, tells every other listed device of both people (never the new one, nor the one that let it in). A security
+  // notice, so it comes through a Focus at any hour. Never stops the device being listed.
+  async sendNotice(body, skip) {
+    const title = 'Beside';
+    const to = this.subs.filter((s) => this.listed(s.h) && !skip.includes(s.h) && (s.kind === 'web' || s.alert));
+    // kind 'heart' on the web: every page's service worker, an older one too, shows it as a gentle notification that
+    // opens Beside (any other kind rings). Its own tag keeps it apart from hearts.
+    await this.notify(to, { kind: 'heart', title, body, tag: 'beside-device' },
+      { aps: { alert: { title, body }, sound: 'default', 'thread-id': 'beside-devices', 'interruption-level': 'time-sensitive' }, kind: 'device' }, 'device');
+  }
+
+  // A gentle notification on each of these devices: a web push, or the app's ordinary notification (never a call
+  // screen). Held a day for a device that is off, and tried once more if the push service didn't take it.
+  async notify(to, web, app, topic) {
+    if (!to.length) return;
+    const once = (s) => (s.kind === 'web' ? sendWeb(this.env, s, { ...web, url: s.open }, topic, HEART_KEEP) : sendAlert(this.env, s, app, HEART_KEEP)).catch(() => 'fail');
     const results = await Promise.all(to.map(async (s) => { const r = await once(s); return r === 'fail' ? once(s) : r; }));
     const gone = to.filter((s, i) => results[i] === 'gone');
     if (!gone.length) return;
-    // A web device that is gone is forgotten; the app keeps ringing and only loses its heart token.
+    // A web device that is gone is forgotten; the app keeps ringing and only loses its notification token.
     this.subs = this.subs.filter((s) => !(s.kind === 'web' && gone.includes(s))).map((s) => (gone.includes(s) ? { ...s, alert: undefined } : s));
     await this.ctx.storage.put('subs', this.subs);
   }
@@ -622,6 +644,8 @@ export class Board {
       // Lock: a new recovery code, shown once in this answer; only its hash is kept.
       const code = o.op === 'lock' && o.on === true ? recoveryCode() : '';
       const rec = code ? await sha(code) : '';
+      // Let in: the ask of a device not listed yet (it gets a notice below once it is)
+      const asked = o.op === 'letin' && this.lock.asks.find((a) => a.id === o.id && !this.listed(a.h));
       let done;
       try { done = this.lockOp(o, me.h, rec, byCode); } catch (e) {
         if (e instanceof Bad) return plain(e.message);
@@ -629,6 +653,9 @@ export class Board {
       }
       if (!done) return plain(NOT_IN, 403);
       await this.ctx.storage.put({ lock: this.lock, subs: this.subs });
+      if (asked && this.listed(asked.h)) {
+        try { await this.sendNotice(`A new device was let in: ${asked.label}.`, [me.h, asked.h]); } catch (e) { /* let in either way */ }
+      }
       // This device removed itself with the code: it is signed out, so no list (and no call id) goes back to it.
       if (!this.listed(me.h)) return this.reply({ lock: null, out: true });
       return this.reply({ lock: this.lockView(me.h), ...(rec && this.lock.rec === rec ? { recovery: code } : {}) });
