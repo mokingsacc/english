@@ -26,3 +26,4 @@ new_sqlite_classes = ["Board"]
 # Secrets (set once by deploy.sh): TURN_KEY_ID, TURN_KEY_TOKEN
 # Ring: VAPID_JWK (web push key, made on the Mac and piped straight in), and for the Beside app
 # APNS_KEY_P8, APNS_KEY_ID, APPLE_TEAM_ID (an Apple push key).
+# Optional: HOME_ROOM, the SHA-256 of the room code, so the server answers for that room only (src/index.js says how).

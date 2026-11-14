@@ -176,18 +176,19 @@
 
   let S = null; // the mounted board
 
-  // This device's key (trusted devices: app.js makes it). It goes only to Beside's own server: in a header, or on a
-  // photo's address, since a picture on the page can't send a header.
-  const key = () => { try { return localStorage.getItem('beside.key') || ''; } catch (e) { return ''; } };
+  // This device's key and photo token (trusted devices: app.js holds them and hands them over). The key goes only to
+  // Beside's own server, in a header. A picture on the page can't send a header, so a photo's address carries the
+  // photo token instead, which opens photos and nothing else.
+  const own = (k) => (S && typeof S.opts[k] === 'function' ? S.opts[k]() || '' : '');
   function api(path, opts, ms) {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), ms || 10000);
-    const k = key();
+    const k = own('key');
     const o = { cache: 'no-store', ...opts, signal: c.signal };
     if (k) o.headers = { ...(o.headers || {}), 'x-beside-key': k };
     return fetch(BASE + '/peerjs/board/' + S.room + (path || ''), o).finally(() => clearTimeout(t));
   }
-  const photoUrl = (t) => t.local || BASE + '/peerjs/board/' + S.room + '/photo/' + encodeURIComponent(t.id) + (key() ? '?k=' + encodeURIComponent(key()) : '');
+  const photoUrl = (t) => t.local || BASE + '/peerjs/board/' + S.room + '/photo/' + encodeURIComponent(t.id) + (own('photoKey') ? '?k=' + encodeURIComponent(own('photoKey')) : '');
 
   function view() {
     const b = JSON.parse(JSON.stringify(S.server));
