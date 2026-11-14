@@ -1,6 +1,7 @@
 // Beside's ring: shows "Mo is calling" when Beside is closed, and opens the call when tapped. A heart
-// ("Mo is thinking of you") shows as a gentle notification that just opens Beside.
-// Both arrive as encrypted web pushes from Beside's own server (beside-server/src/push.js).
+// ("Mo is thinking of you") shows as a gentle notification that just opens Beside, and so does a notice that a new
+// device joined (it comes as a heart with its own tag, so an older copy of this file shows it gently too).
+// All arrive as encrypted web pushes from Beside's own server (beside-server/src/push.js).
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
@@ -11,7 +12,7 @@ self.addEventListener('push', (e) => {
   const heart = d.kind === 'heart';
   e.waitUntil(self.registration.showNotification(d.title || (heart ? 'Beside' : 'Beside is ringing'), {
     body: d.body || 'Tap to open Beside.',
-    tag: heart ? 'beside-heart' : 'beside-ring',
+    tag: heart ? (d.tag === 'beside-device' ? 'beside-device' : 'beside-heart') : 'beside-ring',
     renotify: true,
     requireInteraction: !heart,
     icon: 'icon-192.png',
